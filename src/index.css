@@ -1,0 +1,212 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  
+  --color-brand-dark: #071f13;
+  --color-brand-primary: #0F5B38;
+}
+
+/* Custom global base styles */
+html {
+  font-size: 17px; /* Scaled root base for global typography visibility */
+}
+
+html, body {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  background-color: #f7f9f8;
+  color: #071f13;
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+}
+
+/* Premium Animations */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes scaleIn {
+  from { transform: scale(0.97); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-scaleIn {
+  animation: scaleIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Global Border Radius Standardization for form inputs and selectors */
+input:not([type="checkbox"]):not([type="radio"]),
+select,
+textarea {
+  border-radius: 6px !important;
+}
+
+/* Explicitly protect circular elements like avatars, close indicators, and check bullets */
+.rounded-full,
+.rounded-full * {
+  border-radius: 9999px !important;
+}
+
+/* Maintain a clean, sharp look for checkbox items */
+input[type="checkbox"] {
+  border-radius: 2px !important;
+}
+
+/* Retain standard circular shapes for radio buttons */
+input[type="radio"] {
+  border-radius: 9999px !important;
+}
+
+/* Global Typography Scale Adjustment: Increase all font sizes <= 14px by exactly 1px, and keep 15px/16px mapped strictly to 15px */
+.text-\[9px\] {
+  font-size: 10px !important;
+}
+.text-\[10px\] {
+  font-size: 11px !important;
+}
+.text-\[11px\] {
+  font-size: 12px !important;
+}
+.text-\[12px\] {
+  font-size: 13px !important;
+}
+.text-\[13px\] {
+  font-size: 14px !important;
+}
+.text-\[14px\] {
+  font-size: 15px !important;
+}
+.text-\[15px\] {
+  font-size: 15px !important; /* Kept strictly at 15px */
+}
+.text-\[16px\] {
+  font-size: 15px !important; /* Reduced 16px strictly to 15px */
+}
+
+/* Adjust standard Tailwind relative utilities that are <= 15px to be 1px larger */
+.text-xs {
+  font-size: 13px !important; /* increased from 12px */
+}
+.text-sm {
+  font-size: 15px !important; /* increased from 14px */
+}
+
+/* Premium print overrides for clean invoice/quote PDF export */
+@media print {
+  header,
+  nav,
+  button,
+  .no-print,
+  input[type="file"],
+  .lucide,
+  .border-slate-100 {
+    display: none !important;
+  }
+  
+  body, html {
+    background-color: white !important;
+    color: black !important;
+    font-size: 13px !important;
+  }
+  
+  .bg-white {
+    background-color: white !important;
+    box-shadow: none !important;
+    border: none !important;
+    padding: 0 !important;
+  }
+  
+  input, select, textarea {
+    border: none !important;
+    background: transparent !important;
+    color: black !important;
+    padding: 0 !important;
+    appearance: none !important;
+    -webkit-appearance: none !important;
+  }
+  
+  /* Make tables take full width and wrap cleanly */
+  table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+  }
+  
+  th, td {
+    border: 1px solid #ddd !important;
+    padding: 8px !important;
+    color: black !important;
+  }
+  
+  /* Hide editing actions column containing trash/plus controls */
+  th:last-child, td:last-child {
+    display: none !important;
+  }
+}
+
+/* Premium overrides for PDF generation via html2pdf */
+.pdf-mode {
+  background-color: white !important;
+}
+
+.pdf-mode header,
+.pdf-mode nav,
+.pdf-mode button,
+.pdf-mode .no-print,
+.pdf-mode input[type="file"],
+.pdf-mode .lucide,
+.pdf-mode .border-slate-100 {
+  display: none !important;
+}
+
+.pdf-mode #printable-area {
+  background: white !important;
+  color: black !important;
+  padding: 24px !important;
+  border: none !important;
+  box-shadow: none !important;
+  width: 794px !important;
+  max-width: 794px !important;
+  min-width: 794px !important;
+  box-sizing: border-box !important;
+  margin: 0 auto !important;
+}
+
+.pdf-mode input,
+.pdf-mode select,
+.pdf-mode textarea {
+  border: none !important;
+  background: transparent !important;
+  color: black !important;
+  padding: 2px 0 !important;
+  appearance: none !important;
+  -webkit-appearance: none !important;
+  box-shadow: none !important;
+}
+
+.pdf-mode table {
+  width: 100% !important;
+  border-collapse: collapse !important;
+}
+
+.pdf-mode th,
+.pdf-mode td {
+  border: 1px solid #e2e8f0 !important;
+  padding: 8px !important;
+  color: black !important;
+}
+
+/* Hide the action/trash/plus column in the printed PDF */
+.pdf-mode th:last-child,
+.pdf-mode td:last-child {
+  display: none !important;
+}
+
+
+
