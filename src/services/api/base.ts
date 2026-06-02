@@ -1,5 +1,5 @@
 //export const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api'
-export const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://accounting-backend-aerq.onrender.com/api'
+export const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://accounting-backendd.onrender.com/api'
 
 // Helper for making API calls with token authorization and credentials
 export async function request(path: string, options: RequestInit = {}) {
