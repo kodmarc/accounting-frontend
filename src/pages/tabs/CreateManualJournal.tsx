@@ -52,7 +52,7 @@ export function CreateManualJournal({
           { id: 'mock-a-1', code: '200', name: 'Sales Revenue', class_type: 'Revenue', type: 'Sales', default_tax_rate: null, description: 'Direct sales revenue ledger', is_system_account: false, created_at: '' },
           { id: 'mock-a-2', code: '300', name: 'Cost of Goods Sold', class_type: 'Expense', type: 'Direct Costs', default_tax_rate: null, description: 'Inventory cost allocations', is_system_account: false, created_at: '' },
           { id: 'mock-a-3', code: '090', name: 'ANZ Business Account', class_type: 'Asset', type: 'Bank', description: 'Primary bank', is_system_account: true, created_at: '', default_tax_rate: null },
-          { id: 'mock-a-4', code: '600', name: 'Retained Earnings', class_type: 'Equity', type: 'Equity', default_tax_rate: null, description: 'Prior year earnings', is_system_account: true, created_at: '', default_tax_rate: null }
+          { id: 'mock-a-4', code: '600', name: 'Retained Earnings', class_type: 'Equity', type: 'Equity', default_tax_rate: null, description: 'Prior year earnings', is_system_account: true, created_at: '' }
         ]
       } else {
         loadedAccounts = await apiService.getAccounts(activeOrg.id)

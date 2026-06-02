@@ -1,4 +1,5 @@
-import { request, type User } from './base'
+import { request } from './base'
+import type { User } from './types'
 
 export const authApi = {
   async signup(email: string, password: string, firstName: string = '', lastName: string = ''): Promise<{ user: User; token: string }> {

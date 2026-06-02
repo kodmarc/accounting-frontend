@@ -664,7 +664,7 @@ export function CreateBillTab({
       const savedBills = localStorage.getItem(`kdm_mock_bills_${activeOrg.id}`)
       const list = savedBills ? JSON.parse(savedBills) : []
       
-      let updatedList = []
+      let updatedList: any[] = []
       if (isEdit) {
         updatedList = list.map((b: any) => {
           if (b.id === editingBillId || b.bill_number === editingBillId) {

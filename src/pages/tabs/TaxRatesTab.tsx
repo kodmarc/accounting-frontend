@@ -112,7 +112,7 @@ export function TaxRatesTab({ activeOrg, isMockMode = false }: TaxRatesTabProps)
 
     const payload: Partial<TaxRate> = {
       name,
-      rate: rateVal.toFixed(3),
+      rate: parseFloat(rateVal.toFixed(3)),
       is_active: isActive
     }
 
@@ -136,7 +136,7 @@ export function TaxRatesTab({ activeOrg, isMockMode = false }: TaxRatesTabProps)
           const newRate: TaxRate = {
             id: `mock-tax-${Date.now()}`,
             name,
-            rate: rateVal.toFixed(3),
+            rate: parseFloat(rateVal.toFixed(3)),
             is_active: isActive,
             created_at: new Date().toISOString()
           }
@@ -309,16 +309,16 @@ export function TaxRatesTab({ activeOrg, isMockMode = false }: TaxRatesTabProps)
 
     const matchesSearch = 
       tr.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-      parseFloat(tr.rate).toFixed(2).includes(searchTerm)
+      tr.rate.toFixed(2).includes(searchTerm)
 
     return matchesSearch
   }).sort((a, b) => {
     if (sortOption === 'name-asc') {
       return a.name.localeCompare(b.name)
     } else if (sortOption === 'rate-desc') {
-      return parseFloat(b.rate as any) - parseFloat(a.rate as any)
+      return b.rate - a.rate
     } else if (sortOption === 'rate-asc') {
-      return parseFloat(a.rate as any) - parseFloat(b.rate as any)
+      return a.rate - b.rate
     }
     return 0
   })

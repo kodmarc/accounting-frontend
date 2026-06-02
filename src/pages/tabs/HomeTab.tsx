@@ -9,6 +9,7 @@ import {
   RefreshCw
 } from 'lucide-react'
 import type { Organization } from '../../services/api'
+import type { TabId } from '../../types/tabs'
 
 interface ReconcileItem {
   id: string
@@ -25,7 +26,7 @@ interface ReconcileItem {
 
 interface HomeTabProps {
   activeOrg: Organization | null
-  setActiveTab: (tab: 'Home' | 'Sales' | 'Purchase' | 'Fixed Assets' | 'Payroll' | 'Reporting' | 'Accounts' | 'Contacts' | 'Projects' | 'reconcile') => void
+  setActiveTab: (tab: TabId) => void
   reconcileItems: ReconcileItem[]
   resetReconciliation: () => void
   reconciledCount: number
@@ -62,7 +63,7 @@ export function HomeTab({
             <span>Run Reconciliation</span>
           </button>
           <button 
-            onClick={() => setActiveTab('Sales')}
+            onClick={() => setActiveTab('SalesOverview')}
             className="flex items-center space-x-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 font-semibold text-xs px-4 py-2.5 rounded-[3px] transition-all duration-300 active:scale-95 cursor-pointer"
           >
             <Plus className="h-4 w-4" />
@@ -182,7 +183,7 @@ export function HomeTab({
           </div>
 
           <button 
-            onClick={() => setActiveTab('Sales')}
+            onClick={() => setActiveTab('SalesOverview')}
             className="mt-6 w-full flex items-center justify-center space-x-1.5 py-2 bg-emerald-50 hover:bg-emerald-100/50 text-[#0F5B38] font-bold text-xs rounded-[3px] border border-emerald-100/50 transition-all duration-300 cursor-pointer"
           >
             <span>View Invoices Overview</span>
@@ -239,7 +240,7 @@ export function HomeTab({
           </div>
 
           <button 
-            onClick={() => setActiveTab('Purchase')}
+            onClick={() => setActiveTab('PurchasesOverview')}
             className="mt-6 w-full flex items-center justify-center space-x-1.5 py-2 bg-slate-50 hover:bg-slate-100 text-[#071f13] font-bold text-xs rounded-[3px] border border-slate-200 transition-all duration-300 cursor-pointer"
           >
             <span>Manage Purchase Bills</span>

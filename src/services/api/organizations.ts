@@ -1,4 +1,5 @@
-import { request, type Membership, type Organization } from './base'
+import { request } from './base'
+import type { Membership, Organization } from './types'
 
 export const organizationsApi = {
   async getOrganizations(): Promise<Membership[]> {

@@ -164,8 +164,8 @@ export function CreatePurchaseOrderTab({
           { id: 'mock-a-2', code: '400', name: 'Software Licensing', class_type: 'Expense', type: 'Expense', default_tax_rate: null, description: 'SaaS subscriptions', is_system_account: false, created_at: '' }
         ]
         loadedTaxRates = [
-          { id: 'mock-t-1', name: 'SG GST 9%', rate: 9.0, is_active: true, organization: activeOrg.id, code: 'SR-9%' },
-          { id: 'mock-t-2', name: 'Tax Exempt', rate: 0.0, is_active: true, organization: activeOrg.id, code: 'EX-0%' }
+          { id: 'mock-t-1', name: 'SG GST 9%', rate: 9.0, is_active: true, created_at: new Date().toISOString() },
+          { id: 'mock-t-2', name: 'Tax Exempt', rate: 0.0, is_active: true, created_at: new Date().toISOString() }
         ]
         loadedCatalog = [
           { id: 'mock-i-1', code: 'CLOUD-LIC', name: 'Cloud Hosting Monthly Server', is_sold: false, sales_unit_price: 0, sales_account: null, sales_tax_rate: null, sales_description: '', is_purchased: true, purchase_unit_cost: 150.00, purchase_account: 'mock-a-2', purchase_tax_rate: 'mock-t-1', purchase_description: 'Monthly cloud virtual machine container resource allocations', created_at: '' }

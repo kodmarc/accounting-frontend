@@ -1745,7 +1745,7 @@ export function CreateQuoteTab({
 
                     {/* Line Total */}
                     <td className="px-2.5 py-2.5 border border-slate-200 align-middle text-right font-normal text-slate-800 text-[12px]">
-                      {currencySymbol}{(line.quantity * line.unitPrice * (1 - (line.discount || 0) / 100)).toFixed(2)}
+                      {currencySymbol}{(Number(line.quantity || 0) * Number(line.unitPrice || 0) * (1 - Number(line.discount || 0) / 100)).toFixed(2)}
                     </td>
 
                     {/* Action Trash & Plus */}

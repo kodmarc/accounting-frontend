@@ -12,6 +12,7 @@ import { apiService } from './services/api'
 import type { User as ApiUser, Membership, Organization } from './services/api'
 
 import { usePopup } from './components/PopupProvider'
+import type { TabId } from './types/tabs'
 
 // Page & Shell Imports
 import { AuthPage } from './pages/AuthPage'
@@ -123,48 +124,7 @@ function App() {
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false)
 
   // Inner Dashboard Tab states
-  const [activeTab, setActiveTab] = useState<
-    | 'Home'
-    | 'SalesOverview'
-    | 'Invoices'
-    | 'OnlinePayments'
-    | 'Quotes'
-    | 'Products'
-    | 'Customers'
-    | 'SalesSettings'
-    | 'PurchasesOverview'
-    | 'Bills'
-    | 'PurchaseOrders'
-    | 'Cheque'
-    | 'Expenses'
-    | 'Suppliers'
-    | 'PurchasesSettings'
-    | 'FixedAssets'
-    | 'Payroll'
-    | 'AllReports'
-    | 'AccountTransactions'
-    | 'BalanceSheet'
-    | 'ProfitAndLoss'
-    | 'ReportingSettings'
-    | 'reconcile'
-    | 'ChartOfAccounts'
-    | 'AccountingSettings'
-    | 'Contacts'
-    | 'ContactsSettings'
-    | 'TaxRates'
-    | 'CreateInvoice'
-    | 'CreateQuote'
-    | 'EditInvoice'
-    | 'EditQuote'
-    | 'CreateBill'
-    | 'EditBill'
-    | 'CreatePurchaseOrder'
-    | 'EditPurchaseOrder'
-    | 'CreateTransferMoney'
-    | 'CreateSpendMoney'
-    | 'CreateReceiveMoney'
-    | 'CreateManualJournal'
-  >('Home')
+  const [activeTab, setActiveTab] = useState<TabId>('Home')
   const [editingQuoteId, setEditingQuoteId] = useState<string | null>(null)
   const [editingInvoiceId, setEditingInvoiceId] = useState<string | null>(null)
   const [editingBillId, setEditingBillId] = useState<string | null>(null)
@@ -936,7 +896,7 @@ function App() {
       
       {activeTab === 'reconcile' && (
         <BankAccountsTab
-          activeOrg={activeOrg}
+          activeOrg={activeOrg!}
           isMockMode={isMockMode}
           reconcileItems={reconcileItems}
           resetReconciliation={resetReconciliation}
@@ -946,7 +906,7 @@ function App() {
 
       {activeTab === 'Contacts' && (
         <ContactsTab
-          activeOrg={activeOrg}
+          activeOrg={activeOrg!}
           isMockMode={isMockMode}
           initialFilter="All"
         />
@@ -954,7 +914,7 @@ function App() {
       
       {activeTab === 'Customers' && (
         <ContactsTab
-          activeOrg={activeOrg}
+          activeOrg={activeOrg!}
           isMockMode={isMockMode}
           initialFilter="Customer"
         />
@@ -962,7 +922,7 @@ function App() {
       
       {activeTab === 'Suppliers' && (
         <ContactsTab
-          activeOrg={activeOrg}
+          activeOrg={activeOrg!}
           isMockMode={isMockMode}
           initialFilter="Supplier"
         />
@@ -970,28 +930,28 @@ function App() {
       
       {activeTab === 'ChartOfAccounts' && (
         <ChartOfAccountsTab
-          activeOrg={activeOrg}
+          activeOrg={activeOrg!}
           isMockMode={isMockMode}
         />
       )}
       
       {activeTab === 'TaxRates' && (
         <TaxRatesTab
-          activeOrg={activeOrg}
+          activeOrg={activeOrg!}
           isMockMode={isMockMode}
         />
       )}
       
       {activeTab === 'Products' && (
         <ProductsTab
-          activeOrg={activeOrg}
+          activeOrg={activeOrg!}
           isMockMode={isMockMode}
         />
       )}
       
       {activeTab === 'SalesOverview' && (
         <SalesOverviewTab
-          activeOrg={activeOrg}
+          activeOrg={activeOrg!}
           isMockMode={isMockMode}
           setActiveTab={setActiveTab}
           onCreateInvoiceClick={() => {
@@ -1005,7 +965,7 @@ function App() {
 
       {activeTab === 'PurchasesOverview' && (
         <PurchasesOverviewTab
-          activeOrg={activeOrg}
+          activeOrg={activeOrg!}
           isMockMode={isMockMode}
           setActiveTab={setActiveTab}
           onCreateBillClick={() => {
@@ -1021,7 +981,7 @@ function App() {
 
       {activeTab === 'Invoices' && (
         <InvoicesTab
-          activeOrg={activeOrg}
+          activeOrg={activeOrg!}
           isMockMode={isMockMode}
           autoOpenDrawer={invoiceDrawerOpen}
           onCloseAutoOpen={() => setInvoiceDrawerOpen(false)}
@@ -1039,7 +999,7 @@ function App() {
 
       {['SalesSettings', 'PurchasesSettings', 'AccountingSettings', 'ContactsSettings'].includes(activeTab) && (
         <SettingsTab
-          activeOrg={activeOrg}
+          activeOrg={activeOrg!}
           isMockMode={isMockMode}
           activeTab={activeTab as any}
           setActiveTab={setActiveTab}
@@ -1057,7 +1017,7 @@ function App() {
 
       {activeTab === 'Bills' && (
         <BillsTab
-          activeOrg={activeOrg}
+          activeOrg={activeOrg!}
           isMockMode={isMockMode}
           setActiveTab={setActiveTab}
           onEditBill={(id) => {
@@ -1073,7 +1033,7 @@ function App() {
 
       {activeTab === 'Quotes' && (
         <QuotesTab
-          activeOrg={activeOrg}
+          activeOrg={activeOrg!}
           isMockMode={isMockMode}
           autoOpenDrawer={quoteDrawerOpen}
           onCloseAutoOpen={() => setQuoteDrawerOpen(false)}
@@ -1090,7 +1050,7 @@ function App() {
             try {
               if (isMockMode) {
                 // Update quote status to Invoiced in local storage
-                const savedQuotes = localStorage.getItem(`kdm_mock_quotes_${activeOrg.id}`)
+                const savedQuotes = localStorage.getItem(`kdm_mock_quotes_${activeOrg!.id}`)
                 const list = savedQuotes ? JSON.parse(savedQuotes) : []
                 const updatedList = list.map((q: any) => {
                   if (q.id === quote.id) {
@@ -1098,7 +1058,7 @@ function App() {
                   }
                   return q
                 })
-                localStorage.setItem(`kdm_mock_quotes_${activeOrg.id}`, JSON.stringify(updatedList))
+                localStorage.setItem(`kdm_mock_quotes_${activeOrg!.id}`, JSON.stringify(updatedList))
               } else {
                 // API database quote status update
                 await apiService.updateQuote(quote.id!, { status: 'Invoiced' })
@@ -1116,7 +1076,7 @@ function App() {
 
       {(activeTab === 'CreateInvoice' || activeTab === 'EditInvoice') && (
         <CreateInvoiceTab
-          activeOrg={activeOrg}
+          activeOrg={activeOrg!}
           isMockMode={isMockMode}
           setActiveTab={setActiveTab}
           editingInvoiceId={activeTab === 'EditInvoice' ? editingInvoiceId : null}
@@ -1126,7 +1086,7 @@ function App() {
 
       {(activeTab === 'CreateQuote' || activeTab === 'EditQuote') && (
         <CreateQuoteTab
-          activeOrg={activeOrg}
+          activeOrg={activeOrg!}
           isMockMode={isMockMode}
           setActiveTab={setActiveTab}
           editingQuoteId={activeTab === 'EditQuote' ? editingQuoteId : null}
@@ -1137,7 +1097,7 @@ function App() {
 
       {activeTab === 'PurchaseOrders' && (
         <PurchaseOrdersTab
-          activeOrg={activeOrg}
+          activeOrg={activeOrg!}
           isMockMode={isMockMode}
           setActiveTab={setActiveTab}
           onEditPO={(id) => {
@@ -1157,7 +1117,7 @@ function App() {
 
       {(activeTab === 'CreateBill' || activeTab === 'EditBill') && (
         <CreateBillTab
-          activeOrg={activeOrg}
+          activeOrg={activeOrg!}
           isMockMode={isMockMode}
           setActiveTab={setActiveTab}
           editingBillId={activeTab === 'EditBill' ? editingBillId : null}
@@ -1167,7 +1127,7 @@ function App() {
 
       {(activeTab === 'CreatePurchaseOrder' || activeTab === 'EditPurchaseOrder') && (
         <CreatePurchaseOrderTab
-          activeOrg={activeOrg}
+          activeOrg={activeOrg!}
           isMockMode={isMockMode}
           setActiveTab={setActiveTab}
           editingPoId={activeTab === 'EditPurchaseOrder' ? editingPoId : null}
@@ -1176,7 +1136,7 @@ function App() {
         />
       )}
 
-      {activeTab === 'Fixed Assets' && (
+      {activeTab === 'FixedAssets' && (
         <PlaceholderTab
           title="Fixed Assets"
           description="The Fixed Assets Directory is aligned. Track and audit asset acquisitions, depreciation indices, write-offs, and salvage book values."
@@ -1194,7 +1154,7 @@ function App() {
         />
       )}
       
-      {activeTab === 'Reporting' && (
+      {activeTab === 'AllReports' && (
         <PlaceholderTab
           title="Financial Reporting"
           description="The Ledger Analytics portal is aligned. Compile and export Balance Sheets, Cash Flow forecasts, and dynamic Profit & Loss tables."

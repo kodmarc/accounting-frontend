@@ -457,7 +457,7 @@ export function QuotesTab({
     }
   }
 
-  const handleBulkChangeStatus = async (status: 'Sent' | 'Accepted' | 'Declined') => {
+  const handleBulkChangeStatus = async (status: 'Draft' | 'Sent' | 'Accepted' | 'Declined') => {
     try {
       if (isMockMode) {
         const updated = quotes.map(q => {

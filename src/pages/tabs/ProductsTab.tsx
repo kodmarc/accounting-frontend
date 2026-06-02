@@ -120,12 +120,12 @@ export function ProductsTab({ activeOrg, isMockMode = false }: ProductsTabProps)
       code,
       name,
       is_sold: isSold,
-      sales_unit_price: parseFloat(salesUnitPrice).toFixed(2),
+      sales_unit_price: parseFloat(salesUnitPrice),
       sales_account: salesAccountId ? salesAccountId : undefined,
       sales_tax_rate: salesTaxRateId ? salesTaxRateId : undefined,
       sales_description: salesDescription,
       is_purchased: isPurchased,
-      purchase_unit_cost: parseFloat(purchaseUnitCost).toFixed(2),
+      purchase_unit_cost: parseFloat(purchaseUnitCost),
       purchase_account: purchaseAccountId ? purchaseAccountId : undefined,
       purchase_tax_rate: purchaseTaxRateId ? purchaseTaxRateId : undefined,
       purchase_description: purchaseDescription
@@ -153,10 +153,10 @@ export function ProductsTab({ activeOrg, isMockMode = false }: ProductsTabProps)
             code,
             name,
             is_sold: isSold,
-            sales_unit_price: parseFloat(salesUnitPrice).toFixed(2),
+            sales_unit_price: parseFloat(salesUnitPrice),
             sales_description: salesDescription,
             is_purchased: isPurchased,
-            purchase_unit_cost: parseFloat(purchaseUnitCost).toFixed(2),
+            purchase_unit_cost: parseFloat(purchaseUnitCost),
             purchase_description: purchaseDescription,
             created_at: new Date().toISOString()
           }
@@ -715,7 +715,7 @@ export function ProductsTab({ activeOrg, isMockMode = false }: ProductsTabProps)
                         >
                           <option value="">Tax Exempt (0%)</option>
                           {taxRates.map(t => (
-                            <option key={t.id} value={t.id}>{t.name} ({parseFloat(t.rate)}%)</option>
+                            <option key={t.id} value={t.id}>{t.name} ({parseFloat(String(t.rate))}%)</option>
                           ))}
                         </select>
                       </div>
@@ -785,7 +785,7 @@ export function ProductsTab({ activeOrg, isMockMode = false }: ProductsTabProps)
                         >
                           <option value="">Tax Exempt (0%)</option>
                           {taxRates.map(t => (
-                            <option key={t.id} value={t.id}>{t.name} ({parseFloat(t.rate)}%)</option>
+                            <option key={t.id} value={t.id}>{t.name} ({parseFloat(String(t.rate))}%)</option>
                           ))}
                         </select>
                       </div>

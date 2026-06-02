@@ -1,4 +1,5 @@
-import { request, type TaxRate, type Account, type Contact, type Item, type SalesSetting, type Invoice, type Quote, type Project } from './base'
+import { request } from './base'
+import type { TaxRate, Account, Contact, Item, SalesSetting, Invoice, Quote, Project } from './types'
 
 export const ledgerApi = {
   // Tax Rates CRUD

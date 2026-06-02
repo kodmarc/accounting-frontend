@@ -385,10 +385,10 @@ export function ChartOfAccountsTab({ activeOrg, isMockMode = false }: ChartOfAcc
   const getTaxRateLabel = (taxRate: any) => {
     if (!taxRate) return 'No Tax'
     if (typeof taxRate === 'object') {
-      return `${taxRate.name} (${parseFloat(taxRate.rate)}%)`
+      return `${taxRate.name} (${parseFloat(String(taxRate.rate))}%)`
     }
     const found = taxRates.find(t => t.id === taxRate)
-    return found ? `${found.name} (${parseFloat(found.rate)}%)` : 'Tax Exempt'
+    return found ? `${found.name} (${parseFloat(String(found.rate))}%)` : 'Tax Exempt'
   }
 
   // Toggle single selection
@@ -797,7 +797,7 @@ export function ChartOfAccountsTab({ activeOrg, isMockMode = false }: ChartOfAcc
                 >
                   <option value="">Tax Exempt (0%)</option>
                   {taxRates.map(t => (
-                    <option key={t.id} value={t.id}>{t.name} ({parseFloat(t.rate)}%)</option>
+                    <option key={t.id} value={t.id}>{t.name} ({parseFloat(String(t.rate))}%)</option>
                   ))}
                 </select>
               </div>
