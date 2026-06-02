@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { ArrowLeft, Plus, Trash2, CheckCircle, Save, X, Loader2, ChevronDown, MoreVertical } from 'lucide-react'
-import { apiService } from '../../services/api'
+import { apiService, API_BASE_URL } from '../../services/api'
 import type { Organization, Contact, Item, Account, TaxRate, SalesSetting, Quote, Project } from '../../services/api'
 import { SearchableInput } from '../../components/SearchableInput'
 import { usePopup } from '../../components/PopupProvider'
@@ -794,7 +794,7 @@ export function CreateQuoteTab({
       }
 
       // Fetch PDF from Django backend with POST transmitting customization payloads
-      const url = `http://localhost:8000/api/quotes/${resolvedId}/download-pdf/?_t=${Date.now()}`
+      const url = `${API_BASE_URL}/quotes/${resolvedId}/download-pdf/?_t=${Date.now()}`
       
       const logo = localStorage.getItem(`kdm_org_logo_${activeOrg.id}`) || ''
       const templateSettings = JSON.parse(localStorage.getItem(`kdm_sales_template_settings_${activeOrg.id}`) || '{}')
