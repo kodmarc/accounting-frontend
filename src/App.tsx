@@ -345,6 +345,10 @@ function App() {
         ]
         setOrganizations(mockMemberships)
         setSelectedOrgId('org-1')
+      } else {
+        localStorage.removeItem('kdm_auth_token')
+        setIsAuthenticated(false)
+        setCurrentUser(null)
       }
     } finally {
       setIsCheckingAuth(false)

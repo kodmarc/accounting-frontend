@@ -273,16 +273,35 @@ export function CreatePurchaseOrderTab({
 
   // Catalog Item Selection
   const handleCatalogSelect = (index: number, itemId: string) => {
+    const updated = [...lines]
+    if (!itemId) {
+      updated[index].itemId = ''
+      setLines(updated)
+      setLineErrors(prev => {
+        const next = { ...prev }
+        if (next[index]) {
+          const nextRow = { ...next[index] }
+          delete nextRow.itemId
+          next[index] = nextRow
+        }
+        return next
+      })
+      return
+    }
+
     const targetItem = catalogItems.find(i => i.id === itemId)
     if (!targetItem) return
 
-    const updated = [...lines]
     updated[index].itemId = itemId
     updated[index].description = targetItem.purchase_description || targetItem.name
     updated[index].unitPrice = Number(targetItem.purchase_unit_cost)
 
     if (targetItem.purchase_account) updated[index].accountId = targetItem.purchase_account
     if (targetItem.purchase_tax_rate) updated[index].taxRateId = targetItem.purchase_tax_rate
+
+    if (!updated[index].quantity || Number(updated[index].quantity) <= 0) {
+      updated[index].quantity = 1
+    }
 
     setLines(updated)
 
@@ -621,6 +640,11 @@ export function CreatePurchaseOrderTab({
 
       if (!l.description || !l.description.trim()) {
         rowErr.description = true
+        rowHasErr = true
+        hasValidationErrors = true
+      }
+      if (l.quantity === '' || Number(l.quantity) <= 0) {
+        rowErr.quantity = true
         rowHasErr = true
         hasValidationErrors = true
       }
@@ -1769,7 +1793,13 @@ export function CreatePurchaseOrderTab({
                           value={line.quantity}
                           readOnly={isReadOnly}
                           onChange={e => updateLineField(idx, 'quantity', e.target.value === '' ? '' : Number(e.target.value))}
-                          className={`w-full bg-transparent text-slate-800 border rounded-[3px] px-2.5 py-2.5 text-xs font-normal text-center focus:outline-none transition ${isReadOnly ? 'cursor-not-allowed text-slate-400 bg-slate-50/10 border-transparent' : 'border-transparent focus:border-[#0F5B38]'}`}
+                          className={`w-full bg-transparent text-slate-800 border rounded-[3px] px-2.5 py-2.5 text-xs font-normal text-center focus:outline-none transition ${
+                            isReadOnly 
+                              ? 'cursor-not-allowed text-slate-400 bg-slate-50/10 border-transparent' 
+                              : lineErrors[idx]?.quantity
+                                ? 'border-rose-500 bg-rose-50/10'
+                                : 'border-transparent focus:border-[#0F5B38]'
+                          }`}
                         />
                       </td>
 
