@@ -12,9 +12,9 @@ interface PurchaseOrdersTabProps {
   onConvertToBill: (po: any) => void
 }
 
-export function PurchaseOrdersTab({ 
-  activeOrg, 
-  isMockMode = false, 
+export function PurchaseOrdersTab({
+  activeOrg,
+  isMockMode = false,
   setActiveTab,
   onEditPO,
   onCreateNewPO,
@@ -23,13 +23,13 @@ export function PurchaseOrdersTab({
   const { showConfirm, showAlert } = usePopup()
   // Database states
   const [purchaseOrders, setPurchaseOrders] = useState<any[]>([])
-  
+
   // Loading & UI States
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
-  const [statusFilter, setStatusFilter] = useState<'All' | 'Draft' | 'Approved' | 'Billed' | 'Declined'>('All')
+  const [statusFilter, setStatusFilter] = useState<'All' | 'Draft' | 'Awaiting Approval' | 'Approved' | 'Billed' | 'Declined'>('All')
   const [sortOption, setSortOption] = useState<'date-desc' | 'date-asc' | 'amount-asc' | 'amount-desc'>('date-desc')
-  
+
   // Selection columns
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
 
@@ -105,7 +105,7 @@ export function PurchaseOrdersTab({
     setSelectedIds(new Set())
   }
 
-  const handleBulkChangeStatus = async (status: 'Draft' | 'Approved' | 'Declined') => {
+  const handleBulkChangeStatus = async (status: 'Draft' | 'Awaiting Approval' | 'Approved' | 'Billed' | 'Declined') => {
     const updated = purchaseOrders.map(po => {
       if (selectedIds.has(po.id)) {
         return { ...po, status }
@@ -121,7 +121,7 @@ export function PurchaseOrdersTab({
   const currencySymbol = activeOrg.currency === 'PKR' ? '₨' : '$'
 
   const filteredPOs = purchaseOrders.filter(po => {
-    const matchesSearch = 
+    const matchesSearch =
       po.po_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (po.contact_name && po.contact_name.toLowerCase().includes(searchTerm.toLowerCase())) ||
       (po.reference && po.reference.toLowerCase().includes(searchTerm.toLowerCase()))
@@ -160,7 +160,7 @@ export function PurchaseOrdersTab({
       {/* 2. Filter tabs */}
       <div className="flex flex-col xl:flex-row xl:items-end justify-between border-b border-slate-200 pb-0 gap-4">
         <div className="flex space-x-1 select-none text-xs font-semibold -mb-[1px] relative z-10 overflow-x-auto scrollbar-none">
-          {(['All', 'Draft', 'Approved', 'Billed', 'Declined'] as const).map(tab => {
+          {(['All', 'Draft', 'Awaiting Approval', 'Approved', 'Billed', 'Declined'] as const).map(tab => {
             const count = purchaseOrders.filter(po => {
               if (tab === 'All') return true
               return po.status === tab
@@ -171,13 +171,12 @@ export function PurchaseOrdersTab({
               <button
                 key={tab}
                 onClick={() => { setStatusFilter(tab); }}
-                className={`px-4 py-2 text-xs font-semibold transition-all border rounded-t-[3px] cursor-pointer whitespace-nowrap ${
-                  isActive
+                className={`px-3 py-2 text-xs font-semibold transition-all border rounded-t-[3px] cursor-pointer whitespace-nowrap ${isActive
                     ? 'bg-white text-[#0F5B38] border-slate-200 border-b-transparent font-bold -mb-[1px] relative z-10'
                     : 'bg-transparent hover:bg-slate-50 text-slate-450 hover:text-slate-855 border-slate-200'
-                }`}
+                  }`}
               >
-                <span>{tab === 'All' ? 'All Orders' : tab}</span>
+                <span>{tab}</span>
                 <span className={`ml-1.5 text-[9px] px-1.5 py-0.5 rounded-full font-bold ${isActive ? 'bg-emerald-50 text-[#0F5B38]' : 'bg-slate-100 text-slate-500'}`}>
                   {count}
                 </span>
@@ -186,29 +185,29 @@ export function PurchaseOrdersTab({
           })}
         </div>
 
-        {/* Right side search & sorting */}
-        <div className="flex items-end space-x-2 w-full xl:w-auto justify-end gap-2 pb-0 mb-[2px]">
+        {/* Right side search & sorting & bulk actions */}
+        <div className="flex flex-row items-center justify-end gap-2.5 flex-grow mb-[2px] w-full xl:w-auto ml-auto">
           {selectedIds.size > 0 && (
             <div className="flex items-center space-x-1.5 animate-fadeIn text-xs font-semibold">
               <button
                 onClick={handleBulkDelete}
-                className="px-2.5 py-1.5 bg-white border border-slate-200 text-slate-700 hover:text-rose-600 hover:border-slate-300 rounded-[3px] shadow-sm transition cursor-pointer"
+                className="px-2 py-1 bg-white border border-slate-200 text-slate-700 hover:text-rose-600 hover:border-slate-300 rounded-[3px] shadow-sm transition cursor-pointer"
               >
                 Delete
               </button>
               <button
                 onClick={() => handleBulkChangeStatus('Approved')}
-                className="px-2.5 py-1.5 bg-white border border-slate-200 text-slate-700 hover:text-[#0F5B38] hover:border-slate-300 rounded-[3px] shadow-sm transition cursor-pointer"
+                className="px-2 py-1 bg-white border border-slate-200 text-slate-700 hover:text-[#0F5B38] hover:border-slate-300 rounded-[3px] shadow-sm transition cursor-pointer"
               >
                 Approve
               </button>
-              <span className="text-[11px] text-slate-400 font-bold px-1 whitespace-nowrap hidden lg:inline">
+              <span className="text-[11px] text-slate-400 font-bold px-1 whitespace-nowrap hidden sm:inline">
                 {selectedIds.size} selected
               </span>
             </div>
           )}
 
-          <div className="relative w-full sm:w-64">
+          <div className="relative w-36 sm:w-36">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
             <input
               type="text"
@@ -223,7 +222,7 @@ export function PurchaseOrdersTab({
             <select
               value={sortOption}
               onChange={e => setSortOption(e.target.value as any)}
-              className="bg-slate-50 border border-slate-200/80 rounded-[3px] px-3 py-2 text-xs font-semibold text-slate-705 focus:outline-none focus:border-[#0F5B38] cursor-pointer"
+              className="bg-slate-50 border border-slate-200/80 rounded-[3px] px-1.5 py-2 w-32 text-xs font-semibold text-slate-705 focus:outline-none focus:border-[#0F5B38] cursor-pointer"
             >
               <option value="date-desc">Date Latest</option>
               <option value="date-asc">Date Oldest</option>
@@ -284,45 +283,45 @@ export function PurchaseOrdersTab({
                   const isSelected = selectedIds.has(po.id)
 
                   return (
-                    <tr 
-                      key={po.id} 
-                      onClick={() => onEditPO(po.po_number || po.id)}
+                    <tr
+                      key={po.id}
+                      onClick={() => onEditPO(po.id)}
                       className="hover:bg-slate-50/70 transition-colors duration-150 cursor-pointer"
                     >
                       <td className="p-3 text-center" onClick={e => e.stopPropagation()}>
                         <input
-                           type="checkbox"
-                           checked={isSelected}
-                           onChange={() => handleToggleSelect(po.id)}
-                           className="rounded-[3px] text-[#0F5B38] focus:ring-[#0F5B38] cursor-pointer"
-                         />
-                       </td>
-                       <td className="p-3 font-bold text-slate-800 max-w-[140px] truncate">{po.contact_name || "Supplier"}</td>
-                       <td className="p-3 font-semibold text-slate-600">{po.po_number}</td>
-                       <td className="p-3 text-slate-400 italic max-w-[100px] truncate">{po.reference || "-"}</td>
-                       <td className="p-3 whitespace-nowrap">{po.date}</td>
-                       <td className="p-3 whitespace-nowrap">{po.expiry_date}</td>
-                       <td className="p-3 text-right font-bold text-slate-800">{currencySymbol}{Number(po.total).toFixed(2)}</td>
-                       <td className="p-3 text-center whitespace-nowrap">
-                         <span className={`text-[9px] font-extrabold px-2 py-0.5 rounded-full ${
-                           po.status === 'Approved' ? 'bg-emerald-50 text-emerald-600 border border-emerald-100/30' :
-                           po.status === 'Declined' ? 'bg-rose-50 text-rose-600' :
-                           po.status === 'Billed' ? 'bg-indigo-50 text-indigo-600 border border-indigo-100/30' :
-                           'bg-slate-100 text-slate-500'
-                         }`}>
-                           {po.status}
-                         </span>
-                       </td>
-                       <td className="p-3 text-center" onClick={e => e.stopPropagation()}>
-                         <button
-                           onClick={() => onEditPO(po.po_number || po.id)}
-                           className="p-1 text-slate-400 hover:text-[#0F5B38] rounded-[3px] transition cursor-pointer"
-                           title="Edit purchase order details"
-                         >
-                           <Eye className="h-4 w-4" />
-                         </button>
-                       </td>
-                     </tr>
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => handleToggleSelect(po.id)}
+                          className="rounded-[3px] text-[#0F5B38] focus:ring-[#0F5B38] cursor-pointer"
+                        />
+                      </td>
+                      <td className="p-3 font-bold text-slate-800 max-w-[140px] truncate">{po.contact_name || "Supplier"}</td>
+                      <td className="p-3 font-semibold text-slate-600">{po.po_number}</td>
+                      <td className="p-3 text-slate-400 italic max-w-[100px] truncate">{po.reference || "-"}</td>
+                      <td className="p-3 whitespace-nowrap">{po.date}</td>
+                      <td className="p-3 whitespace-nowrap">{po.expiry_date}</td>
+                      <td className="p-3 text-right font-bold text-slate-800">{currencySymbol}{Number(po.total).toFixed(2)}</td>
+                      <td className="p-3 text-center whitespace-nowrap">
+                        <span className={`text-[9px] font-extrabold px-2 py-0.5 rounded-full ${po.status === 'Approved' ? 'bg-emerald-50 text-emerald-600 border border-emerald-100/30' :
+                            po.status === 'Awaiting Approval' ? 'bg-amber-50 text-amber-600 border border-amber-100/30' :
+                            po.status === 'Declined' ? 'bg-rose-50 text-rose-600' :
+                            po.status === 'Billed' ? 'bg-indigo-50 text-indigo-600 border border-indigo-100/30' :
+                            'bg-slate-100 text-slate-500'
+                          }`}>
+                          {po.status}
+                        </span>
+                      </td>
+                      <td className="p-3 text-center" onClick={e => e.stopPropagation()}>
+                        <button
+                          onClick={() => onEditPO(po.id)}
+                          className="p-1 text-slate-400 hover:text-[#0F5B38] rounded-[3px] transition cursor-pointer"
+                          title="Edit purchase order details"
+                        >
+                          <Eye className="h-4 w-4" />
+                        </button>
+                      </td>
+                    </tr>
                   )
                 })}
               </tbody>

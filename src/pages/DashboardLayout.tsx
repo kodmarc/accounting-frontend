@@ -11,6 +11,8 @@ import {
 } from 'lucide-react'
 import type { User, Membership, Organization } from '../services/api'
 
+const cleanOrgNameForUrl = (name: string) => name.replace(/\s+/g, '');
+
 interface DashboardLayoutProps {
   currentUser: User | null
   organizations: Membership[]
@@ -245,7 +247,7 @@ export function DashboardLayout({
                           {organizations.map(memb => (
                             <a
                               key={memb.id}
-                              href={`/org/${memb.organization.id}/Home`}
+                              href={`/org/${cleanOrgNameForUrl(memb.organization.name)}/Home`}
                               onClick={(e) => {
                                 if (e.button === 1 || e.ctrlKey || e.metaKey || e.shiftKey) {
                                   setOrgDropdownOpen(false)
@@ -269,7 +271,7 @@ export function DashboardLayout({
 
                         <div className="border-t border-slate-100 mt-2.5 pt-2 space-y-1">
                           <a
-                            href={activeOrg ? `/org/${activeOrg.id}/ContactsSettings` : '#'}
+                            href={activeOrg ? `/org/${cleanOrgNameForUrl(activeOrg.name)}/ContactsSettings` : '#'}
                             onClick={(e) => {
                               if (e.button === 1 || e.ctrlKey || e.metaKey || e.shiftKey) {
                                 setOrgDropdownOpen(false)
@@ -312,7 +314,7 @@ export function DashboardLayout({
               <nav className="flex space-x-0.5 shrink-0 items-center">
                 {/* 1. Home */}
                 <a
-                  href={activeOrg ? `/org/${activeOrg.id}/Home` : '#'}
+                  href={activeOrg ? `/org/${cleanOrgNameForUrl(activeOrg.name)}/Home` : '#'}
                   onClick={(e) => handleTabClick('Home', e)}
                   className={`px-3 py-1.5 rounded-[3px] transition duration-200 cursor-pointer font-medium text-[15px] ${
                     activeTab === 'Home'
@@ -348,7 +350,7 @@ export function DashboardLayout({
                           {allowedSalesItems.map(item => (
                             <a
                               key={item.key}
-                              href={activeOrg ? `/org/${activeOrg.id}/${item.key}` : '#'}
+                              href={activeOrg ? `/org/${cleanOrgNameForUrl(activeOrg.name)}/${item.key}` : '#'}
                               onClick={(e) => handleTabClick(item.key, e)}
                               className={`block w-full text-left px-3.5 py-2 rounded-[3px] text-[14px] transition cursor-pointer ${
                                 activeTab === item.key
@@ -390,7 +392,7 @@ export function DashboardLayout({
                           {allowedPurchasesItems.map(item => (
                             <a
                               key={item.key}
-                              href={activeOrg ? `/org/${activeOrg.id}/${item.key}` : '#'}
+                              href={activeOrg ? `/org/${cleanOrgNameForUrl(activeOrg.name)}/${item.key}` : '#'}
                               onClick={(e) => handleTabClick(item.key, e)}
                               className={`block w-full text-left px-3.5 py-2 rounded-[3px] text-[14px] transition cursor-pointer ${
                                 activeTab === item.key
@@ -410,7 +412,7 @@ export function DashboardLayout({
                 {/* 4. Fixed Assets (Direct Link) */}
                 {isTabAllowed('fixed_assets') && (
                   <a
-                    href={activeOrg ? `/org/${activeOrg.id}/FixedAssets` : '#'}
+                    href={activeOrg ? `/org/${cleanOrgNameForUrl(activeOrg.name)}/FixedAssets` : '#'}
                     onClick={(e) => handleTabClick('FixedAssets', e)}
                     className={`px-3 py-1.5 rounded-[3px] transition duration-200 cursor-pointer font-medium text-[15px] ${
                       activeTab === 'FixedAssets'
@@ -425,7 +427,7 @@ export function DashboardLayout({
                 {/* 5. Payroll (Direct Link) */}
                 {isTabAllowed('payroll') && (
                   <a
-                    href={activeOrg ? `/org/${activeOrg.id}/Payroll` : '#'}
+                    href={activeOrg ? `/org/${cleanOrgNameForUrl(activeOrg.name)}/Payroll` : '#'}
                     onClick={(e) => handleTabClick('Payroll', e)}
                     className={`px-3 py-1.5 rounded-[3px] transition duration-200 cursor-pointer font-medium text-[15px] ${
                       activeTab === 'Payroll'
@@ -462,7 +464,7 @@ export function DashboardLayout({
                           {allowedReportsItems.map(item => (
                             <a
                               key={item.key}
-                              href={activeOrg ? `/org/${activeOrg.id}/${item.key}` : '#'}
+                              href={activeOrg ? `/org/${cleanOrgNameForUrl(activeOrg.name)}/${item.key}` : '#'}
                               onClick={(e) => handleTabClick(item.key, e)}
                               className={`block w-full text-left px-3.5 py-2 rounded-[3px] text-[14px] transition cursor-pointer ${
                                 activeTab === item.key
@@ -504,7 +506,7 @@ export function DashboardLayout({
                           {allowedAccountingItems.map(item => (
                             <a
                               key={item.key}
-                              href={activeOrg ? `/org/${activeOrg.id}/${item.key}` : '#'}
+                              href={activeOrg ? `/org/${cleanOrgNameForUrl(activeOrg.name)}/${item.key}` : '#'}
                               onClick={(e) => handleTabClick(item.key, e)}
                               className={`block w-full text-left px-3.5 py-2 rounded-[3px] text-[14px] transition cursor-pointer ${
                                 activeTab === item.key
@@ -546,7 +548,7 @@ export function DashboardLayout({
                           {allowedContactsItems.map(item => (
                             <a
                               key={item.key}
-                              href={activeOrg ? `/org/${activeOrg.id}/${item.key}` : '#'}
+                              href={activeOrg ? `/org/${cleanOrgNameForUrl(activeOrg.name)}/${item.key}` : '#'}
                               onClick={(e) => handleTabClick(item.key, e)}
                               className={`block w-full text-left px-3.5 py-2 rounded-[3px] text-[14px] transition cursor-pointer ${
                                 activeTab === item.key
@@ -663,7 +665,7 @@ export function DashboardLayout({
                       <button
                         onClick={() => {
                           setProfileDropdownOpen(false)
-                          alert(`Account Settings:\nEmail: ${currentUser?.email}\nFirst Name: ${currentUser?.first_name}\nLast Name: ${currentUser?.last_name}`)
+                          setActiveTab('UserProfile')
                         }}
                         className="w-full text-left px-3 py-2 rounded-[3px] text-[15px] font-normal text-slate-650 hover:bg-slate-50 flex items-center space-x-2 transition cursor-pointer"
                       >

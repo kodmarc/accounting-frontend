@@ -7,6 +7,7 @@ interface XeroDatePickerProps {
   placeholder?: string
   className?: string
   id?: string
+  disabled?: boolean
 }
 
 // Robust parsing for multiple manual formats
@@ -92,7 +93,8 @@ export function XeroDatePicker({
   onChange,
   placeholder = '',
   className = '',
-  id
+  id,
+  disabled = false
 }: XeroDatePickerProps) {
   const [inputValue, setInputValue] = useState('')
   const [isOpen, setIsOpen] = useState(false)
@@ -204,17 +206,28 @@ export function XeroDatePicker({
         <input
           type="text"
           id={id}
+          disabled={disabled}
           value={inputValue}
           onChange={e => setInputValue(e.target.value)}
           onBlur={handleManualBlur}
           onKeyDown={handleManualKeyDown}
-          onFocus={() => setIsOpen(true)}
+          onFocus={() => { if (!disabled) setIsOpen(true); }}
           placeholder={placeholder}
-          className={`w-full bg-white border border-slate-200 rounded-[3px] px-3.5 py-2 pr-9.5 text-[15px] font-normal text-slate-800 focus:outline-none focus:border-[#0F5B38] transition placeholder:text-slate-400 ${className}`}
+          className={`w-full border rounded-[3px] px-3.5 py-2 pr-9.5 text-[15px] font-normal transition placeholder:text-slate-400 ${
+            disabled 
+              ? 'bg-slate-50 text-slate-400 cursor-not-allowed border-slate-200' 
+              : 'bg-white text-slate-800 border-slate-200 focus:border-[#0F5B38]'
+          } ${
+            className.includes('border-rose-500') 
+              ? className 
+              : className
+          }`}
         />
         <Calendar 
-          className="absolute right-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 cursor-pointer hover:text-[#0F5B38] transition"
-          onClick={() => setIsOpen(!isOpen)}
+          className={`absolute right-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 transition ${
+            disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer hover:text-[#0F5B38]'
+          }`}
+          onClick={() => { if (!disabled) setIsOpen(!isOpen); }}
         />
       </div>
 

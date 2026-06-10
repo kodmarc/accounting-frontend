@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from 'react'
-import { ArrowLeft, Plus, Trash2, CheckCircle, Save, X, Loader2, ChevronDown, MoreVertical } from 'lucide-react'
+import { ArrowLeft, Plus, Trash2, CheckCircle, Save, X, Loader2, ChevronDown, MoreVertical, AlertCircle } from 'lucide-react'
 import { apiService, API_BASE_URL } from '../../services/api'
 import type { Organization, Contact, Item, Account, TaxRate, Project } from '../../services/api'
 import { SearchableInput } from '../../components/SearchableInput'
+import { EmailModal } from '../../components/EmailModal'
 import { usePopup } from '../../components/PopupProvider'
 import { XeroDatePicker } from '../../components/XeroDatePicker'
 
@@ -36,6 +37,7 @@ export function CreateBillTab({
   const [isDownloadingPdf, setIsDownloadingPdf] = useState(false)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [isMoreDropdownOpen, setIsMoreDropdownOpen] = useState(false)
+  const [isEmailModalOpen, setIsEmailModalOpen] = useState(false)
 
   // Form Fields
   const [selectedContactId, setSelectedContactId] = useState('')
@@ -43,13 +45,25 @@ export function CreateBillTab({
   const [reference, setReference] = useState('')
   const [date, setDate] = useState(new Date().toISOString().split('T')[0])
   const [dueDate, setDueDate] = useState('')
-  const [status, setStatus] = useState<'Draft' | 'Awaiting Payment' | 'Paid'>('Draft')
+  const [status, setStatus] = useState<'Draft' | 'Awaiting Approval' | 'Awaiting Payment' | 'Paid'>('Draft')
   const [currency, setCurrency] = useState(activeOrg.currency || 'USD')
-  const [taxType, setTaxType] = useState<'Inclusive' | 'Exclusive'>('Exclusive')
+  const [taxType, setTaxType] = useState<'Inclusive' | 'Exclusive' | 'No Tax'>('Exclusive')
   const [selectedProjectId, setSelectedProjectId] = useState('')
   const [notes, setNotes] = useState('')
   const [attachmentName, setAttachmentName] = useState('')
   const [attachmentFile, setAttachmentFile] = useState<File | null>(null)
+
+  // Payment recording states
+  const [isApproveDropdownOpen, setIsApproveDropdownOpen] = useState(false)
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false)
+  const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0])
+  const [isSplitPayment, setIsSplitPayment] = useState(false)
+  const [singlePaymentAccountId, setSinglePaymentAccountId] = useState('')
+  const [singlePaymentAmount, setSinglePaymentAmount] = useState('')
+  const [paymentRows, setPaymentRows] = useState<{ accountId: string; amount: number | '' }[]>([])
+  const [bankAccounts, setBankAccounts] = useState<Account[]>([])
+
+  const isReadOnly = status === 'Paid'
 
   // Project List & Creation states
   const [isCreateProjectOpen, setIsCreateProjectOpen] = useState(false)
@@ -208,6 +222,24 @@ export function CreateBillTab({
       setTaxRates(loadedTaxRates)
       setProjects(loadedProjects)
 
+      let loadedBanks: Account[] = []
+      if (isMockMode) {
+        loadedBanks = [
+          { id: 'mock-bank-090', code: '090', name: 'ANZ Business Account', class_type: 'Asset', type: 'Bank', description: 'Primary business operating checking account', is_system_account: true, created_at: '', default_tax_rate: null },
+          { id: 'mock-bank-092', code: '092', name: 'ANZ Savings Account', class_type: 'Asset', type: 'Bank', description: 'Corporate reserve savings account', is_system_account: false, created_at: '', default_tax_rate: null }
+        ]
+        const savedCustomBanks = localStorage.getItem(`kdm_mock_custom_banks_${activeOrg.id}`)
+        if (savedCustomBanks) {
+          loadedBanks = [...loadedBanks, ...JSON.parse(savedCustomBanks)]
+        }
+      } else {
+        loadedBanks = loadedAccounts.filter(a => a.type === 'Bank' || (a.class_type === 'Asset' && a.code === '090') || a.name.toLowerCase().includes('bank'))
+      }
+      setBankAccounts(loadedBanks)
+      if (loadedBanks.length > 0) {
+        setSinglePaymentAccountId(loadedBanks[0].id)
+      }
+
       const firstAcc = loadedAccounts.find(a => a.class_type === 'Expense' || a.type === 'Direct Costs')?.id || loadedAccounts[0]?.id || ''
       const firstTax = loadedTaxRates[0]?.id || ''
 
@@ -326,9 +358,11 @@ export function CreateBillTab({
       if (next[index]) {
         const nextRow = { ...next[index] }
         delete nextRow.itemId
-        delete nextRow.accountId
+        delete nextRow.description
         delete nextRow.quantity
         delete nextRow.unitPrice
+        delete nextRow.accountId
+        delete nextRow.taxRateId
         next[index] = nextRow
       }
       return next
@@ -464,12 +498,42 @@ export function CreateBillTab({
     }
   }
 
+  const handleTaxTypeChange = (newType: 'Inclusive' | 'Exclusive' | 'No Tax') => {
+    setTaxType(newType)
+    if (newType === 'No Tax') {
+      const exemptRate = taxRates.find(t => t.name.toLowerCase().includes('exempt') || Number(t.rate) === 0)
+      if (exemptRate) {
+        setLines(prev => prev.map(line => ({
+          ...line,
+          taxRateId: exemptRate.id
+        })))
+      }
+    }
+  }
+
   const updateLineField = (index: number, field: keyof LineFormItem, value: any) => {
     const updated = [...lines]
     updated[index] = {
       ...updated[index],
       [field]: value
     }
+
+    if (field === 'unitPrice' && value !== '' && Number(value) >= 0) {
+      if (!updated[index].quantity || Number(updated[index].quantity) <= 0) {
+        updated[index].quantity = 1
+      }
+      if (!updated[index].accountId) {
+        const defaultAccount = accounts.find(a => a.code === '300' || a.name.toLowerCase().includes('purchases') || a.class_type === 'Expense')?.id || accounts[0]?.id || ''
+        updated[index].accountId = defaultAccount
+      }
+      if (!updated[index].taxRateId) {
+        const defaultTax = taxType === 'No Tax'
+          ? (taxRates.find(t => t.name.toLowerCase().includes('exempt') || Number(t.rate) === 0)?.id || '')
+          : (taxRates.find(t => t.name.toLowerCase().includes('purchases'))?.id || taxRates[0]?.id || '')
+        updated[index].taxRateId = defaultTax
+      }
+    }
+
     setLines(updated)
 
     // Clear validation error on change
@@ -487,8 +551,10 @@ export function CreateBillTab({
   }
 
   const addLineItem = () => {
-    const defaultAcc = accounts.find(a => a.class_type === 'Expense' || a.type === 'Direct Costs')?.id || accounts[0]?.id || ''
-    const defaultTax = taxRates[0]?.id || ''
+    const defaultAcc = accounts.find(a => a.code === '300' || a.name.toLowerCase().includes('purchases') || a.class_type === 'Expense')?.id || accounts[0]?.id || ''
+    const defaultTax = taxType === 'No Tax'
+      ? (taxRates.find(t => t.name.toLowerCase().includes('exempt') || Number(t.rate) === 0)?.id || '')
+      : (taxRates.find(t => t.name.toLowerCase().includes('purchases'))?.id || taxRates[0]?.id || '')
     setLines([...lines, {
       id: String(Date.now()),
       itemId: '',
@@ -561,8 +627,7 @@ export function CreateBillTab({
     }
   }
 
-  // Save / Update bill (Always saves to LocalStorage cleanly to support online/offline gracefully!)
-  const handleSaveBill = async (statusUpdate?: 'Draft' | 'Awaiting Payment' | 'Paid') => {
+  const validateForm = (): boolean => {
     // Form Validation
     const formErrors: Record<string, string> = {}
     const rowErrors: Record<number, Record<string, boolean>> = {}
@@ -586,17 +651,16 @@ export function CreateBillTab({
     }
 
     lines.forEach((l, idx) => {
-      const q = Number(l.quantity) || 0
       const rowErr: Record<string, boolean> = {}
       let rowHasErr = false
 
-      if (q <= 0 || l.quantity === '') {
-        rowErr.quantity = true
+      if (!l.description || !l.description.trim()) {
+        rowErr.description = true
         rowHasErr = true
         hasValidationErrors = true
       }
-      if (!l.accountId) {
-        rowErr.accountId = true
+      if (l.unitPrice === '' || Number(l.unitPrice) < 0) {
+        rowErr.unitPrice = true
         rowHasErr = true
         hasValidationErrors = true
       }
@@ -609,17 +673,24 @@ export function CreateBillTab({
     if (hasValidationErrors) {
       setErrors(formErrors)
       setLineErrors(rowErrors)
-      showAlert({ 
-        title: 'Validation Error', 
-        message: 'Please fill in all required fields highlighted in red before proceeding.', 
-        type: 'warning' 
-      })
-      return
+      return false
     }
 
     // Clear errors if valid
     setErrors({})
     setLineErrors({})
+    return true
+  }
+
+  // Save / Update bill (Always saves to LocalStorage cleanly to support online/offline gracefully!)
+  const handleSaveBill = async (
+    statusUpdate?: 'Draft' | 'Awaiting Approval' | 'Awaiting Payment' | 'Paid',
+    isEmailing: boolean = false,
+    silent: boolean = false
+  ): Promise<string | null> => {
+    if (!validateForm()) {
+      return null
+    }
     setIsSubmitting(true)
 
     const postLines = lines.map(l => {
@@ -627,14 +698,20 @@ export function CreateBillTab({
       const u = Number(l.unitPrice) || 0
       const d = Number(l.discount) || 0
       const lineTotal = q * u * (1 - d / 100)
+
+      const fallbackAcc = accounts.find(a => a.code === '300' || a.name.toLowerCase().includes('purchases') || a.class_type === 'Expense')?.id || accounts[0]?.id || ''
+      const fallbackTax = taxType === 'No Tax'
+        ? (taxRates.find(t => t.name.toLowerCase().includes('exempt') || Number(t.rate) === 0)?.id || null)
+        : (taxRates.find(t => t.name.toLowerCase().includes('purchases'))?.id || taxRates[0]?.id || null)
+
       return {
         item: l.itemId ? l.itemId : null,
         description: l.description,
         quantity: q,
         unit_price: u,
         discount: d,
-        account: l.accountId,
-        tax_rate: l.taxRateId ? l.taxRateId : null,
+        account: l.accountId || fallbackAcc,
+        tax_rate: l.taxRateId || fallbackTax,
         total: lineTotal
       }
     })
@@ -701,11 +778,19 @@ export function CreateBillTab({
       localStorage.setItem(`kdm_bill_notes_${payload.id}`, notes)
       localStorage.setItem(`kdm_bill_attachment_${payload.id}`, attachmentName)
       
-      showAlert({ title: isEdit ? 'Bill Updated' : 'Bill Created', message: `Bill ${billNumber} has been saved successfully.`, type: 'success' })
-      if (setEditingBillId) setEditingBillId(null)
-      setActiveTab('Bills')
+      if (!silent) {
+        showAlert({ title: isEdit ? 'Bill Updated' : 'Bill Created', message: `Bill ${billNumber} has been saved successfully.`, type: 'success' })
+        if (isEmailing) {
+          setIsEmailModalOpen(true)
+        } else {
+          if (setEditingBillId) setEditingBillId(null)
+          setActiveTab('Bills')
+        }
+      }
+      return resolvedBillId
     } catch (err: any) {
       showAlert({ title: 'Save Error', message: "An error occurred while saving the bill: " + (err.message || "Please check if details are correct."), type: 'error' })
+      return null
     } finally {
       setIsSubmitting(false)
       setIsMoreDropdownOpen(false)
@@ -874,6 +959,186 @@ export function CreateBillTab({
     }
   }
 
+  const handleRecordPayment = async () => {
+    const payments = isSplitPayment
+      ? paymentRows.map(r => ({ accountId: r.accountId, amount: Number(r.amount) || 0 }))
+      : [{ accountId: singlePaymentAccountId, amount: Number(singlePaymentAmount) || 0 }];
+
+    const invalidAccounts = payments.some(p => !p.accountId);
+    if (invalidAccounts) {
+      showAlert({ title: 'Validation Warning', message: 'All selected payment accounts must be valid.', type: 'warning' });
+      return;
+    }
+
+    const invalidAmounts = payments.some(p => p.amount <= 0);
+    if (invalidAmounts) {
+      showAlert({ title: 'Validation Warning', message: 'All payment amounts must be greater than zero.', type: 'warning' });
+      return;
+    }
+
+    const totalPaid = payments.reduce((sum, p) => sum + p.amount, 0);
+    const grandTotal = getGrandTotal();
+    const diff = Math.abs(totalPaid - grandTotal);
+    if (diff >= 0.01) {
+      showAlert({
+        title: 'Amount Mismatch',
+        message: `The total payment amount (${currencySymbol}${totalPaid.toFixed(2)}) must exactly equal the bill total (${currencySymbol}${grandTotal.toFixed(2)}). Difference is ${currencySymbol}${diff.toFixed(2)}.`,
+        type: 'warning'
+      });
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const balanceKey = `kdm_bank_balances_${activeOrg.id}`;
+      const savedBalances = localStorage.getItem(balanceKey);
+      const balances = savedBalances ? JSON.parse(savedBalances) : {
+        'mock-bank-090': 5142.90,
+        'bank-090': 5142.90
+      };
+
+      payments.forEach(p => {
+        if (balances[p.accountId] === undefined) {
+          balances[p.accountId] = p.accountId.includes('090') ? 5142.90 : 0.00;
+        }
+        // Cost outflow deducts bank balance
+        balances[p.accountId] = parseFloat((balances[p.accountId] - p.amount).toFixed(2));
+      });
+      localStorage.setItem(balanceKey, JSON.stringify(balances));
+
+      const txKey = `kdm_bank_transactions_${activeOrg.id}`;
+      const savedTx = localStorage.getItem(txKey);
+      const transactions = savedTx ? JSON.parse(savedTx) : [];
+
+      const supplierObj = contacts.find(c => c.id === selectedContactId);
+      const contactName = supplierObj ? supplierObj.name : "Supplier";
+
+      payments.forEach(p => {
+        const bankAcc = bankAccounts.find(b => b.id === p.accountId);
+        const newTx = {
+          id: `tx-${Date.now()}-${Math.random()}`,
+          accountId: p.accountId,
+          accountName: bankAcc?.name || 'Bank Account',
+          date: paymentDate,
+          description: `Payment sent for Bill ${billNumber}. Contact: ${contactName}`,
+          // Cost outflow represented as negative amount
+          amount: -p.amount,
+          reference: reference || billNumber
+        };
+        transactions.unshift(newTx);
+      });
+      localStorage.setItem(txKey, JSON.stringify(transactions));
+
+      const resolvedId = editingBillId || `mock-bill-${Date.now()}`;
+      const savedBills = localStorage.getItem(`kdm_mock_bills_${activeOrg.id}`);
+      const list = savedBills ? JSON.parse(savedBills) : [];
+      const updatedList = list.map((b: any) => {
+        if (b.id === resolvedId || b.bill_number === editingBillId) {
+          return {
+            ...b,
+            status: 'Paid' as const
+          };
+        }
+        return b;
+      });
+      localStorage.setItem(`kdm_mock_bills_${activeOrg.id}`, JSON.stringify(updatedList));
+
+      setStatus('Paid');
+      setIsPaymentModalOpen(false);
+      showAlert({
+        title: 'Payment Recorded',
+        message: `Successfully recorded payment of ${currencySymbol}${grandTotal.toFixed(2)} and marked bill as Paid.`,
+        type: 'success'
+      });
+
+      if (setEditingBillId) setEditingBillId(null);
+      setActiveTab('Bills');
+    } catch (err: any) {
+      showAlert({ title: 'Error', message: 'Failed to record payment: ' + err.message, type: 'error' });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const addPaymentRow = () => {
+    setPaymentRows([...paymentRows, { accountId: bankAccounts[0]?.id || '', amount: '' }])
+  }
+
+  const removePaymentRow = (index: number) => {
+    if (paymentRows.length <= 1) return
+    setPaymentRows(paymentRows.filter((_, idx) => idx !== index))
+  }
+
+  const updatePaymentRow = (index: number, field: 'accountId' | 'amount', value: any) => {
+    const updated = [...paymentRows]
+    updated[index] = {
+      ...updated[index],
+      [field]: value
+    }
+    setPaymentRows(updated)
+  }
+
+  const renderApproveAndEmailButton = () => {
+    return (
+      <div className="relative inline-flex h-[38px] rounded-[3px] shadow-sm animate-fadeIn">
+        <button
+          onClick={() => {
+            if (validateForm()) {
+              setIsEmailModalOpen(true)
+            }
+          }}
+          disabled={isSubmitting}
+          className="bg-[#0F5B38] hover:brightness-105 text-white font-medium text-xs px-4.5 py-2 rounded-l-[3px] border-r border-emerald-700/30 transition duration-200 cursor-pointer disabled:brightness-90 flex items-center justify-center space-x-1.5 h-full"
+          type="button"
+        >
+          {isSubmitting ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <span>Approve & Email</span>
+          )}
+        </button>
+        <button
+          onClick={() => setIsApproveDropdownOpen(!isApproveDropdownOpen)}
+          disabled={isSubmitting}
+          className="bg-[#0F5B38] hover:brightness-105 text-white px-2 rounded-r-[3px] transition duration-200 cursor-pointer disabled:brightness-90 flex items-center justify-center h-full border-l border-emerald-500/20"
+          type="button"
+        >
+          <ChevronDown className="h-3.5 w-3.5" />
+        </button>
+        {isApproveDropdownOpen && (
+          <>
+            <div className="fixed inset-0 z-40" onClick={() => setIsApproveDropdownOpen(false)}></div>
+            <div className="absolute right-0 top-full mt-1.5 w-40 bg-white border border-slate-200 rounded-[3px] shadow-xl z-50 p-1.5 font-normal text-xs text-slate-700 animate-scaleIn">
+              <button
+                onClick={() => {
+                  handleSaveBill('Awaiting Payment')
+                  setIsApproveDropdownOpen(false)
+                }}
+                disabled={isSubmitting}
+                className="w-full text-left px-3.5 py-2 hover:bg-slate-50 transition cursor-pointer text-slate-700 font-semibold rounded-[3px]"
+                type="button"
+              >
+                Approve
+              </button>
+              <button
+                onClick={() => {
+                  if (validateForm()) {
+                    setIsEmailModalOpen(true)
+                  }
+                  setIsApproveDropdownOpen(false)
+                }}
+                className="w-full text-left px-3.5 py-2 hover:bg-slate-50 transition cursor-pointer text-slate-700 font-normal rounded-[3px]"
+                type="button"
+              >
+                Email
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    )
+  }
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       const file = e.target.files[0]
@@ -927,6 +1192,13 @@ export function CreateBillTab({
   }
 
   const currencySymbol = getCurrencySymbol(currency)
+
+  const grandTotal = getGrandTotal()
+  const totalPaid = isSplitPayment
+    ? paymentRows.reduce((sum, r) => sum + (Number(r.amount) || 0), 0)
+    : (Number(singlePaymentAmount) || 0)
+  const paymentDiff = grandTotal - totalPaid
+  const isPaymentBalanced = Math.abs(paymentDiff) < 0.01
 
   // Map choices for searchable select inputs
   const clientOptions = contacts.map(c => ({
@@ -1024,7 +1296,8 @@ export function CreateBillTab({
             {editingBillId && (
               <span className={`inline-block text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider mt-1 border ${
                 status === 'Paid' ? 'bg-emerald-50 text-emerald-600 border-emerald-100/30' :
-                status === 'Awaiting Payment' ? 'bg-amber-50 text-amber-600 border-amber-100/30' :
+                status === 'Awaiting Payment' ? 'bg-blue-50 text-blue-600 border-blue-100/30' :
+                status === 'Awaiting Approval' ? 'bg-amber-50 text-amber-600 border-amber-100/30' :
                 'bg-slate-100 text-slate-500 border-slate-200/50'
               }`}>
                 {status}
@@ -1034,64 +1307,35 @@ export function CreateBillTab({
         </div>
 
         <div className="flex items-center space-x-2.5 flex-wrap sm:justify-end gap-2">
-          {editingBillId ? (
+          {/* Cancel button */}
+          <button
+            onClick={() => {
+              if (setEditingBillId) setEditingBillId(null)
+              setActiveTab('Bills')
+            }}
+            className="bg-white hover:bg-slate-50 text-slate-555 border border-slate-200 font-medium text-xs px-4.5 py-2 rounded-[3px] shadow-sm transition duration-200 cursor-pointer h-[38px] flex items-center justify-center animate-fadeIn"
+          >
+            Cancel
+          </button>
+
+          {!editingBillId ? (
+            /* NEW BILL MODE */
             <>
               <button
-                onClick={() => {
-                  if (setEditingBillId) setEditingBillId(null)
-                  setActiveTab('Bills')
-                }}
-                className="bg-white hover:bg-slate-50 text-slate-555 border border-slate-200 font-medium text-xs px-4.5 py-2 rounded-[3px] shadow-sm transition duration-200 cursor-pointer h-[38px] flex items-center justify-center"
+                onClick={() => handleSaveBill('Draft')}
+                disabled={isSubmitting}
+                className="bg-white hover:bg-slate-50 text-slate-700 hover:text-[#0F5B38] border border-slate-200 hover:border-slate-300 font-medium text-xs px-4.5 py-2 rounded-[3px] shadow-sm transition duration-200 cursor-pointer h-[38px] flex items-center justify-center disabled:bg-slate-50 disabled:text-slate-400 animate-fadeIn"
               >
-                Cancel
+                Save as Draft
               </button>
 
-              <button
-                onClick={handlePrintPDF}
-                className="bg-white hover:bg-slate-50 text-slate-700 hover:text-[#0F5B38] border border-slate-200 hover:border-slate-300 font-medium text-xs px-4.5 py-2 rounded-[3px] shadow-sm transition duration-200 cursor-pointer h-[38px] flex items-center justify-center space-x-1.5"
-              >
-                Save PDF
-              </button>
-
-              {status === 'Draft' && (
-                <button
-                  onClick={() => handleUpdateStatusOnTheSpot('Awaiting Payment')}
-                  disabled={isSubmitting}
-                  className="bg-[#0F5B38] hover:brightness-105 text-white font-medium text-xs px-4.5 py-2 rounded-[3px] shadow-md transition duration-200 cursor-pointer disabled:brightness-90 flex items-center justify-center space-x-1.5 h-[38px]"
-                >
-                  {isSubmitting ? (
-                    <>
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      <span>Submitting...</span>
-                    </>
-                  ) : (
-                    <span>Submit for Approval</span>
-                  )}
-                </button>
-              )}
-
-              {status === 'Awaiting Payment' && (
-                <button
-                  onClick={() => handleUpdateStatusOnTheSpot('Paid')}
-                  disabled={isSubmitting}
-                  className="bg-[#0F5B38] hover:brightness-105 text-white font-medium text-xs px-4.5 py-2 rounded-[3px] shadow-md transition duration-200 cursor-pointer disabled:brightness-90 flex items-center justify-center space-x-1.5 h-[38px]"
-                >
-                  {isSubmitting ? (
-                    <>
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      <span>Marking Paid...</span>
-                    </>
-                  ) : (
-                    <span>Mark as Paid</span>
-                  )}
-                </button>
-              )}
+              {renderApproveAndEmailButton()}
 
               {/* Three Vertical Dots Dropdown Menu */}
               <div className="relative">
                 <button
                   onClick={() => setIsMoreDropdownOpen(!isMoreDropdownOpen)}
-                  className="flex items-center justify-center bg-white hover:bg-slate-550 text-slate-555 hover:text-[#0F5B38] border border-slate-200 hover:border-slate-300 w-[38px] h-[38px] rounded-[3px] transition duration-200 cursor-pointer shadow-sm"
+                  className="flex items-center justify-center bg-white hover:bg-slate-50 text-slate-500 hover:text-[#0F5B38] border border-slate-200 hover:border-slate-300 w-[38px] h-[38px] rounded-[3px] transition duration-200 cursor-pointer shadow-sm"
                   title="More actions"
                 >
                   <MoreVertical className="h-4.5 w-4.5" />
@@ -1099,80 +1343,31 @@ export function CreateBillTab({
                 {isMoreDropdownOpen && (
                   <>
                     <div className="fixed inset-0 z-40" onClick={() => setIsMoreDropdownOpen(false)}></div>
-                    <div className="absolute right-0 mt-2 w-48 bg-white border border-slate-200 rounded-[3px] shadow-xl z-50 p-1.5 divide-y divide-slate-50 font-normal text-xs text-slate-750">
+                    <div className="absolute right-0 mt-2 w-48 bg-white border border-slate-200 rounded-[3px] shadow-xl z-50 p-1.5 divide-y divide-slate-50 font-normal text-xs text-slate-700 animate-scaleIn">
                       <div className="py-1 space-y-0.5">
-                        {status === 'Draft' && (
-                          <>
-                            <button
-                              onClick={() => {
-                                handleUpdateStatusOnTheSpot('Awaiting Payment')
-                                setIsMoreDropdownOpen(false)
-                              }}
-                              disabled={isSubmitting}
-                              className="w-full text-left px-4 py-2 hover:bg-slate-50 transition cursor-pointer text-slate-700 font-normal rounded-[3px]"
-                            >
-                              Approve
-                            </button>
-                            <button
-                              onClick={() => {
-                                handleSaveBill('Draft')
-                                setIsMoreDropdownOpen(false)
-                              }}
-                              disabled={isSubmitting}
-                              className="w-full text-left px-4 py-2 hover:bg-slate-50 transition cursor-pointer text-slate-700 font-normal rounded-[3px]"
-                            >
-                              Save as Draft
-                            </button>
-                            <button
-                              onClick={() => {
-                                handleDeleteBill()
-                                setIsMoreDropdownOpen(false)
-                              }}
-                              disabled={isSubmitting}
-                              className="w-full text-left px-4 py-2 hover:bg-rose-50 hover:text-rose-600 transition cursor-pointer text-rose-500 font-normal rounded-[3px]"
-                            >
-                              Delete
-                            </button>
-                          </>
-                        )}
-
-                        {status === 'Awaiting Payment' && (
-                          <>
-                            <button
-                              onClick={() => {
-                                handleUpdateStatusOnTheSpot('Draft')
-                                setIsMoreDropdownOpen(false)
-                              }}
-                              disabled={isSubmitting}
-                              className="w-full text-left px-4 py-2 hover:bg-slate-50 transition cursor-pointer text-slate-700 font-normal rounded-[3px]"
-                            >
-                              Revert to Draft
-                            </button>
-                            <button
-                              onClick={() => {
-                                handleDeleteBill()
-                                setIsMoreDropdownOpen(false)
-                              }}
-                              disabled={isSubmitting}
-                              className="w-full text-left px-4 py-2 hover:bg-rose-50 hover:text-rose-600 transition cursor-pointer text-rose-500 font-normal rounded-[3px]"
-                            >
-                              Delete
-                            </button>
-                          </>
-                        )}
-
-                        {status === 'Paid' && (
-                          <button
-                            onClick={() => {
-                              handleDeleteBill()
-                              setIsMoreDropdownOpen(false)
-                            }}
-                            disabled={isSubmitting}
-                            className="w-full text-left px-4 py-2 hover:bg-rose-50 hover:text-rose-600 transition cursor-pointer text-rose-500 font-normal rounded-[3px]"
-                          >
-                            Delete
-                          </button>
-                        )}
+                        <button
+                          onClick={() => {
+                            handleSaveBill('Awaiting Approval')
+                            setIsMoreDropdownOpen(false)
+                          }}
+                          disabled={isSubmitting}
+                          className="w-full text-left px-4 py-2 hover:bg-slate-50 transition cursor-pointer text-slate-700 font-normal rounded-[3px]"
+                        >
+                          Submit for Approval
+                        </button>
+                        <button
+                          onClick={() => {
+                            showAlert({
+                              title: 'Save PDF',
+                              message: 'Please save the bill as a Draft or Approve it first before downloading PDF.',
+                              type: 'warning'
+                            })
+                            setIsMoreDropdownOpen(false)
+                          }}
+                          className="w-full text-left px-4 py-2 hover:bg-slate-50 transition cursor-pointer text-slate-700 font-normal rounded-[3px]"
+                        >
+                          Save PDF
+                        </button>
                       </div>
                     </div>
                   </>
@@ -1180,41 +1375,216 @@ export function CreateBillTab({
               </div>
             </>
           ) : (
+            /* EDITING BILL MODE */
             <>
-              {/* Creating new bill actions */}
-              <button
-                onClick={() => {
-                  if (setEditingBillId) setEditingBillId(null)
-                  setActiveTab('Bills')
-                }}
-                className="bg-white hover:bg-slate-50 text-slate-555 border border-slate-200 font-medium text-xs px-4.5 py-2 rounded-[3px] shadow-sm transition duration-200 cursor-pointer h-[38px] flex items-center justify-center"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => handleSaveBill('Draft')}
-                disabled={isSubmitting}
-                className="bg-white hover:bg-slate-50 text-slate-700 hover:text-[#0F5B38] border border-slate-200 hover:border-slate-300 font-medium text-xs px-4.5 py-2 rounded-[3px] shadow-sm transition duration-200 cursor-pointer h-[38px] flex items-center justify-center disabled:bg-slate-50 disabled:text-slate-400"
-              >
-                Save as Draft
-              </button>
-              <button
-                onClick={() => handleSaveBill('Awaiting Payment')}
-                disabled={isSubmitting}
-                className="bg-[#0F5B38] hover:brightness-105 text-white font-medium text-xs px-4.5 py-2 rounded-[3px] shadow-md transition duration-200 cursor-pointer disabled:brightness-90 flex items-center justify-center space-x-1.5 h-[38px]"
-              >
-                {isSubmitting ? (
-                  <>
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    <span>Submitting...</span>
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle className="h-3.5 w-3.5" />
-                    <span>Submit for Approval</span>
-                  </>
-                )}
-              </button>
+              {/* Draft Category */}
+              {status === 'Draft' && (
+                <>
+                  <button
+                    onClick={() => handleSaveBill('Awaiting Approval')}
+                    disabled={isSubmitting}
+                    className="bg-[#0F5B38] hover:brightness-105 text-white font-medium text-xs px-4.5 py-2 rounded-[3px] shadow-md transition duration-200 cursor-pointer disabled:brightness-90 flex items-center justify-center space-x-1.5 h-[38px] animate-fadeIn"
+                  >
+                    {isSubmitting ? (
+                      <>
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        <span>Submitting...</span>
+                      </>
+                    ) : (
+                      <span>Submit for Approval</span>
+                    )}
+                  </button>
+
+                  {renderApproveAndEmailButton()}
+
+                  <div className="relative">
+                    <button
+                      onClick={() => setIsMoreDropdownOpen(!isMoreDropdownOpen)}
+                      className="flex items-center justify-center bg-white hover:bg-slate-50 text-slate-500 hover:text-[#0F5B38] border border-slate-200 hover:border-slate-300 w-[38px] h-[38px] rounded-[3px] transition duration-200 cursor-pointer shadow-sm"
+                      title="More actions"
+                    >
+                      <MoreVertical className="h-4.5 w-4.5" />
+                    </button>
+                    {isMoreDropdownOpen && (
+                      <>
+                        <div className="fixed inset-0 z-40" onClick={() => setIsMoreDropdownOpen(false)}></div>
+                        <div className="absolute right-0 mt-2 w-48 bg-white border border-slate-200 rounded-[3px] shadow-xl z-50 p-1.5 divide-y divide-slate-50 font-normal text-xs text-slate-700 animate-scaleIn">
+                          <div className="py-1 space-y-0.5">
+                            <button
+                              onClick={() => {
+                                handlePrintPDF()
+                                setIsMoreDropdownOpen(false)
+                              }}
+                              className="w-full text-left px-4 py-2 hover:bg-slate-50 transition cursor-pointer text-slate-700 font-normal rounded-[3px]"
+                            >
+                              Save PDF
+                            </button>
+                            <button
+                              onClick={() => {
+                                handleDeleteBill()
+                                setIsMoreDropdownOpen(false)
+                              }}
+                              disabled={isSubmitting}
+                              className="w-full text-left px-4 py-2 hover:bg-rose-50 hover:text-rose-600 transition cursor-pointer text-rose-500 font-normal rounded-[3px]"
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </>
+              )}
+
+              {/* Awaiting Approval Category */}
+              {status === 'Awaiting Approval' && (
+                <>
+                  <button
+                    onClick={() => handleSaveBill('Awaiting Approval')}
+                    disabled={isSubmitting}
+                    className="bg-[#0F5B38] hover:brightness-105 text-white font-medium text-xs px-4.5 py-2 rounded-[3px] shadow-md transition duration-200 cursor-pointer disabled:brightness-90 flex items-center justify-center space-x-1.5 h-[38px] animate-fadeIn"
+                  >
+                    {isSubmitting ? (
+                      <>
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        <span>Saving...</span>
+                      </>
+                    ) : (
+                      <span>Save</span>
+                    )}
+                  </button>
+
+                  {renderApproveAndEmailButton()}
+
+                  <div className="relative">
+                    <button
+                      onClick={() => setIsMoreDropdownOpen(!isMoreDropdownOpen)}
+                      className="flex items-center justify-center bg-white hover:bg-slate-50 text-slate-500 hover:text-[#0F5B38] border border-slate-200 hover:border-slate-300 w-[38px] h-[38px] rounded-[3px] transition duration-200 cursor-pointer shadow-sm"
+                      title="More actions"
+                    >
+                      <MoreVertical className="h-4.5 w-4.5" />
+                    </button>
+                    {isMoreDropdownOpen && (
+                      <>
+                        <div className="fixed inset-0 z-40" onClick={() => setIsMoreDropdownOpen(false)}></div>
+                        <div className="absolute right-0 mt-2 w-48 bg-white border border-slate-200 rounded-[3px] shadow-xl z-50 p-1.5 divide-y divide-slate-50 font-normal text-xs text-slate-700 animate-scaleIn">
+                          <div className="py-1 space-y-0.5">
+                            <button
+                              onClick={() => {
+                                handlePrintPDF()
+                                setIsMoreDropdownOpen(false)
+                              }}
+                              className="w-full text-left px-4 py-2 hover:bg-slate-50 transition cursor-pointer text-slate-700 font-normal rounded-[3px]"
+                            >
+                              Save PDF
+                            </button>
+                            <button
+                              onClick={() => {
+                                handleDeleteBill()
+                                setIsMoreDropdownOpen(false)
+                              }}
+                              disabled={isSubmitting}
+                              className="w-full text-left px-4 py-2 hover:bg-rose-50 hover:text-rose-600 transition cursor-pointer text-rose-500 font-normal rounded-[3px]"
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </>
+              )}
+
+              {/* Awaiting Payment Category */}
+              {status === 'Awaiting Payment' && (
+                <>
+                  <button
+                    onClick={() => handleSaveBill('Awaiting Payment')}
+                    disabled={isSubmitting || isReadOnly}
+                    className="bg-white hover:bg-slate-50 text-slate-700 hover:text-[#0F5B38] border border-slate-200 hover:border-slate-300 font-medium text-xs px-4.5 py-2 rounded-[3px] shadow-sm transition duration-200 cursor-pointer h-[38px] flex items-center justify-center disabled:bg-slate-50 disabled:text-slate-400 animate-fadeIn"
+                  >
+                    {isSubmitting ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <span>Save</span>
+                    )}
+                  </button>
+                  <button
+                    onClick={handlePrintPDF}
+                    className="bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 hover:border-slate-300 font-medium text-xs px-4.5 py-2 rounded-[3px] shadow-sm transition duration-200 cursor-pointer h-[38px] flex items-center justify-center animate-fadeIn"
+                  >
+                    Save PDF
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setSinglePaymentAmount(grandTotal.toFixed(2))
+                      setIsSplitPayment(false)
+                      if (bankAccounts.length > 0) {
+                        setSinglePaymentAccountId(bankAccounts[0].id)
+                      }
+                      setPaymentRows([{ accountId: bankAccounts[0]?.id || '', amount: grandTotal }])
+                      setIsPaymentModalOpen(true)
+                    }}
+                    disabled={isSubmitting}
+                    className="bg-[#0F5B38] hover:brightness-105 text-white font-medium text-xs px-4.5 py-2 rounded-[3px] shadow-md transition duration-200 cursor-pointer disabled:brightness-90 flex items-center justify-center space-x-1.5 h-[38px] animate-fadeIn"
+                  >
+                    <span>Record Payment</span>
+                  </button>
+
+                  <div className="relative">
+                    <button
+                      onClick={() => setIsMoreDropdownOpen(!isMoreDropdownOpen)}
+                      className="flex items-center justify-center bg-white hover:bg-slate-50 text-slate-500 hover:text-[#0F5B38] border border-slate-200 hover:border-slate-300 w-[38px] h-[38px] rounded-[3px] transition duration-200 cursor-pointer shadow-sm"
+                      title="More actions"
+                    >
+                      <MoreVertical className="h-4.5 w-4.5" />
+                    </button>
+                    {isMoreDropdownOpen && (
+                      <>
+                        <div className="fixed inset-0 z-40" onClick={() => setIsMoreDropdownOpen(false)}></div>
+                        <div className="absolute right-0 mt-2 w-48 bg-white border border-slate-200 rounded-[3px] shadow-xl z-50 p-1.5 divide-y divide-slate-50 font-normal text-xs text-slate-700 animate-scaleIn">
+                          <div className="py-1 space-y-0.5">
+                            <button
+                              onClick={() => {
+                                setIsEmailModalOpen(true)
+                                setIsMoreDropdownOpen(false)
+                              }}
+                              className="w-full text-left px-4 py-2 hover:bg-slate-50 transition cursor-pointer text-slate-700 font-normal rounded-[3px]"
+                            >
+                              Email
+                            </button>
+                            <button
+                              onClick={() => {
+                                handleDeleteBill()
+                                setIsMoreDropdownOpen(false)
+                              }}
+                              disabled={isSubmitting}
+                              className="w-full text-left px-4 py-2 hover:bg-rose-50 hover:text-rose-600 transition cursor-pointer text-rose-500 font-normal rounded-[3px]"
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </>
+              )}
+
+              {/* Paid Category */}
+              {status === 'Paid' && (
+                <>
+                  <button
+                    onClick={handlePrintPDF}
+                    className="bg-[#0F5B38] hover:brightness-105 text-white font-medium text-xs px-4.5 py-2 rounded-[3px] shadow-md transition duration-200 cursor-pointer flex items-center justify-center space-x-1.5 h-[38px] animate-fadeIn"
+                  >
+                    <span>Print PDF</span>
+                  </button>
+                </>
+              )}
             </>
           )}
         </div>
@@ -1223,6 +1593,16 @@ export function CreateBillTab({
       {errorMsg && (
         <div className="bg-rose-50 border border-rose-100 text-rose-655 p-4 rounded-[3px] text-xs font-semibold">
           {errorMsg}
+        </div>
+      )}
+
+      {(Object.keys(errors).length > 0 || Object.keys(lineErrors).length > 0) && (
+        <div className="bg-rose-50 border border-rose-100/80 text-rose-700 p-4 rounded-[3px] text-xs font-semibold flex items-start space-x-2.5 animate-fadeIn mb-1">
+          <AlertCircle className="h-4 w-4 text-rose-500 shrink-0 mt-0.5" />
+          <div>
+            <p className="font-bold text-[13px] text-rose-800">Validation Error</p>
+            <p className="text-rose-600/90 mt-0.5 font-medium">Please fill in all required fields highlighted in red below before proceeding.</p>
+          </div>
         </div>
       )}
 
@@ -1237,6 +1617,7 @@ export function CreateBillTab({
             <SearchableInput
               options={clientOptions}
               value={selectedContactId}
+              disabled={isReadOnly}
               onChange={(val) => {
                 setSelectedContactId(val)
                 if (val) {
@@ -1268,6 +1649,7 @@ export function CreateBillTab({
             <XeroDatePicker
               id="billDateInput"
               value={date}
+              disabled={isReadOnly}
               onChange={(val) => {
                 setDate(val)
                 if (val) {
@@ -1291,6 +1673,7 @@ export function CreateBillTab({
             <XeroDatePicker
               id="billDueDateInput"
               value={dueDate}
+              disabled={isReadOnly}
               onChange={(val) => {
                 setDueDate(val)
                 if (val) {
@@ -1317,6 +1700,7 @@ export function CreateBillTab({
               id="billNumberInput"
               type="text"
               value={billNumber}
+              readOnly={isReadOnly}
               onChange={e => {
                 setBillNumber(e.target.value)
                 if (e.target.value.trim()) {
@@ -1329,7 +1713,7 @@ export function CreateBillTab({
               }}
               className={`w-full bg-white text-slate-800 border rounded-[3px] px-3.5 py-2 text-[15px] font-normal focus:outline-none transition ${
                 errors.billNumber ? 'border-rose-500 focus:border-rose-500 bg-rose-50/10' : 'border-slate-200 focus:border-[#0F5B38]'
-              }`}
+              } ${isReadOnly ? 'bg-slate-50 text-slate-400 cursor-not-allowed border-slate-200' : ''}`}
             />
             {errors.billNumber && (
               <span className="text-rose-500 text-[11px] font-semibold block mt-1">{errors.billNumber}</span>
@@ -1344,8 +1728,11 @@ export function CreateBillTab({
               type="text"
               placeholder="e.g. PO-1022"
               value={reference}
+              readOnly={isReadOnly}
               onChange={e => setReference(e.target.value)}
-              className="w-full bg-white text-slate-800 border border-slate-200 rounded-[3px] px-3.5 py-2 text-[15px] font-normal focus:outline-none focus:border-[#0F5B38] transition"
+              className={`w-full bg-white text-slate-800 border border-slate-200 rounded-[3px] px-3.5 py-2 text-[15px] font-normal focus:outline-none focus:border-[#0F5B38] transition ${
+                isReadOnly ? 'bg-slate-50 text-slate-400 cursor-not-allowed border-slate-200' : ''
+              }`}
             />
           </div>
 
@@ -1355,6 +1742,7 @@ export function CreateBillTab({
             <SearchableInput
               options={currenciesList}
               value={currency}
+              disabled={isReadOnly}
               onChange={setCurrency}
               placeholder=""
               className="w-full bg-white text-slate-800 border border-slate-200 rounded-[3px] px-3.5 py-2 text-[15px] font-normal focus:outline-none focus:border-[#0F5B38] transition cursor-pointer"
@@ -1366,11 +1754,15 @@ export function CreateBillTab({
             <label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block">Tax Type</label>
             <select
               value={taxType}
-              onChange={e => setTaxType(e.target.value as 'Inclusive' | 'Exclusive')}
-              className="w-full bg-white text-slate-800 border border-slate-200 rounded-[3px] px-3.5 py-2 text-[15px] font-normal focus:outline-none focus:border-[#0F5B38] transition cursor-pointer h-[38px]"
+              disabled={isReadOnly}
+              onChange={e => handleTaxTypeChange(e.target.value as 'Inclusive' | 'Exclusive' | 'No Tax')}
+              className={`w-full bg-white text-slate-800 border border-slate-200 rounded-[3px] px-3.5 py-2 text-[15px] font-normal focus:outline-none focus:border-[#0F5B38] transition cursor-pointer h-[38px] ${
+                isReadOnly ? 'bg-slate-50 text-slate-400 cursor-not-allowed border-slate-200' : ''
+              }`}
             >
               <option value="Exclusive">Tax Exclusive</option>
               <option value="Inclusive">Tax Inclusive</option>
+              <option value="No Tax">No Tax</option>
             </select>
           </div>
         </div>
@@ -1383,21 +1775,24 @@ export function CreateBillTab({
               <SearchableInput
                 options={projectOptions}
                 value={selectedProjectId}
+                disabled={isReadOnly}
                 onChange={setSelectedProjectId}
                 placeholder="Search projects..."
                 className="w-full bg-white text-slate-800 border border-slate-200 rounded-[3px] px-3.5 py-2 text-[15px] font-normal focus:outline-none focus:border-[#0F5B38] transition cursor-pointer"
               />
-              <button
-                type="button"
-                onClick={() => {
-                  lastActiveElementRef.current = document.activeElement as HTMLElement
-                  setIsCreateProjectOpen(true)
-                }}
-                className="ml-2 bg-white border border-slate-200 hover:bg-slate-50 text-[#0F5B38] rounded-[3px] p-2 transition flex items-center justify-center shrink-0 h-[38px] w-[38px]"
-                title="Create a new project"
-              >
-                <Plus className="h-4.5 w-4.5" />
-              </button>
+              {!isReadOnly && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    lastActiveElementRef.current = document.activeElement as HTMLElement
+                    setIsCreateProjectOpen(true)
+                  }}
+                  className="ml-2 bg-white border border-slate-200 hover:bg-slate-50 text-[#0F5B38] rounded-[3px] p-2 transition flex items-center justify-center shrink-0 h-[38px] w-[38px]"
+                  title="Create a new project"
+                >
+                  <Plus className="h-4.5 w-4.5" />
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -1420,7 +1815,7 @@ export function CreateBillTab({
                   <th className="p-2 border border-slate-200 w-[15%]">Expense Account</th>
                   <th className="p-2 border border-slate-200 w-[12%]">Tax Rate</th>
                   <th className="p-2 border border-slate-200 text-right w-[10%]">Amount</th>
-                  <th className="p-2 border border-slate-200 text-center w-[3%]"></th>
+                  {!isReadOnly && <th className="p-2 border border-slate-200 text-center w-[3%]"></th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200 text-xs font-normal text-slate-700">
@@ -1431,6 +1826,7 @@ export function CreateBillTab({
                       <SearchableInput
                         options={catalogOptions}
                         value={line.itemId}
+                        disabled={isReadOnly}
                         onChange={(val) => handleCatalogSelect(idx, val)}
                         placeholder=""
                         onCreateNew={(el) => {
@@ -1449,21 +1845,25 @@ export function CreateBillTab({
                         type="text"
                         placeholder=""
                         value={line.description}
+                        readOnly={isReadOnly}
                         onChange={e => updateLineField(idx, 'description', e.target.value)}
-                        className="w-full bg-transparent text-slate-800 border-none rounded-none px-2.5 py-2.5 text-xs font-normal focus:outline-none focus:ring-0"
+                        className={`w-full bg-transparent text-slate-800 border rounded-[3px] px-2.5 py-2.5 text-xs font-normal focus:outline-none transition ${isReadOnly ? 'cursor-not-allowed text-slate-400 bg-slate-50/10 border-transparent' :
+                          lineErrors[idx]?.description 
+                            ? 'border-rose-500 bg-rose-50/10' 
+                            : 'border-transparent focus:border-[#0F5B38]'
+                        }`}
                       />
                     </td>
 
                     {/* Qty */}
-                    <td className={`p-0 border border-slate-200 align-middle ${lineErrors[idx]?.quantity ? 'bg-rose-50/30' : ''}`}>
+                    <td className="p-0 border border-slate-200 align-middle">
                       <input
                         type="number"
                         min="1"
                         value={line.quantity}
+                        readOnly={isReadOnly}
                         onChange={e => updateLineField(idx, 'quantity', e.target.value === '' ? '' : Number(e.target.value))}
-                        className={`w-full bg-transparent text-slate-800 border-none rounded-none px-2.5 py-2.5 text-xs font-normal text-center focus:outline-none focus:ring-0 ${
-                          lineErrors[idx]?.quantity ? 'text-rose-700 font-semibold bg-rose-100/20' : ''
-                        }`}
+                        className={`w-full bg-transparent text-slate-800 border border-transparent rounded-[3px] px-2.5 py-2.5 text-xs font-normal text-center focus:outline-none transition ${isReadOnly ? 'cursor-not-allowed text-slate-400 bg-slate-50/10' : 'focus:border-[#0F5B38]'}`}
                       />
                     </td>
 
@@ -1474,8 +1874,13 @@ export function CreateBillTab({
                         min="0"
                         step="0.01"
                         value={line.unitPrice}
+                        readOnly={isReadOnly}
                         onChange={e => updateLineField(idx, 'unitPrice', e.target.value === '' ? '' : Number(e.target.value))}
-                        className="w-full bg-transparent text-slate-800 border-none rounded-none px-2.5 py-2.5 text-xs font-normal text-right focus:outline-none focus:ring-0"
+                        className={`w-full bg-transparent text-slate-800 border rounded-[3px] px-2.5 py-2.5 text-xs font-normal text-right focus:outline-none transition ${isReadOnly ? 'cursor-not-allowed text-slate-400 bg-slate-50/10 border-transparent' :
+                          lineErrors[idx]?.unitPrice 
+                            ? 'border-rose-500 bg-rose-50/10' 
+                            : 'border-transparent focus:border-[#0F5B38]'
+                        }`}
                       />
                     </td>
 
@@ -1488,21 +1893,21 @@ export function CreateBillTab({
                         step="0.01"
                         placeholder=""
                         value={line.discount}
+                        readOnly={isReadOnly}
                         onChange={e => updateLineField(idx, 'discount', e.target.value === '' ? '' : Number(e.target.value))}
-                        className="w-full bg-transparent text-slate-800 border-none rounded-none px-2.5 py-2.5 text-xs font-normal text-center focus:outline-none focus:ring-0"
+                        className={`w-full bg-transparent text-slate-800 border border-transparent rounded-[3px] px-2.5 py-2.5 text-xs font-normal text-center focus:outline-none transition ${isReadOnly ? 'cursor-not-allowed text-slate-400 bg-slate-50/10' : 'focus:border-[#0F5B38]'}`}
                       />
                     </td>
 
                     {/* Account Searchable Select */}
-                    <td className={`p-0 border border-slate-200 align-middle ${lineErrors[idx]?.accountId ? 'bg-rose-50/30' : ''}`}>
+                    <td className="p-0 border border-slate-200 align-middle">
                       <SearchableInput
                         options={accountOptions}
                         value={line.accountId}
+                        disabled={isReadOnly}
                         onChange={(val) => updateLineField(idx, 'accountId', val)}
                         placeholder=""
-                        className={`w-full bg-transparent text-slate-800 border-none rounded-none px-2.5 py-2.5 text-xs font-normal focus:outline-none focus:ring-0 cursor-pointer ${
-                          lineErrors[idx]?.accountId ? 'text-rose-700 font-semibold bg-rose-100/20' : ''
-                        }`}
+                        className="w-full bg-transparent text-slate-800 border border-transparent rounded-[3px] px-2.5 py-2.5 text-xs font-normal focus:outline-none focus:border-[#0F5B38] transition cursor-pointer"
                       />
                     </td>
 
@@ -1511,9 +1916,10 @@ export function CreateBillTab({
                       <SearchableInput
                         options={taxOptions}
                         value={line.taxRateId}
+                        disabled={isReadOnly || taxType === 'No Tax'}
                         onChange={(val) => updateLineField(idx, 'taxRateId', val)}
                         placeholder=""
-                        className="w-full bg-transparent text-slate-800 border-none rounded-none px-2.5 py-2.5 text-xs font-normal focus:outline-none focus:ring-0 cursor-pointer"
+                        className="w-full bg-transparent text-slate-800 border border-transparent rounded-[3px] px-2.5 py-2.5 text-xs font-normal focus:outline-none focus:border-[#0F5B38] transition cursor-pointer"
                       />
                     </td>
 
@@ -1523,28 +1929,30 @@ export function CreateBillTab({
                     </td>
 
                     {/* Action Trash & Plus */}
-                    <td className="p-0 border border-slate-200 align-middle text-center">
-                      <div className="flex items-center justify-center space-x-1.5 px-2">
-                        <button
-                          type="button"
-                          onClick={() => removeLineItem(idx)}
-                          className={`p-2 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-[3px] transition cursor-pointer inline-flex items-center justify-center ${
-                            lines.length === 1 ? 'opacity-20 cursor-not-allowed pointer-events-none' : ''
-                          }`}
-                          title="Remove item line"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={addLineItem}
-                          className="p-2 hover:bg-emerald-50 text-[#0F5B38] rounded-[3px] transition cursor-pointer inline-flex items-center justify-center focus:ring-2 focus:ring-emerald-500/20"
-                          title="Add item line"
-                        >
-                          <Plus className="h-4 w-4" />
-                        </button>
-                      </div>
-                    </td>
+                    {!isReadOnly && (
+                      <td className="p-0 border border-slate-200 align-middle text-center">
+                        <div className="flex items-center justify-center space-x-1.5 px-2">
+                          <button
+                            type="button"
+                            onClick={() => removeLineItem(idx)}
+                            className={`p-2 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-[3px] transition cursor-pointer inline-flex items-center justify-center ${
+                              lines.length === 1 ? 'opacity-20 cursor-not-allowed pointer-events-none' : ''
+                            }`}
+                            title="Remove item line"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={addLineItem}
+                            className="p-2 hover:bg-emerald-50 text-[#0F5B38] rounded-[3px] transition cursor-pointer inline-flex items-center justify-center focus:ring-2 focus:ring-emerald-500/20"
+                            title="Add item line"
+                          >
+                            <Plus className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -1552,15 +1960,17 @@ export function CreateBillTab({
           </div>
 
           {/* Add Line Control Button */}
-          <div className="pt-2">
-            <button
-              onClick={addLineItem}
-              className="flex items-center space-x-1.5 bg-slate-550 hover:bg-slate-100 text-slate-655 font-bold text-[10px] px-4 py-2 border border-slate-200 rounded-[3px] transition cursor-pointer"
-            >
-              <Plus className="h-3.5 w-3.5 text-[#0F5B38]" />
-              <span>Add row</span>
-            </button>
-          </div>
+          {!isReadOnly && (
+            <div className="pt-2">
+              <button
+                onClick={addLineItem}
+                className="flex items-center space-x-1.5 bg-slate-550 hover:bg-slate-100 text-slate-655 font-bold text-[10px] px-4 py-2 border border-slate-200 rounded-[3px] transition cursor-pointer"
+              >
+                <Plus className="h-3.5 w-3.5 text-[#0F5B38]" />
+                <span>Add row</span>
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Bottom notes, attachments, and calculation summary */}
@@ -1572,10 +1982,11 @@ export function CreateBillTab({
               <label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block">Additional Notes</label>
               <textarea
                 value={notes}
+                readOnly={isReadOnly}
                 onChange={e => setNotes(e.target.value)}
                 placeholder="Add any additional notes, vendor advice, or payment remarks..."
                 rows={3}
-                className="w-full bg-white text-slate-800 border border-slate-200 rounded-[3px] px-3.5 py-2 text-xs font-normal focus:outline-none focus:border-[#0F5B38] transition resize-none placeholder:text-slate-400"
+                className={`w-full bg-white text-slate-800 border border-slate-200 rounded-[3px] px-3.5 py-2 text-xs font-normal focus:outline-none focus:border-[#0F5B38] transition resize-none placeholder:text-slate-400 ${isReadOnly ? 'bg-slate-50 text-slate-400 cursor-not-allowed border-slate-200' : ''}`}
               />
             </div>
 
@@ -1583,27 +1994,31 @@ export function CreateBillTab({
             <div className="space-y-1.5">
               <label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block">Attachments (Optional)</label>
               <div className="flex items-center space-x-3">
-                <label className="bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 font-bold text-xs px-4 py-2.5 rounded-[3px] transition cursor-pointer select-none">
-                  <span>Choose File</span>
-                  <input
-                    type="file"
-                    onChange={handleFileChange}
-                    className="hidden"
-                  />
-                </label>
+                {!isReadOnly && (
+                  <label className="bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 font-bold text-xs px-4 py-2.5 rounded-[3px] transition cursor-pointer select-none">
+                    <span>Choose File</span>
+                    <input
+                      type="file"
+                      onChange={handleFileChange}
+                      className="hidden"
+                    />
+                  </label>
+                )}
                 {attachmentName ? (
-                  <div className="flex items-center space-x-2 text-xs text-slate-655 bg-slate-50 px-3 py-1.5 rounded-[3px] border border-slate-200 font-semibold font-normal">
+                  <div className="flex items-center space-x-2 text-xs text-slate-655 bg-slate-50 px-3 py-1.5 rounded-[3px] border border-slate-200 font-semibold">
                     <span className="truncate max-w-[200px] font-semibold">{attachmentName}</span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setAttachmentName('')
-                        setAttachmentFile(null)
-                      }}
-                      className="text-rose-500 hover:text-rose-700 font-bold cursor-pointer ml-1"
-                    >
-                      ✕
-                    </button>
+                    {!isReadOnly && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAttachmentName('')
+                          setAttachmentFile(null)
+                        }}
+                        className="text-rose-500 hover:text-rose-700 font-bold cursor-pointer ml-1"
+                      >
+                        ✕
+                      </button>
+                    )}
                   </div>
                 ) : (
                   <span className="text-xs text-slate-400 italic">No file attached</span>
@@ -1909,6 +2324,298 @@ export function CreateBillTab({
         </div>
       )}
 
+      {/* Record Payment Modal */}
+      {isPaymentModalOpen && (
+        <div className="fixed inset-0 z-[50000] flex items-center justify-center overflow-y-auto py-6 font-sans">
+          <div 
+            className="fixed inset-0 bg-[#071f13]/35 backdrop-blur-md transition-opacity"
+            onClick={() => setIsPaymentModalOpen(false)}
+          ></div>
+          <div className="relative transform bg-white text-left shadow-2xl transition-all w-full max-w-lg p-6 space-y-6 mx-4 rounded-[3px] border border-slate-100 animate-scaleIn max-h-[90vh] overflow-y-auto">
+            <div className="space-y-1.5 border-b border-slate-100 pb-3">
+              <h3 className="text-base font-bold text-slate-850">Record Bill Payment</h3>
+              <p className="text-slate-500 text-xs font-semibold leading-relaxed font-normal">
+                Log the payment outflow for Bill {billNumber} and adjust bank balances.
+              </p>
+            </div>
+
+            <div className="space-y-4">
+              {/* Payment Date */}
+              <div className="space-y-1.5">
+                <label className="text-[10px] text-slate-450 font-extrabold uppercase tracking-wider block">Payment Date</label>
+                <input
+                  type="date"
+                  value={paymentDate}
+                  onChange={e => setPaymentDate(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-[3px] px-3.5 py-2 text-xs font-normal focus:outline-none focus:border-[#0F5B38]"
+                />
+              </div>
+
+              {/* Single / Multiple toggle */}
+              <div className="space-y-1.5">
+                <label className="text-[10px] text-slate-450 font-extrabold uppercase tracking-wider block">Payment Option</label>
+                <div className="flex border border-slate-200 rounded-[3px] overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsSplitPayment(false)
+                      setSinglePaymentAmount(grandTotal.toFixed(2))
+                    }}
+                    className={`flex-1 text-center py-2 text-xs font-semibold transition ${
+                      !isSplitPayment
+                        ? 'bg-[#0F5B38] text-white'
+                        : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
+                    }`}
+                  >
+                    Single Bank Account
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsSplitPayment(true)
+                      setPaymentRows([{ accountId: bankAccounts[0]?.id || '', amount: grandTotal }])
+                    }}
+                    className={`flex-1 text-center py-2 text-xs font-semibold transition ${
+                      isSplitPayment
+                        ? 'bg-[#0F5B38] text-white'
+                        : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
+                    }`}
+                  >
+                    Split Accounts
+                  </button>
+                </div>
+              </div>
+
+              {/* Account selection inputs */}
+              {!isSplitPayment ? (
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5 col-span-1">
+                    <label className="text-[10px] text-slate-455 font-extrabold uppercase tracking-wider block">Bank Account</label>
+                    <select
+                      value={singlePaymentAccountId}
+                      onChange={e => setSinglePaymentAccountId(e.target.value)}
+                      className="w-full bg-white border border-slate-200 rounded-[3px] px-3.5 py-2 text-xs font-normal focus:outline-none focus:border-[#0F5B38] h-[36px] cursor-pointer text-slate-800"
+                    >
+                      {bankAccounts.map(b => (
+                        <option key={b.id} value={b.id}>
+                          {b.name} ({b.code})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1.5 col-span-1">
+                    <label className="text-[10px] text-slate-455 font-extrabold uppercase tracking-wider block">Amount</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0.01"
+                      value={singlePaymentAmount}
+                      onChange={e => setSinglePaymentAmount(e.target.value)}
+                      placeholder="0.00"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-[3px] px-3.5 py-2 text-xs font-normal focus:outline-none focus:border-[#0F5B38] h-[36px]"
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <label className="text-[10px] text-slate-455 font-extrabold uppercase tracking-wider block">Split Distribution</label>
+                  <div className="max-h-48 overflow-y-auto space-y-2 pr-1.5 font-normal text-xs text-slate-700">
+                    {paymentRows.map((row, idx) => (
+                      <div key={idx} className="flex items-center space-x-2">
+                        <select
+                          value={row.accountId}
+                          onChange={e => updatePaymentRow(idx, 'accountId', e.target.value)}
+                          className="flex-1 bg-white border border-slate-200 rounded-[3px] px-3 py-1.5 text-xs font-normal focus:outline-none focus:border-[#0F5B38] h-[34px] cursor-pointer text-slate-800"
+                        >
+                          <option value="">Select Account</option>
+                          {bankAccounts.map(b => (
+                            <option key={b.id} value={b.id}>
+                              {b.name} ({b.code})
+                            </option>
+                          ))}
+                        </select>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0.01"
+                          value={row.amount}
+                          onChange={e => updatePaymentRow(idx, 'amount', e.target.value === '' ? '' : Number(e.target.value))}
+                          placeholder="0.00"
+                          className="w-32 bg-slate-50 border border-slate-200 rounded-[3px] px-3 py-1.5 text-xs font-normal focus:outline-none focus:border-[#0F5B38] h-[34px]"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => removePaymentRow(idx)}
+                          disabled={paymentRows.length <= 1}
+                          className="p-1.5 text-slate-455 hover:text-rose-600 disabled:opacity-30 transition cursor-pointer"
+                          title="Remove split account"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={addPaymentRow}
+                    className="flex items-center space-x-1 text-[#0F5B38] hover:text-emerald-700 font-extrabold text-[10px] uppercase tracking-wider bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-[3px] px-3 py-1.5 transition cursor-pointer"
+                  >
+                    <Plus className="h-3 w-3" />
+                    <span>Add Bank Account</span>
+                  </button>
+                </div>
+              )}
+
+              {/* Match Verification & Info Banner */}
+              <div className="bg-slate-50/50 border border-slate-200 rounded-[3px] p-4 space-y-2.5 text-xs">
+                <div className="flex justify-between font-semibold text-slate-500">
+                  <span>Grand Total to Pay:</span>
+                  <span className="text-slate-800 font-bold">{currencySymbol}{grandTotal.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between font-semibold text-slate-500">
+                  <span>Total Amount Input:</span>
+                  <span className="text-slate-800 font-bold">{currencySymbol}{totalPaid.toFixed(2)}</span>
+                </div>
+                <div className="border-t border-slate-200/50 pt-2 flex justify-between font-extrabold text-[13px]">
+                  <span>Remaining / Difference:</span>
+                  <span className={isPaymentBalanced ? 'text-emerald-600 font-bold' : 'text-amber-600 font-bold'}>
+                    {currencySymbol}{paymentDiff.toFixed(2)}
+                  </span>
+                </div>
+                <div className="pt-1">
+                  {isPaymentBalanced ? (
+                    <span className="inline-flex items-center text-[10px] bg-emerald-50 text-emerald-700 font-bold px-2.5 py-0.5 rounded-full border border-emerald-100/30 uppercase tracking-wider">
+                      ✓ Amounts Match Exactly
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center text-[10px] bg-amber-50 text-amber-700 font-bold px-2.5 py-0.5 rounded-full border border-amber-100/30 uppercase tracking-wider animate-pulse">
+                      ⚠ Mismatch: Payments must match total
+                    </span>
+                  )}
+                </div>
+              </div>
+
+            </div>
+
+            <div className="flex space-x-3 pt-3 justify-end border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setIsPaymentModalOpen(false)}
+                className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200/50 text-slate-655 rounded-[3px] transition cursor-pointer text-xs font-semibold"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleRecordPayment}
+                disabled={isSubmitting || !isPaymentBalanced || (isSplitPayment && paymentRows.some(r => !r.accountId))}
+                className="px-5 py-2.5 rounded-[3px] shadow-md bg-[#0F5B38] hover:brightness-105 text-white transition text-xs font-medium cursor-pointer disabled:opacity-50"
+              >
+                {isSubmitting ? 'Recording...' : 'Record Payment'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <EmailModal
+        isOpen={isEmailModalOpen}
+        onClose={() => setIsEmailModalOpen(false)}
+        defaultEmail={contacts.find(c => c.id === selectedContactId)?.email || ''}
+        documentType="Bill"
+        documentNumber={billNumber}
+        contactName={contacts.find(c => c.id === selectedContactId)?.name || ''}
+        totalAmount={`${currency} ${getGrandTotal().toFixed(2)}`}
+        orgName={activeOrg.name}
+        onSend={async (to, subject, message) => {
+          let resolvedId = editingBillId
+          const needsApproval = status === 'Draft' || status === 'Awaiting Approval'
+
+          if (needsApproval) {
+            resolvedId = await handleSaveBill('Awaiting Payment', false, true)
+            if (!resolvedId) {
+              throw new Error('Failed to save and approve bill.')
+            }
+          }
+
+          // Construct full payload for the backend to render the PDF on the fly
+          const logo = localStorage.getItem(`kdm_org_logo_${activeOrg.id}`) || ''
+          const bankDetails = JSON.parse(localStorage.getItem(`kdm_bank_details_${activeOrg.id}`) || '{}')
+          const templateSettings = JSON.parse(
+            localStorage.getItem(`kdm_purchase_template_settings_${activeOrg.id}`) || 
+            localStorage.getItem(`kdm_sales_template_settings_${activeOrg.id}`) || 
+            '{}'
+          )
+          const orgDetails = JSON.parse(localStorage.getItem(`kdm_org_extensions_${activeOrg.id}`) || '{}')
+          
+          const supplierObj = contacts.find(c => c.id === selectedContactId)
+          const projectObj = projects.find(p => p.id === selectedProjectId)
+          
+          const savedPurchases = localStorage.getItem(`kdm_purchase_settings_${activeOrg.id}`) || 
+                                 localStorage.getItem(`kdm_mock_purchase_settings_${activeOrg.id}`)
+          let supplierTerms = '30 days'
+          if (savedPurchases) {
+            const parsed = JSON.parse(savedPurchases)
+            supplierTerms = parsed.supplier_terms || '30 days'
+          }
+
+          const postLines = lines.map(l => {
+            const itemObj = catalogItems.find(i => i.id === l.itemId)
+            const taxObj = taxRates.find(t => t.id === l.taxRateId)
+            return {
+              item_code: itemObj ? itemObj.code : '',
+              item_name: itemObj ? itemObj.name : '',
+              description: l.description,
+              quantity: Number(l.quantity) || 0,
+              unit_price: Number(l.unitPrice) || 0,
+              discount: Number(l.discount) || 0,
+              tax_rate_name: taxObj ? taxObj.name : '',
+              total: (Number(l.quantity) || 0) * (Number(l.unitPrice) || 0) * (1 - (Number(l.discount) || 0) / 100)
+            }
+          })
+
+          const payload = {
+            to,
+            subject,
+            message,
+            bill_number: billNumber,
+            reference: reference,
+            date: date,
+            due_date: dueDate,
+            currency: currency,
+            tax_type: taxType,
+            project_name: projectObj ? projectObj.name : '',
+            contact_name: supplierObj ? supplierObj.name : 'Vendor Supplier',
+            contact_email: supplierObj ? supplierObj.email : '',
+            contact_phone: supplierObj ? supplierObj.phone : '',
+            contact_address: supplierObj ? supplierObj.billing_address : '',
+            lines: postLines,
+            subtotal: getSubtotal(),
+            tax_total: getTaxTotal(),
+            total: getGrandTotal(),
+            notes: notes,
+            logo: logo,
+            bank_details: bankDetails,
+            template_settings: templateSettings,
+            org_details: orgDetails,
+            payment_terms: supplierTerms,
+            org_name: activeOrg.name,
+            org_tax_id: activeOrg.tax_id,
+            org_country: activeOrg.country
+          }
+
+          await apiService.sendBillEmail(payload)
+          showAlert({
+            title: needsApproval ? 'Approved & Emailed' : 'Email Sent',
+            message: needsApproval 
+              ? `Bill ${billNumber} was successfully approved and emailed to ${to}.`
+              : `Bill ${billNumber} was successfully emailed to ${to}.`,
+            type: 'success'
+          })
+          if (setEditingBillId) setEditingBillId(null)
+          setActiveTab('Bills')
+        }}
+      />
     </div>
   )
 }

@@ -14,6 +14,7 @@ interface SearchableInputProps {
   className?: string
   onCreateNew?: (inputEl: HTMLInputElement | null) => void
   createNewLabel?: string
+  disabled?: boolean
 }
 
 export function SearchableInput({
@@ -23,7 +24,8 @@ export function SearchableInput({
   placeholder = 'Type to search...',
   className = '',
   onCreateNew,
-  createNewLabel
+  createNewLabel,
+  disabled = false
 }: SearchableInputProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -136,16 +138,19 @@ export function SearchableInput({
         type="text"
         placeholder={placeholder}
         value={query}
+        disabled={disabled}
         onChange={e => {
+          if (disabled) return
           setQuery(e.target.value)
           setIsOpen(true)
         }}
         onFocus={(e) => {
+          if (disabled) return
           setIsOpen(true)
           e.target.select() // Select all text on focus for easy search/overwrite instead of clearing it completely
         }}
-        onKeyDown={handleKeyDown}
-        className={className}
+        onKeyDown={disabled ? undefined : handleKeyDown}
+        className={`${className} ${disabled ? 'bg-slate-50 text-slate-400 cursor-not-allowed' : ''}`}
       />
       
       {isOpen && (

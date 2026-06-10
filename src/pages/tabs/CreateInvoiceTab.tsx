@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from 'react'
-import { ArrowLeft, Plus, Trash2, CheckCircle, Save, X, Loader2, ChevronDown, MoreVertical } from 'lucide-react'
+import { ArrowLeft, Plus, Trash2, CheckCircle, Save, X, Loader2, ChevronDown, MoreVertical, AlertCircle } from 'lucide-react'
 import { apiService, API_BASE_URL } from '../../services/api'
 import type { Organization, Contact, Item, Account, TaxRate, SalesSetting, Invoice, Quote, Project } from '../../services/api'
 import { SearchableInput } from '../../components/SearchableInput'
+import { EmailModal } from '../../components/EmailModal'
 import { usePopup } from '../../components/PopupProvider'
 import { XeroDatePicker } from '../../components/XeroDatePicker'
 
@@ -30,6 +31,20 @@ export function CreateInvoiceTab({
   const [accounts, setAccounts] = useState<Account[]>([])
   const [taxRates, setTaxRates] = useState<TaxRate[]>([])
   const [salesSetting, setSalesSetting] = useState<SalesSetting | null>(null)
+  const [bankAccounts, setBankAccounts] = useState<Account[]>([])
+
+  // Approve & Email dropdown state
+  const [isApproveDropdownOpen, setIsApproveDropdownOpen] = useState(false)
+
+  // Payment Modal states
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false)
+  const [isSplitPayment, setIsSplitPayment] = useState(false)
+  const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0])
+  const [singlePaymentAccountId, setSinglePaymentAccountId] = useState('')
+  const [singlePaymentAmount, setSinglePaymentAmount] = useState('')
+  const [paymentRows, setPaymentRows] = useState<{ accountId: string; amount: number | '' }[]>([
+    { accountId: '', amount: '' }
+  ])
 
   // Loading & UX States
   const [loading, setLoading] = useState(true)
@@ -37,6 +52,7 @@ export function CreateInvoiceTab({
   const [isDownloadingPdf, setIsDownloadingPdf] = useState(false)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [isMoreDropdownOpen, setIsMoreDropdownOpen] = useState(false)
+  const [isEmailModalOpen, setIsEmailModalOpen] = useState(false)
 
   // Form Fields
   const [selectedContactId, setSelectedContactId] = useState('')
@@ -46,7 +62,7 @@ export function CreateInvoiceTab({
   const [dueDate, setDueDate] = useState('')
   const [status, setStatus] = useState<'Draft' | 'Awaiting Approval' | 'Awaiting Payment' | 'Paid'>('Draft')
   const [currency, setCurrency] = useState(activeOrg.currency || 'USD')
-  const [taxType, setTaxType] = useState<'Inclusive' | 'Exclusive'>('Exclusive')
+  const [taxType, setTaxType] = useState<'Inclusive' | 'Exclusive' | 'No Tax'>('Exclusive')
   const [selectedProjectId, setSelectedProjectId] = useState('')
   const [notes, setNotes] = useState('')
   const [attachmentName, setAttachmentName] = useState('')
@@ -226,6 +242,24 @@ export function CreateInvoiceTab({
       setSalesSetting(loadedSettings)
       setProjects(loadedProjects)
 
+      let loadedBanks: Account[] = []
+      if (isMockMode) {
+        loadedBanks = [
+          { id: 'mock-bank-090', code: '090', name: 'ANZ Business Account', class_type: 'Asset', type: 'Bank', description: 'Primary business operating checking account', is_system_account: true, created_at: '', default_tax_rate: null },
+          { id: 'mock-bank-092', code: '092', name: 'ANZ Savings Account', class_type: 'Asset', type: 'Bank', description: 'Corporate reserve savings account', is_system_account: false, created_at: '', default_tax_rate: null }
+        ]
+        const savedCustomBanks = localStorage.getItem(`kdm_mock_custom_banks_${activeOrg.id}`)
+        if (savedCustomBanks) {
+          loadedBanks = [...loadedBanks, ...JSON.parse(savedCustomBanks)]
+        }
+      } else {
+        loadedBanks = loadedAccounts.filter(a => a.type === 'Bank' || (a.class_type === 'Asset' && a.code === '090') || a.name.toLowerCase().includes('bank'))
+      }
+      setBankAccounts(loadedBanks)
+      if (loadedBanks.length > 0) {
+        setSinglePaymentAccountId(loadedBanks[0].id)
+      }
+
       if (editingInvoiceId) {
         if (editingInvoiceId.startsWith('convert-quote-')) {
           // CONVERSION MODE: Load quote details and pre-populate in the new invoice editor
@@ -253,11 +287,11 @@ export function CreateInvoiceTab({
           if (sourceQuote) {
             setSelectedContactId(sourceQuote.contact)
             setReference(`Converted from Quote ${sourceQuote.quote_number}` + (sourceQuote.reference ? ` (${sourceQuote.reference})` : ''))
-            
+
             // Set invoice date to today, due date to today + standard payment terms
             const todayStr = new Date().toISOString().split('T')[0]
             setDate(todayStr)
-            
+
             let days = 15
             if (loadedSettings) {
               if (loadedSettings.standard_payment_terms.toLowerCase().includes('30')) days = 30
@@ -327,7 +361,7 @@ export function CreateInvoiceTab({
             setSelectedProjectId(targetInvoice.project || '')
             setNotes(localStorage.getItem(`kdm_invoice_notes_${targetInvoice.id}`) || '')
             setAttachmentName(localStorage.getItem(`kdm_invoice_attachment_${targetInvoice.id}`) || '')
-            
+
             if (targetInvoice.lines && targetInvoice.lines.length > 0) {
               setLines(targetInvoice.lines.map((l: any, idx: number) => ({
                 id: l.id || String(idx),
@@ -346,7 +380,11 @@ export function CreateInvoiceTab({
         setInvoiceDbId(null)
         // NEW MODE: Initialize standard blank invoice defaults - start completely empty
         setSelectedContactId('')
-        setLines([{ id: '1', itemId: '', description: '', quantity: '', unitPrice: '', discount: '', accountId: '', taxRateId: '' }])
+        const defaultAcc = loadedAccounts.find(a => a.code === '200' || a.name.toLowerCase().includes('sales') || a.class_type === 'Revenue')?.id || loadedAccounts[0]?.id || ''
+        const defaultTax = taxType === 'No Tax'
+          ? (loadedTaxRates.find(t => t.name.toLowerCase().includes('exempt') || Number(t.rate) === 0)?.id || '')
+          : (loadedTaxRates.find(t => t.name.toLowerCase().includes('consulting'))?.id || loadedTaxRates[0]?.id || '')
+        setLines([{ id: '1', itemId: '', description: '', quantity: '', unitPrice: '', discount: '', accountId: defaultAcc, taxRateId: defaultTax }])
         setNotes('')
         setAttachmentName('')
         setAttachmentFile(null)
@@ -417,9 +455,11 @@ export function CreateInvoiceTab({
       if (next[index]) {
         const nextRow = { ...next[index] }
         delete nextRow.itemId
-        delete nextRow.accountId
+        delete nextRow.description
         delete nextRow.quantity
         delete nextRow.unitPrice
+        delete nextRow.accountId
+        delete nextRow.taxRateId
         next[index] = nextRow
       }
       return next
@@ -468,7 +508,7 @@ export function CreateInvoiceTab({
 
       setSelectedContactId(createdContact.id)
       setShowQuickContactModal(false)
-      
+
       // Reset form fields
       setQuickContactName('')
       setQuickContactEmail('')
@@ -555,12 +595,42 @@ export function CreateInvoiceTab({
     }
   }
 
+  const handleTaxTypeChange = (newType: 'Inclusive' | 'Exclusive' | 'No Tax') => {
+    setTaxType(newType)
+    if (newType === 'No Tax') {
+      const exemptRate = taxRates.find(t => t.name.toLowerCase().includes('exempt') || Number(t.rate) === 0)
+      if (exemptRate) {
+        setLines(prev => prev.map(line => ({
+          ...line,
+          taxRateId: exemptRate.id
+        })))
+      }
+    }
+  }
+
   const updateLineField = (index: number, field: keyof LineFormItem, value: any) => {
     const updated = [...lines]
     updated[index] = {
       ...updated[index],
       [field]: value
     }
+
+    if (field === 'unitPrice' && value !== '' && Number(value) >= 0) {
+      if (!updated[index].quantity || Number(updated[index].quantity) <= 0) {
+        updated[index].quantity = 1
+      }
+      if (!updated[index].accountId) {
+        const defaultAccount = accounts.find(a => a.code === '200' || a.name.toLowerCase().includes('sales') || a.class_type === 'Revenue')?.id || ''
+        updated[index].accountId = defaultAccount
+      }
+      if (!updated[index].taxRateId) {
+        const defaultTax = taxType === 'No Tax'
+          ? (taxRates.find(t => t.name.toLowerCase().includes('exempt') || Number(t.rate) === 0)?.id || '')
+          : (taxRates.find(t => t.name.toLowerCase().includes('consulting'))?.id || '')
+        updated[index].taxRateId = defaultTax
+      }
+    }
+
     setLines(updated)
 
     // Clear validation error on change
@@ -578,6 +648,10 @@ export function CreateInvoiceTab({
   }
 
   const addLineItem = () => {
+    const defaultAcc = accounts.find(a => a.code === '200' || a.name.toLowerCase().includes('sales') || a.class_type === 'Revenue')?.id || accounts[0]?.id || ''
+    const defaultTaxRate = taxType === 'No Tax'
+      ? (taxRates.find(t => t.name.toLowerCase().includes('exempt') || Number(t.rate) === 0)?.id || '')
+      : (taxRates.find(t => t.name.toLowerCase().includes('consulting'))?.id || taxRates[0]?.id || '')
     setLines([...lines, {
       id: String(Date.now()),
       itemId: '',
@@ -585,8 +659,8 @@ export function CreateInvoiceTab({
       quantity: '',
       unitPrice: '',
       discount: '',
-      accountId: '',
-      taxRateId: ''
+      accountId: defaultAcc,
+      taxRateId: defaultTaxRate
     }])
   }
 
@@ -604,7 +678,7 @@ export function CreateInvoiceTab({
       const u = Number(line.unitPrice) || 0
       const d = Number(line.discount) || 0
       const lineTotal = q * u * (1 - d / 100)
-      
+
       if (taxType === 'Inclusive') {
         const rateObj = taxRates.find(t => t.id === line.taxRateId)
         const rateVal = rateObj ? Number(rateObj.rate) : 0
@@ -623,10 +697,10 @@ export function CreateInvoiceTab({
       const u = Number(line.unitPrice) || 0
       const d = Number(line.discount) || 0
       const lineTotal = q * u * (1 - d / 100)
-      
+
       const rateObj = taxRates.find(t => t.id === line.taxRateId)
       const rateVal = rateObj ? Number(rateObj.rate) : 0
-      
+
       if (taxType === 'Inclusive') {
         const lineTax = lineTotal * (rateVal / (100 + rateVal))
         return sum + lineTax
@@ -650,9 +724,7 @@ export function CreateInvoiceTab({
     }
   }
 
-  // Save / Update invoice
-  const handleSaveInvoice = async (statusUpdate?: 'Draft' | 'Awaiting Approval' | 'Awaiting Payment' | 'Paid') => {
-    // Form Validation
+  const validateForm = () => {
     const formErrors: Record<string, string> = {}
     const rowErrors: Record<number, Record<string, boolean>> = {}
     let hasValidationErrors = false
@@ -671,17 +743,16 @@ export function CreateInvoiceTab({
     }
 
     lines.forEach((l, idx) => {
-      const q = Number(l.quantity) || 0
       const rowErr: Record<string, boolean> = {}
       let rowHasErr = false
 
-      if (q <= 0 || l.quantity === '') {
-        rowErr.quantity = true
+      if (!l.description || !l.description.trim()) {
+        rowErr.description = true
         rowHasErr = true
         hasValidationErrors = true
       }
-      if (!l.accountId) {
-        rowErr.accountId = true
+      if (l.unitPrice === '' || Number(l.unitPrice) < 0) {
+        rowErr.unitPrice = true
         rowHasErr = true
         hasValidationErrors = true
       }
@@ -694,17 +765,23 @@ export function CreateInvoiceTab({
     if (hasValidationErrors) {
       setErrors(formErrors)
       setLineErrors(rowErrors)
-      showAlert({ 
-        title: 'Validation Error', 
-        message: 'Please fill in all required fields highlighted in red before proceeding.', 
-        type: 'warning' 
-      })
-      return
+      return false
     }
 
-    // Clear errors if valid
     setErrors({})
     setLineErrors({})
+    return true
+  }
+
+  // Save / Update invoice
+  const handleSaveInvoice = async (
+    statusUpdate?: 'Draft' | 'Awaiting Approval' | 'Awaiting Payment' | 'Paid',
+    isEmailing: boolean = false,
+    silent: boolean = false
+  ): Promise<string | null> => {
+    if (!validateForm()) {
+      return null
+    }
 
     setIsSubmitting(true)
 
@@ -713,14 +790,20 @@ export function CreateInvoiceTab({
       const u = Number(l.unitPrice) || 0
       const d = Number(l.discount) || 0
       const lineTotal = q * u * (1 - d / 100)
+
+      const fallbackAcc = accounts.find(a => a.code === '200' || a.name.toLowerCase().includes('sales') || a.class_type === 'Revenue')?.id || accounts[0]?.id || ''
+      const fallbackTax = taxType === 'No Tax'
+        ? (taxRates.find(t => t.name.toLowerCase().includes('exempt') || Number(t.rate) === 0)?.id || null)
+        : (taxRates.find(t => t.name.toLowerCase().includes('consulting'))?.id || taxRates[0]?.id || null)
+
       return {
         item: l.itemId ? l.itemId : null,
         description: l.description,
         quantity: q,
         unit_price: u,
         discount: d,
-        account: l.accountId,
-        tax_rate: l.taxRateId ? l.taxRateId : null,
+        account: l.accountId || fallbackAcc,
+        tax_rate: l.taxRateId || fallbackTax,
         total: lineTotal
       }
     })
@@ -752,7 +835,7 @@ export function CreateInvoiceTab({
           const contactObj = contacts.find(c => c.id === selectedContactId)
           const savedInvs = localStorage.getItem(`kdm_mock_invoices_${activeOrg.id}`)
           const list = savedInvs ? JSON.parse(savedInvs) : []
-          
+
           const updatedList = list.map((inv: Invoice) => {
             if (inv.id === resolvedId || inv.invoice_number === editingInvoiceId) {
               return {
@@ -764,23 +847,38 @@ export function CreateInvoiceTab({
             }
             return inv
           })
-          
+
           localStorage.setItem(`kdm_mock_invoices_${activeOrg.id}`, JSON.stringify(updatedList))
           localStorage.setItem(`kdm_invoice_notes_${editingInvoiceId}`, notes)
           localStorage.setItem(`kdm_invoice_attachment_${editingInvoiceId}`, attachmentName)
-          showAlert({ title: 'Invoice Updated', message: 'The invoice has been updated successfully.', type: 'success' })
-          if (setEditingInvoiceId) setEditingInvoiceId(null)
-          setActiveTab('Invoices')
-          return
+          if (!silent) {
+            showAlert({ title: 'Invoice Updated', message: 'The invoice has been updated successfully.', type: 'success' })
+            if (isEmailing) {
+              setInvoiceDbId(resolvedId || null)
+              setIsEmailModalOpen(true)
+            } else {
+              if (setEditingInvoiceId) setEditingInvoiceId(null)
+              setActiveTab('Invoices')
+            }
+          }
+          return resolvedId
         }
 
         await apiService.updateInvoice(resolvedId!, payload)
         localStorage.setItem(`kdm_invoice_notes_${editingInvoiceId}`, notes)
         localStorage.setItem(`kdm_invoice_attachment_${editingInvoiceId}`, attachmentName)
-        showAlert({ title: 'Invoice Updated', message: 'The invoice has been updated successfully.', type: 'success' })
-        if (setEditingInvoiceId) setEditingInvoiceId(null)
-        setActiveTab('Invoices')
-        return
+        
+        if (!silent) {
+          showAlert({ title: 'Invoice Updated', message: 'The invoice has been updated successfully.', type: 'success' })
+          if (isEmailing) {
+            setInvoiceDbId(resolvedId || null)
+            setIsEmailModalOpen(true)
+          } else {
+            if (setEditingInvoiceId) setEditingInvoiceId(null)
+            setActiveTab('Invoices')
+          }
+        }
+        return resolvedId
       }
 
       // Create new invoice (either blank or quote converted)
@@ -823,10 +921,19 @@ export function CreateInvoiceTab({
           localStorage.setItem(`kdm_mock_settings_${activeOrg.id}`, JSON.stringify(updatedSetting))
         }
 
-        showAlert({ title: 'Invoice Created', message: `Invoice ${invoiceNumber} has been created successfully.`, type: 'success' })
-        if (setEditingInvoiceId) setEditingInvoiceId(null)
-        setActiveTab('Invoices')
-        return
+        if (!silent) {
+          showAlert({ title: 'Invoice Created', message: `Invoice ${invoiceNumber} has been created successfully.`, type: 'success' })
+          if (isEmailing) {
+            setInvoiceDbId(mockCreated.id || null)
+            setIsEmailModalOpen(true)
+          } else {
+            if (setEditingInvoiceId) setEditingInvoiceId(null)
+            setActiveTab('Invoices')
+          }
+        } else {
+          setInvoiceDbId(mockCreated.id || null)
+        }
+        return mockCreated.id || null
       }
 
       const created = await apiService.createInvoice(activeOrg.id, payload)
@@ -834,16 +941,29 @@ export function CreateInvoiceTab({
         localStorage.setItem(`kdm_invoice_notes_${created.id}`, notes)
         localStorage.setItem(`kdm_invoice_attachment_${created.id}`, attachmentName)
       }
-      showAlert({ title: 'Invoice Created', message: `Invoice ${invoiceNumber} has been created successfully.`, type: 'success' })
-      if (setEditingInvoiceId) setEditingInvoiceId(null)
-      setActiveTab('Invoices')
+      
+      if (!silent) {
+        showAlert({ title: 'Invoice Created', message: `Invoice ${invoiceNumber} has been created successfully.`, type: 'success' })
+        if (isEmailing) {
+          setInvoiceDbId(created.id || null)
+          setIsEmailModalOpen(true)
+        } else {
+          if (setEditingInvoiceId) setEditingInvoiceId(null)
+          setActiveTab('Invoices')
+        }
+      } else {
+        setInvoiceDbId(created.id || null)
+      }
+      return created.id || null
     } catch (err: any) {
       showAlert({ title: 'Save Error', message: "An error occurred while saving the invoice: " + (err.message || "Please check if the invoice number is unique."), type: 'error' })
+      return null
     } finally {
       setIsSubmitting(false)
       setIsMoreDropdownOpen(false)
     }
   }
+
 
   // Download invoice as a premium PDF file
   const handlePrintPDF = async () => {
@@ -871,7 +991,7 @@ export function CreateInvoiceTab({
 
       // Fetch PDF from Django backend with POST transmitting customization payloads
       const url = `${API_BASE_URL}/invoices/${resolvedId}/download-pdf/?_t=${Date.now()}`
-      
+
       const logo = localStorage.getItem(`kdm_org_logo_${activeOrg.id}`) || ''
       const bankDetails = JSON.parse(localStorage.getItem(`kdm_bank_details_${activeOrg.id}`) || '{}')
       const templateSettings = JSON.parse(localStorage.getItem(`kdm_sales_template_settings_${activeOrg.id}`) || '{}')
@@ -926,7 +1046,7 @@ export function CreateInvoiceTab({
       isDestructive: true
     })
     if (!confirmed) return
-    
+
     setIsSubmitting(true)
     try {
       const resolvedId = invoiceDbId || editingInvoiceId
@@ -938,7 +1058,7 @@ export function CreateInvoiceTab({
       } else {
         await apiService.deleteInvoice(resolvedId!)
       }
-      
+
       if (setEditingInvoiceId) setEditingInvoiceId(null)
       setActiveTab('Invoices')
     } catch (err: any) {
@@ -978,6 +1098,127 @@ export function CreateInvoiceTab({
       setIsSubmitting(false)
       setIsMoreDropdownOpen(false)
     }
+  }
+
+  const handleRecordPayment = async () => {
+    const payments = isSplitPayment
+      ? paymentRows.map(r => ({ accountId: r.accountId, amount: Number(r.amount) || 0 }))
+      : [{ accountId: singlePaymentAccountId, amount: Number(singlePaymentAmount) || 0 }];
+
+    const invalidAccounts = payments.some(p => !p.accountId);
+    if (invalidAccounts) {
+      showAlert({ title: 'Validation Warning', message: 'All selected payment accounts must be valid.', type: 'warning' });
+      return;
+    }
+
+    const invalidAmounts = payments.some(p => p.amount <= 0);
+    if (invalidAmounts) {
+      showAlert({ title: 'Validation Warning', message: 'All payment amounts must be greater than zero.', type: 'warning' });
+      return;
+    }
+
+    const totalPaid = payments.reduce((sum, p) => sum + p.amount, 0);
+    const grandTotal = getGrandTotal();
+    const diff = Math.abs(totalPaid - grandTotal);
+    if (diff >= 0.01) {
+      showAlert({
+        title: 'Amount Mismatch',
+        message: `The total payment amount (${currencySymbol}${totalPaid.toFixed(2)}) must exactly equal the invoice total (${currencySymbol}${grandTotal.toFixed(2)}). Difference is ${currencySymbol}${diff.toFixed(2)}.`,
+        type: 'warning'
+      });
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const balanceKey = `kdm_bank_balances_${activeOrg.id}`;
+      const savedBalances = localStorage.getItem(balanceKey);
+      const balances = savedBalances ? JSON.parse(savedBalances) : {
+        'mock-bank-090': 5142.90,
+        'bank-090': 5142.90
+      };
+
+      payments.forEach(p => {
+        if (balances[p.accountId] === undefined) {
+          balances[p.accountId] = p.accountId.includes('090') ? 5142.90 : 0.00;
+        }
+        balances[p.accountId] = parseFloat((balances[p.accountId] + p.amount).toFixed(2));
+      });
+      localStorage.setItem(balanceKey, JSON.stringify(balances));
+
+      const txKey = `kdm_bank_transactions_${activeOrg.id}`;
+      const savedTx = localStorage.getItem(txKey);
+      const transactions = savedTx ? JSON.parse(savedTx) : [];
+
+      const contactObj = contacts.find(c => c.id === selectedContactId);
+      const contactName = contactObj ? contactObj.name : "Customer";
+
+      payments.forEach(p => {
+        const bankAcc = bankAccounts.find(b => b.id === p.accountId);
+        const newTx = {
+          id: `tx-${Date.now()}-${Math.random()}`,
+          accountId: p.accountId,
+          accountName: bankAcc?.name || 'Bank Account',
+          date: paymentDate,
+          description: `Payment received for Invoice ${invoiceNumber}. Contact: ${contactName}`,
+          amount: p.amount,
+          reference: reference || invoiceNumber
+        };
+        transactions.unshift(newTx);
+      });
+      localStorage.setItem(txKey, JSON.stringify(transactions));
+
+      const resolvedId = invoiceDbId || editingInvoiceId;
+      if (isMockMode) {
+        const savedInvs = localStorage.getItem(`kdm_mock_invoices_${activeOrg.id}`);
+        const list = savedInvs ? JSON.parse(savedInvs) : [];
+        const updatedList = list.map((inv: Invoice) => {
+          if (inv.id === resolvedId || inv.invoice_number === editingInvoiceId) {
+            return {
+              ...inv,
+              status: 'Paid' as const
+            };
+          }
+          return inv;
+        });
+        localStorage.setItem(`kdm_mock_invoices_${activeOrg.id}`, JSON.stringify(updatedList));
+      } else {
+        await apiService.updateInvoice(resolvedId!, { status: 'Paid' });
+      }
+
+      setStatus('Paid');
+      setIsPaymentModalOpen(false);
+      showAlert({
+        title: 'Payment Recorded',
+        message: `Successfully recorded payment of ${currencySymbol}${grandTotal.toFixed(2)} and marked invoice as Paid.`,
+        type: 'success'
+      });
+
+      if (setEditingInvoiceId) setEditingInvoiceId(null);
+      setActiveTab('Invoices');
+    } catch (err: any) {
+      showAlert({ title: 'Error', message: 'Failed to record payment: ' + err.message, type: 'error' });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const addPaymentRow = () => {
+    setPaymentRows([...paymentRows, { accountId: bankAccounts[0]?.id || '', amount: '' }])
+  }
+
+  const removePaymentRow = (index: number) => {
+    if (paymentRows.length <= 1) return
+    setPaymentRows(paymentRows.filter((_, idx) => idx !== index))
+  }
+
+  const updatePaymentRow = (index: number, field: 'accountId' | 'amount', value: any) => {
+    const updated = [...paymentRows]
+    updated[index] = {
+      ...updated[index],
+      [field]: value
+    }
+    setPaymentRows(updated)
   }
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1077,6 +1318,76 @@ export function CreateInvoiceTab({
   ]
 
   const isConversionMode = editingInvoiceId && editingInvoiceId.startsWith('convert-quote-')
+  const isNewInvoice = !editingInvoiceId || isConversionMode
+  const isReadOnly = status === 'Paid'
+
+  const grandTotal = getGrandTotal()
+  const totalPaid = isSplitPayment
+    ? paymentRows.reduce((sum, r) => sum + (Number(r.amount) || 0), 0)
+    : (Number(singlePaymentAmount) || 0)
+  const paymentDiff = grandTotal - totalPaid
+  const isPaymentBalanced = Math.abs(paymentDiff) < 0.01
+
+  const renderApproveAndEmailButton = () => {
+    return (
+      <div className="relative inline-flex h-[38px] rounded-[3px] shadow-sm">
+        <button
+          onClick={() => {
+            if (validateForm()) {
+              setIsEmailModalOpen(true)
+            }
+          }}
+          disabled={isSubmitting}
+          className="bg-[#0F5B38] hover:brightness-105 text-white font-medium text-xs px-4.5 py-2 rounded-l-[3px] border-r border-emerald-700/30 transition duration-200 cursor-pointer disabled:brightness-90 flex items-center justify-center space-x-1.5 h-full"
+          type="button"
+        >
+          {isSubmitting ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <span>Approve & Email</span>
+          )}
+        </button>
+        <button
+          onClick={() => setIsApproveDropdownOpen(!isApproveDropdownOpen)}
+          disabled={isSubmitting}
+          className="bg-[#0F5B38] hover:brightness-105 text-white px-2 rounded-r-[3px] transition duration-200 cursor-pointer disabled:brightness-90 flex items-center justify-center h-full border-l border-emerald-500/20"
+          type="button"
+        >
+          <ChevronDown className="h-3.5 w-3.5" />
+        </button>
+        {isApproveDropdownOpen && (
+          <>
+            <div className="fixed inset-0 z-40" onClick={() => setIsApproveDropdownOpen(false)}></div>
+            <div className="absolute right-0 top-full mt-1.5 w-40 bg-white border border-slate-200 rounded-[3px] shadow-xl z-50 p-1.5 font-normal text-xs text-slate-700 animate-scaleIn">
+              <button
+                onClick={() => {
+                  handleSaveInvoice('Awaiting Payment')
+                  setIsApproveDropdownOpen(false)
+                }}
+                disabled={isSubmitting}
+                className="w-full text-left px-3.5 py-2 hover:bg-slate-50 transition cursor-pointer text-slate-700 font-semibold rounded-[3px]"
+                type="button"
+              >
+                Approve
+              </button>
+              <button
+                onClick={() => {
+                  if (validateForm()) {
+                    setIsEmailModalOpen(true)
+                    setIsApproveDropdownOpen(false)
+                  }
+                }}
+                className="w-full text-left px-3.5 py-2 hover:bg-slate-50 transition cursor-pointer text-slate-700 font-normal rounded-[3px]"
+                type="button"
+              >
+                Email
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    )
+  }
 
   if (loading) {
     return (
@@ -1129,12 +1440,11 @@ export function CreateInvoiceTab({
               {editingInvoiceId && !isConversionMode ? `Sales Invoice: ${invoiceNumber}` : 'Create new sales invoice'}
             </h2>
             {editingInvoiceId && !isConversionMode && (
-              <span className={`inline-block text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider mt-1 border ${
-                status === 'Paid' ? 'bg-emerald-50 text-emerald-600 border-emerald-100/30' :
-                status === 'Awaiting Payment' ? 'bg-amber-50 text-amber-600 border-amber-100/30' :
-                status === 'Awaiting Approval' ? 'bg-blue-50 text-blue-600 border-blue-100/30' :
-                'bg-slate-100 text-slate-500 border-slate-200/50'
-              }`}>
+              <span className={`inline-block text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider mt-1 border ${status === 'Paid' ? 'bg-emerald-50 text-emerald-600 border-emerald-100/30' :
+                  status === 'Awaiting Payment' ? 'bg-amber-50 text-amber-600 border-amber-100/30' :
+                    status === 'Awaiting Approval' ? 'bg-blue-50 text-blue-600 border-blue-100/30' :
+                      'bg-slate-100 text-slate-500 border-slate-200/50'
+                }`}>
                 {status}
               </span>
             )}
@@ -1142,80 +1452,30 @@ export function CreateInvoiceTab({
         </div>
 
         <div className="flex items-center space-x-2.5 flex-wrap sm:justify-end gap-2">
-          {editingInvoiceId && !isConversionMode ? (
+          {/* Cancel / Back Button */}
+          <button
+            onClick={() => {
+              if (setEditingInvoiceId) setEditingInvoiceId(null)
+              setActiveTab('Invoices')
+            }}
+            className="bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 font-medium text-xs px-4.5 py-2 rounded-[3px] shadow-sm transition duration-200 cursor-pointer h-[38px] flex items-center justify-center"
+          >
+            Cancel
+          </button>
+
+          {isNewInvoice ? (
             <>
-              {/* Cancel Button */}
+              {/* New Invoice Mode actions */}
               <button
-                onClick={() => {
-                  if (setEditingInvoiceId) setEditingInvoiceId(null)
-                  setActiveTab('Invoices')
-                }}
-                className="bg-white hover:bg-slate-50 text-slate-555 border border-slate-200 font-medium text-xs px-4.5 py-2 rounded-[3px] shadow-sm transition duration-200 cursor-pointer h-[38px] flex items-center justify-center"
+                onClick={() => handleSaveInvoice('Draft')}
+                disabled={isSubmitting}
+                className="bg-white hover:bg-slate-50 text-slate-700 hover:text-[#0F5B38] border border-slate-200 hover:border-slate-300 font-medium text-xs px-4.5 py-2 rounded-[3px] shadow-sm transition duration-200 cursor-pointer h-[38px] flex items-center justify-center disabled:bg-slate-50 disabled:text-slate-400"
               >
-                Cancel
+                Save as Draft
               </button>
 
-              {/* Save PDF Button */}
-              <button
-                onClick={handlePrintPDF}
-                className="bg-white hover:bg-slate-50 text-slate-700 hover:text-[#0F5B38] border border-slate-200 hover:border-slate-300 font-medium text-xs px-4.5 py-2 rounded-[3px] shadow-sm transition duration-200 cursor-pointer h-[38px] flex items-center justify-center space-x-1.5"
-              >
-                Save PDF
-              </button>
+              {renderApproveAndEmailButton()}
 
-              {/* Primary Action Button based on Status */}
-              {status === 'Draft' && (
-                <button
-                  onClick={() => handleUpdateStatusOnTheSpot('Awaiting Approval')}
-                  disabled={isSubmitting}
-                  className="bg-[#0F5B38] hover:brightness-105 text-white font-medium text-xs px-4.5 py-2 rounded-[3px] shadow-md transition duration-200 cursor-pointer disabled:brightness-90 flex items-center justify-center space-x-1.5 h-[38px]"
-                >
-                  {isSubmitting ? (
-                    <>
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      <span>Submitting...</span>
-                    </>
-                  ) : (
-                    <span>Submit for Approval</span>
-                  )}
-                </button>
-              )}
-
-              {status === 'Awaiting Approval' && (
-                <button
-                  onClick={() => handleUpdateStatusOnTheSpot('Awaiting Payment')}
-                  disabled={isSubmitting}
-                  className="bg-[#0F5B38] hover:brightness-105 text-white font-medium text-xs px-4.5 py-2 rounded-[3px] shadow-md transition duration-200 cursor-pointer disabled:brightness-90 flex items-center justify-center space-x-1.5 h-[38px]"
-                >
-                  {isSubmitting ? (
-                    <>
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      <span>Approving...</span>
-                    </>
-                  ) : (
-                    <span>Approve</span>
-                  )}
-                </button>
-              )}
-
-              {status === 'Awaiting Payment' && (
-                <button
-                  onClick={() => handleUpdateStatusOnTheSpot('Paid')}
-                  disabled={isSubmitting}
-                  className="bg-[#0F5B38] hover:brightness-105 text-white font-medium text-xs px-4.5 py-2 rounded-[3px] shadow-md transition duration-200 cursor-pointer disabled:brightness-90 flex items-center justify-center space-x-1.5 h-[38px]"
-                >
-                  {isSubmitting ? (
-                    <>
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      <span>Marking Paid...</span>
-                    </>
-                  ) : (
-                    <span>Mark as Paid</span>
-                  )}
-                </button>
-              )}
-
-              {/* Three Vertical Dots Dropdown Menu */}
               <div className="relative">
                 <button
                   onClick={() => setIsMoreDropdownOpen(!isMoreDropdownOpen)}
@@ -1227,105 +1487,31 @@ export function CreateInvoiceTab({
                 {isMoreDropdownOpen && (
                   <>
                     <div className="fixed inset-0 z-40" onClick={() => setIsMoreDropdownOpen(false)}></div>
-                    <div className="absolute right-0 mt-2 w-48 bg-white border border-slate-200 rounded-[3px] shadow-xl z-50 p-1.5 divide-y divide-slate-50 font-normal text-xs text-slate-750">
+                    <div className="absolute right-0 mt-2 w-48 bg-white border border-slate-200 rounded-[3px] shadow-xl z-50 p-1.5 divide-y divide-slate-50 font-normal text-xs text-slate-700">
                       <div className="py-1 space-y-0.5">
-                        {status === 'Draft' && (
-                          <>
-                            <button
-                              onClick={() => {
-                                handleUpdateStatusOnTheSpot('Awaiting Payment')
-                                setIsMoreDropdownOpen(false)
-                              }}
-                              disabled={isSubmitting}
-                              className="w-full text-left px-4 py-2 hover:bg-slate-50 transition cursor-pointer text-slate-700 font-normal rounded-[3px]"
-                            >
-                              Approve
-                            </button>
-                            <button
-                              onClick={() => {
-                                handleSaveInvoice('Draft')
-                                setIsMoreDropdownOpen(false)
-                              }}
-                              disabled={isSubmitting}
-                              className="w-full text-left px-4 py-2 hover:bg-slate-50 transition cursor-pointer text-slate-700 font-normal rounded-[3px]"
-                            >
-                              Save as Draft
-                            </button>
-                            <button
-                              onClick={() => {
-                                handleDeleteInvoice()
-                                setIsMoreDropdownOpen(false)
-                              }}
-                              disabled={isSubmitting}
-                              className="w-full text-left px-4 py-2 hover:bg-rose-50 hover:text-rose-600 transition cursor-pointer text-rose-500 font-normal rounded-[3px]"
-                            >
-                              Delete
-                            </button>
-                          </>
-                        )}
-
-                        {status === 'Awaiting Approval' && (
-                          <>
-                            <button
-                              onClick={() => {
-                                handleUpdateStatusOnTheSpot('Draft')
-                                setIsMoreDropdownOpen(false)
-                              }}
-                              disabled={isSubmitting}
-                              className="w-full text-left px-4 py-2 hover:bg-slate-50 transition cursor-pointer text-slate-700 font-normal rounded-[3px]"
-                            >
-                              Revert to Draft
-                            </button>
-                            <button
-                              onClick={() => {
-                                handleDeleteInvoice()
-                                setIsMoreDropdownOpen(false)
-                              }}
-                              disabled={isSubmitting}
-                              className="w-full text-left px-4 py-2 hover:bg-rose-50 hover:text-rose-600 transition cursor-pointer text-rose-500 font-normal rounded-[3px]"
-                            >
-                              Delete
-                            </button>
-                          </>
-                        )}
-
-                        {status === 'Awaiting Payment' && (
-                          <>
-                            <button
-                              onClick={() => {
-                                handleUpdateStatusOnTheSpot('Draft')
-                                setIsMoreDropdownOpen(false)
-                              }}
-                              disabled={isSubmitting}
-                              className="w-full text-left px-4 py-2 hover:bg-slate-50 transition cursor-pointer text-slate-700 font-normal rounded-[3px]"
-                            >
-                              Revert to Draft
-                            </button>
-                            <button
-                              onClick={() => {
-                                handleDeleteInvoice()
-                                setIsMoreDropdownOpen(false)
-                              }}
-                              disabled={isSubmitting}
-                              className="w-full text-left px-4 py-2 hover:bg-rose-50 hover:text-rose-600 transition cursor-pointer text-rose-500 font-normal rounded-[3px]"
-                            >
-                              Delete
-                            </button>
-                          </>
-                        )}
-
-                        {status === 'Paid' && (
-                          <button
-                            onClick={() => {
-                              handleDeleteInvoice()
-                              setIsMoreDropdownOpen(false)
-                            }}
-                            disabled={isSubmitting}
-                            className="w-full text-left px-4 py-2 hover:bg-rose-50 hover:text-rose-600 transition cursor-pointer text-rose-500 font-normal rounded-[3px]"
-                          >
-                            Delete
-                          </button>
-                        )}
+                        <button
+                          onClick={() => {
+                            showAlert({
+                              title: 'Save PDF',
+                              message: 'Please save the invoice as a Draft or Approve it first before downloading PDF.',
+                              type: 'warning'
+                            })
+                            setIsMoreDropdownOpen(false)
+                          }}
+                          className="w-full text-left px-4 py-2 hover:bg-slate-50 transition cursor-pointer text-slate-700 font-normal rounded-[3px]"
+                        >
+                          Save PDF
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (setEditingInvoiceId) setEditingInvoiceId(null)
+                            setActiveTab('Invoices')
+                            setIsMoreDropdownOpen(false)
+                          }}
+                          className="w-full text-left px-4 py-2 hover:bg-rose-50 hover:text-rose-600 transition cursor-pointer text-rose-500 font-normal rounded-[3px]"
+                        >
+                          Delete
+                        </button>
                       </div>
                     </div>
                   </>
@@ -1334,40 +1520,199 @@ export function CreateInvoiceTab({
             </>
           ) : (
             <>
-              {/* Creating new invoice actions */}
-              <button
-                onClick={() => {
-                  if (setEditingInvoiceId) setEditingInvoiceId(null)
-                  setActiveTab('Invoices')
-                }}
-                className="bg-white hover:bg-slate-50 text-slate-555 border border-slate-200 font-medium text-xs px-4.5 py-2 rounded-[3px] shadow-sm transition duration-200 cursor-pointer h-[38px] flex items-center justify-center"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => handleSaveInvoice('Draft')}
-                disabled={isSubmitting}
-                className="bg-white hover:bg-slate-50 text-slate-700 hover:text-[#0F5B38] border border-slate-200 hover:border-slate-300 font-medium text-xs px-4.5 py-2 rounded-[3px] shadow-sm transition duration-200 cursor-pointer h-[38px] flex items-center justify-center disabled:bg-slate-50 disabled:text-slate-400"
-              >
-                Save as Draft
-              </button>
-              <button
-                onClick={() => handleSaveInvoice('Awaiting Approval')}
-                disabled={isSubmitting}
-                className="bg-[#0F5B38] hover:brightness-105 text-white font-medium text-xs px-4.5 py-2 rounded-[3px] shadow-md transition duration-200 cursor-pointer disabled:brightness-90 flex items-center justify-center space-x-1.5 h-[38px]"
-              >
-                {isSubmitting ? (
-                  <>
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    <span>Submitting...</span>
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle className="h-3.5 w-3.5" />
-                    <span>Submit for Approval</span>
-                  </>
-                )}
-              </button>
+              {/* Existing Invoice Edit/View Mode actions based on Status */}
+              {status === 'Draft' && (
+                <>
+                  <button
+                    onClick={() => handleUpdateStatusOnTheSpot('Awaiting Approval')}
+                    disabled={isSubmitting}
+                    className="bg-[#0F5B38] hover:brightness-105 text-white font-medium text-xs px-4.5 py-2 rounded-[3px] shadow-md transition duration-200 cursor-pointer disabled:brightness-90 flex items-center justify-center space-x-1.5 h-[38px]"
+                  >
+                    {isSubmitting ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <span>Submit for Approval</span>
+                    )}
+                  </button>
+
+                  {renderApproveAndEmailButton()}
+
+                  <div className="relative">
+                    <button
+                      onClick={() => setIsMoreDropdownOpen(!isMoreDropdownOpen)}
+                      className="flex items-center justify-center bg-white hover:bg-slate-50 text-slate-500 hover:text-[#0F5B38] border border-slate-200 hover:border-slate-300 w-[38px] h-[38px] rounded-[3px] transition duration-200 cursor-pointer shadow-sm"
+                      title="More actions"
+                    >
+                      <MoreVertical className="h-4.5 w-4.5" />
+                    </button>
+                    {isMoreDropdownOpen && (
+                      <>
+                        <div className="fixed inset-0 z-40" onClick={() => setIsMoreDropdownOpen(false)}></div>
+                        <div className="absolute right-0 mt-2 w-48 bg-white border border-slate-200 rounded-[3px] shadow-xl z-50 p-1.5 divide-y divide-slate-50 font-normal text-xs text-slate-700">
+                          <div className="py-1 space-y-0.5">
+                            <button
+                              onClick={() => {
+                                handlePrintPDF()
+                                setIsMoreDropdownOpen(false)
+                              }}
+                              className="w-full text-left px-4 py-2 hover:bg-slate-50 transition cursor-pointer text-slate-700 font-normal rounded-[3px]"
+                            >
+                              Print PDF
+                            </button>
+                            <button
+                              onClick={() => {
+                                handleDeleteInvoice()
+                                setIsMoreDropdownOpen(false)
+                              }}
+                              className="w-full text-left px-4 py-2 hover:bg-rose-50 hover:text-rose-600 transition cursor-pointer text-rose-500 font-normal rounded-[3px]"
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </>
+              )}
+
+              {status === 'Awaiting Approval' && (
+                <>
+                  <button
+                    onClick={() => handleSaveInvoice('Awaiting Approval')}
+                    disabled={isSubmitting}
+                    className="bg-white hover:bg-slate-50 text-slate-700 hover:text-[#0F5B38] border border-slate-200 hover:border-slate-300 font-medium text-xs px-4.5 py-2 rounded-[3px] shadow-sm transition duration-200 cursor-pointer h-[38px] flex items-center justify-center disabled:bg-slate-50 disabled:text-slate-400"
+                  >
+                    {isSubmitting ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <span>Save</span>
+                    )}
+                  </button>
+
+                  {renderApproveAndEmailButton()}
+
+                  <div className="relative">
+                    <button
+                      onClick={() => setIsMoreDropdownOpen(!isMoreDropdownOpen)}
+                      className="flex items-center justify-center bg-white hover:bg-slate-50 text-slate-500 hover:text-[#0F5B38] border border-slate-200 hover:border-slate-300 w-[38px] h-[38px] rounded-[3px] transition duration-200 cursor-pointer shadow-sm"
+                      title="More actions"
+                    >
+                      <MoreVertical className="h-4.5 w-4.5" />
+                    </button>
+                    {isMoreDropdownOpen && (
+                      <>
+                        <div className="fixed inset-0 z-40" onClick={() => setIsMoreDropdownOpen(false)}></div>
+                        <div className="absolute right-0 mt-2 w-48 bg-white border border-slate-200 rounded-[3px] shadow-xl z-50 p-1.5 divide-y divide-slate-50 font-normal text-xs text-slate-700">
+                          <div className="py-1 space-y-0.5">
+                            <button
+                              onClick={() => {
+                                handlePrintPDF()
+                                setIsMoreDropdownOpen(false)
+                              }}
+                              className="w-full text-left px-4 py-2 hover:bg-slate-50 transition cursor-pointer text-slate-700 font-normal rounded-[3px]"
+                            >
+                              Print PDF
+                            </button>
+                            <button
+                              onClick={() => {
+                                handleDeleteInvoice()
+                                setIsMoreDropdownOpen(false)
+                              }}
+                              className="w-full text-left px-4 py-2 hover:bg-rose-50 hover:text-rose-600 transition cursor-pointer text-rose-500 font-normal rounded-[3px]"
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </>
+              )}
+
+              {status === 'Awaiting Payment' && (
+                <>
+                  <button
+                    onClick={() => handleSaveInvoice('Awaiting Payment')}
+                    disabled={isSubmitting}
+                    className="bg-white hover:bg-slate-50 text-slate-700 hover:text-[#0F5B38] border border-slate-200 hover:border-slate-300 font-medium text-xs px-4.5 py-2 rounded-[3px] shadow-sm transition duration-200 cursor-pointer h-[38px] flex items-center justify-center disabled:bg-slate-50 disabled:text-slate-400 animate-fadeIn"
+                  >
+                    {isSubmitting ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <span>Save</span>
+                    )}
+                  </button>
+
+                  <button
+                    onClick={handlePrintPDF}
+                    className="bg-white hover:bg-slate-50 text-slate-700 hover:text-[#0F5B38] border border-slate-200 hover:border-slate-300 font-medium text-xs px-4.5 py-2 rounded-[3px] shadow-sm transition duration-200 cursor-pointer h-[38px] flex items-center justify-center space-x-1.5"
+                  >
+                    <span>Save PDF</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setSinglePaymentAmount(getGrandTotal().toFixed(2))
+                      setPaymentRows([{ accountId: bankAccounts[0]?.id || '', amount: getGrandTotal() }])
+                      setIsSplitPayment(false)
+                      setIsPaymentModalOpen(true)
+                    }}
+                    className="bg-[#0F5B38] hover:brightness-105 text-white font-medium text-xs px-4.5 py-2 rounded-[3px] shadow-md transition duration-200 cursor-pointer disabled:brightness-90 flex items-center justify-center space-x-1.5 h-[38px]"
+                  >
+                    <span>Add Payment</span>
+                  </button>
+
+                  <div className="relative">
+                    <button
+                      onClick={() => setIsMoreDropdownOpen(!isMoreDropdownOpen)}
+                      className="flex items-center justify-center bg-white hover:bg-slate-50 text-slate-555 hover:text-[#0F5B38] border border-slate-200 hover:border-slate-300 w-[38px] h-[38px] rounded-[3px] transition duration-200 cursor-pointer shadow-sm"
+                      title="More actions"
+                    >
+                      <MoreVertical className="h-4.5 w-4.5" />
+                    </button>
+                    {isMoreDropdownOpen && (
+                      <>
+                        <div className="fixed inset-0 z-40" onClick={() => setIsMoreDropdownOpen(false)}></div>
+                        <div className="absolute right-0 mt-2 w-48 bg-white border border-slate-200 rounded-[3px] shadow-xl z-50 p-1.5 divide-y divide-slate-50 font-normal text-xs text-slate-700">
+                          <div className="py-1 space-y-0.5">
+                            <button
+                              onClick={() => {
+                                setIsEmailModalOpen(true)
+                                setIsMoreDropdownOpen(false)
+                              }}
+                              className="w-full text-left px-4 py-2 hover:bg-slate-50 transition cursor-pointer text-slate-700 font-normal rounded-[3px]"
+                            >
+                              Email
+                            </button>
+                            <button
+                              onClick={() => {
+                                handleDeleteInvoice()
+                                setIsMoreDropdownOpen(false)
+                              }}
+                              className="w-full text-left px-4 py-2 hover:bg-rose-50 hover:text-rose-600 transition cursor-pointer text-rose-500 font-normal rounded-[3px]"
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </>
+              )}
+
+              {status === 'Paid' && (
+                <>
+                  <button
+                    onClick={handlePrintPDF}
+                    className="bg-[#0F5B38] hover:brightness-105 text-white font-medium text-xs px-4.5 py-2 rounded-[3px] shadow-md transition duration-200 cursor-pointer flex items-center justify-center space-x-1.5 h-[38px]"
+                  >
+                    <span>Print PDF</span>
+                  </button>
+                </>
+              )}
             </>
           )}
         </div>
@@ -1379,9 +1724,19 @@ export function CreateInvoiceTab({
         </div>
       )}
 
+      {(Object.keys(errors).length > 0 || Object.keys(lineErrors).length > 0) && (
+        <div className="bg-rose-50 border border-rose-100/80 text-rose-700 p-4 rounded-[3px] text-xs font-semibold flex items-start space-x-2.5 animate-fadeIn">
+          <AlertCircle className="h-4 w-4 text-rose-500 shrink-0 mt-0.5" />
+          <div>
+            <p className="font-bold text-[13px] text-rose-800">Validation Error</p>
+            <p className="text-rose-600/90 mt-0.5 font-medium">Please fill in all required fields highlighted in red below before proceeding.</p>
+          </div>
+        </div>
+      )}
+
       {/* Main Core Invoice Form Container */}
       <div id="printable-area" className="bg-white rounded-[3px] border border-slate-200 shadow-sm p-6 md:p-8 space-y-8">
-        
+
         {/* Form Metadata Section */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
           {/* Customer select */}
@@ -1390,6 +1745,7 @@ export function CreateInvoiceTab({
             <SearchableInput
               options={clientOptions}
               value={selectedContactId}
+              disabled={isReadOnly}
               onChange={(val) => {
                 setSelectedContactId(val)
                 if (val) {
@@ -1406,9 +1762,8 @@ export function CreateInvoiceTab({
                 setShowQuickContactModal(true)
               }}
               createNewLabel="Add new contact"
-              className={`w-full bg-white text-slate-800 border rounded-[3px] px-3.5 py-2 text-[15px] font-normal focus:outline-none transition cursor-pointer ${
-                errors.contact ? 'border-rose-500 focus:border-rose-500 bg-rose-50/10' : 'border-slate-200 focus:border-[#0F5B38]'
-              }`}
+              className={`w-full bg-white text-slate-800 border rounded-[3px] px-3.5 py-2 text-[15px] font-normal focus:outline-none transition cursor-pointer ${errors.contact ? 'border-rose-500 focus:border-rose-500 bg-rose-50/10' : 'border-slate-200 focus:border-[#0F5B38]'
+                }`}
             />
             {errors.contact && (
               <span className="text-rose-500 text-[11px] font-semibold block mt-1">{errors.contact}</span>
@@ -1421,6 +1776,7 @@ export function CreateInvoiceTab({
             <XeroDatePicker
               id="invoiceDateInput"
               value={date}
+              disabled={isReadOnly}
               onChange={(val) => {
                 setDate(val)
                 if (val) {
@@ -1444,6 +1800,7 @@ export function CreateInvoiceTab({
             <XeroDatePicker
               id="invoiceDueDateInput"
               value={dueDate}
+              disabled={isReadOnly}
               onChange={(val) => {
                 setDueDate(val)
                 if (val) {
@@ -1471,7 +1828,7 @@ export function CreateInvoiceTab({
               type="text"
               readOnly
               value={invoiceNumber}
-              className="w-full bg-slate-50 text-slate-500 border border-slate-200 rounded-[3px] px-3.5 py-2 text-[15px] font-normal focus:outline-none"
+              className="w-full bg-slate-50 text-slate-500 border border-slate-200 rounded-[3px] px-3.5 py-2 text-[15px] font-normal focus:outline-none cursor-not-allowed"
             />
           </div>
 
@@ -1482,9 +1839,11 @@ export function CreateInvoiceTab({
               id="clientRefInput"
               type="text"
               placeholder=""
+              readOnly={isReadOnly}
               value={reference}
               onChange={e => setReference(e.target.value)}
-              className="w-full bg-white text-slate-800 border border-slate-200 rounded-[3px] px-3.5 py-2 text-[15px] font-normal focus:outline-none focus:border-[#0F5B38] transition"
+              className={`w-full bg-white text-slate-800 border border-slate-200 rounded-[3px] px-3.5 py-2 text-[15px] font-normal focus:outline-none focus:border-[#0F5B38] transition ${isReadOnly ? 'bg-slate-50 text-slate-400 cursor-not-allowed border-slate-200' : ''
+                }`}
             />
           </div>
 
@@ -1494,6 +1853,7 @@ export function CreateInvoiceTab({
             <SearchableInput
               options={currenciesList}
               value={currency}
+              disabled={isReadOnly}
               onChange={setCurrency}
               placeholder=""
               className="w-full bg-white text-slate-800 border border-slate-200 rounded-[3px] px-3.5 py-2 text-[15px] font-normal focus:outline-none focus:border-[#0F5B38] transition cursor-pointer"
@@ -1505,11 +1865,14 @@ export function CreateInvoiceTab({
             <label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block">Tax Type</label>
             <select
               value={taxType}
-              onChange={e => setTaxType(e.target.value as 'Inclusive' | 'Exclusive')}
-              className="w-full bg-white text-slate-800 border border-slate-200 rounded-[3px] px-3.5 py-2 text-[15px] font-normal focus:outline-none focus:border-[#0F5B38] transition cursor-pointer h-[38px]"
+              disabled={isReadOnly}
+              onChange={e => handleTaxTypeChange(e.target.value as 'Inclusive' | 'Exclusive' | 'No Tax')}
+              className={`w-full bg-white text-slate-800 border border-slate-200 rounded-[3px] px-3.5 py-2 text-[15px] font-normal focus:outline-none focus:border-[#0F5B38] transition cursor-pointer h-[38px] ${isReadOnly ? 'bg-slate-50 text-slate-400 cursor-not-allowed border-slate-200' : ''
+                }`}
             >
               <option value="Exclusive">Tax Exclusive</option>
               <option value="Inclusive">Tax Inclusive</option>
+              <option value="No Tax">No Tax</option>
             </select>
           </div>
         </div>
@@ -1522,21 +1885,24 @@ export function CreateInvoiceTab({
               <SearchableInput
                 options={projectOptions}
                 value={selectedProjectId}
+                disabled={isReadOnly}
                 onChange={setSelectedProjectId}
                 placeholder="Search projects..."
                 className="w-full bg-white text-slate-800 border border-slate-200 rounded-[3px] px-3.5 py-2 text-[15px] font-normal focus:outline-none focus:border-[#0F5B38] transition cursor-pointer"
               />
-              <button
-                type="button"
-                onClick={() => {
-                  lastActiveElementRef.current = document.activeElement as HTMLElement
-                  setIsCreateProjectOpen(true)
-                }}
-                className="ml-2 bg-white border border-slate-200 hover:bg-slate-50 text-[#0F5B38] rounded-[3px] p-2 transition flex items-center justify-center shrink-0 h-[38px] w-[38px]"
-                title="Create a new project"
-              >
-                <Plus className="h-4.5 w-4.5" />
-              </button>
+              {!isReadOnly && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    lastActiveElementRef.current = document.activeElement as HTMLElement
+                    setIsCreateProjectOpen(true)
+                  }}
+                  className="ml-2 bg-white border border-slate-200 hover:bg-slate-50 text-[#0F5B38] rounded-[3px] p-2 transition flex items-center justify-center shrink-0 h-[38px] w-[38px]"
+                  title="Create a new project"
+                >
+                  <Plus className="h-4.5 w-4.5" />
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -1559,7 +1925,7 @@ export function CreateInvoiceTab({
                   <th className="p-2 border border-slate-200 w-[15%]">Sales Account</th>
                   <th className="p-2 border border-slate-200 w-[12%]">Tax Rate</th>
                   <th className="p-2 border border-slate-200 text-right w-[10%]">Amount</th>
-                  <th className="p-2 border border-slate-200 text-center w-[3%]"></th>
+                  {!isReadOnly && <th className="p-2 border border-slate-200 text-center w-[3%]"></th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200 text-xs font-normal text-slate-700">
@@ -1570,6 +1936,7 @@ export function CreateInvoiceTab({
                       <SearchableInput
                         options={catalogOptions}
                         value={line.itemId}
+                        disabled={isReadOnly}
                         onChange={(val) => handleCatalogSelect(idx, val)}
                         placeholder=""
                         onCreateNew={(el) => {
@@ -1588,21 +1955,26 @@ export function CreateInvoiceTab({
                         type="text"
                         placeholder=""
                         value={line.description}
+                        readOnly={isReadOnly}
                         onChange={e => updateLineField(idx, 'description', e.target.value)}
-                        className="w-full bg-transparent text-slate-800 border-none rounded-none px-2.5 py-2.5 text-xs font-normal focus:outline-none focus:ring-0"
+                        className={`w-full bg-transparent text-slate-800 border rounded-[3px] px-2.5 py-2.5 text-xs font-normal focus:outline-none transition ${isReadOnly ? 'cursor-not-allowed text-slate-400 bg-slate-50/10 border-transparent' :
+                            lineErrors[idx]?.description
+                              ? 'border-rose-500 bg-rose-50/10'
+                              : 'border-transparent focus:border-[#0F5B38]'
+                          }`}
                       />
                     </td>
 
                     {/* Qty */}
-                    <td className={`p-0 border border-slate-200 align-middle ${lineErrors[idx]?.quantity ? 'bg-rose-50/30' : ''}`}>
+                    <td className="p-0 border border-slate-200 align-middle">
                       <input
                         type="number"
                         min="1"
                         value={line.quantity}
+                        readOnly={isReadOnly}
                         onChange={e => updateLineField(idx, 'quantity', e.target.value === '' ? '' : Number(e.target.value))}
-                        className={`w-full bg-transparent text-slate-800 border-none rounded-none px-2.5 py-2.5 text-xs font-normal text-center focus:outline-none focus:ring-0 ${
-                          lineErrors[idx]?.quantity ? 'text-rose-700 font-semibold bg-rose-100/20' : ''
-                        }`}
+                        className={`w-full bg-transparent text-slate-800 border border-transparent rounded-[3px] px-2.5 py-2.5 text-xs font-normal text-center focus:outline-none transition ${isReadOnly ? 'cursor-not-allowed text-slate-400 bg-slate-50/10' : 'focus:border-[#0F5B38]'
+                          }`}
                       />
                     </td>
 
@@ -1613,8 +1985,13 @@ export function CreateInvoiceTab({
                         min="0"
                         step="0.01"
                         value={line.unitPrice}
+                        readOnly={isReadOnly}
                         onChange={e => updateLineField(idx, 'unitPrice', e.target.value === '' ? '' : Number(e.target.value))}
-                        className="w-full bg-transparent text-slate-800 border-none rounded-none px-2.5 py-2.5 text-xs font-normal text-right focus:outline-none focus:ring-0"
+                        className={`w-full bg-transparent text-slate-800 border rounded-[3px] px-2.5 py-2.5 text-xs font-normal text-right focus:outline-none transition ${isReadOnly ? 'cursor-not-allowed text-slate-400 bg-slate-50/10 border-transparent' :
+                            lineErrors[idx]?.unitPrice
+                              ? 'border-rose-500 bg-rose-50/10'
+                              : 'border-transparent focus:border-[#0F5B38]'
+                          }`}
                       />
                     </td>
 
@@ -1627,21 +2004,22 @@ export function CreateInvoiceTab({
                         step="0.01"
                         placeholder=""
                         value={line.discount}
+                        readOnly={isReadOnly}
                         onChange={e => updateLineField(idx, 'discount', e.target.value === '' ? '' : Number(e.target.value))}
-                        className="w-full bg-transparent text-slate-800 border-none rounded-none px-2.5 py-2.5 text-xs font-normal text-center focus:outline-none focus:ring-0"
+                        className={`w-full bg-transparent text-slate-800 border border-transparent rounded-[3px] px-2.5 py-2.5 text-xs font-normal text-center focus:outline-none transition ${isReadOnly ? 'cursor-not-allowed text-slate-400 bg-slate-50/10' : 'focus:border-[#0F5B38]'
+                          }`}
                       />
                     </td>
 
                     {/* Sales Account Searchable Select */}
-                    <td className={`p-0 border border-slate-200 align-middle ${lineErrors[idx]?.accountId ? 'bg-rose-50/30' : ''}`}>
+                    <td className="p-0 border border-slate-200 align-middle">
                       <SearchableInput
                         options={accountOptions}
                         value={line.accountId}
+                        disabled={isReadOnly}
                         onChange={(val) => updateLineField(idx, 'accountId', val)}
                         placeholder=""
-                        className={`w-full bg-transparent text-slate-800 border-none rounded-none px-2.5 py-2.5 text-xs font-normal focus:outline-none focus:ring-0 cursor-pointer ${
-                          lineErrors[idx]?.accountId ? 'text-rose-700 font-semibold bg-rose-100/20' : ''
-                        }`}
+                        className="w-full bg-transparent text-slate-800 border border-transparent rounded-[3px] px-2.5 py-2.5 text-xs font-normal focus:outline-none focus:border-[#0F5B38] transition cursor-pointer"
                       />
                     </td>
 
@@ -1652,7 +2030,8 @@ export function CreateInvoiceTab({
                         value={line.taxRateId}
                         onChange={(val) => updateLineField(idx, 'taxRateId', val)}
                         placeholder=""
-                        className="w-full bg-transparent text-slate-800 border-none rounded-none px-2.5 py-2.5 text-xs font-normal focus:outline-none focus:ring-0 cursor-pointer"
+                        disabled={isReadOnly || taxType === 'No Tax'}
+                        className="w-full bg-transparent text-slate-800 border border-transparent rounded-[3px] px-2.5 py-2.5 text-xs font-normal focus:outline-none focus:border-[#0F5B38] transition cursor-pointer"
                       />
                     </td>
 
@@ -1662,28 +2041,29 @@ export function CreateInvoiceTab({
                     </td>
 
                     {/* Action Trash & Plus */}
-                    <td className="p-0 border border-slate-200 align-middle text-center">
-                      <div className="flex items-center justify-center space-x-1.5 px-2">
-                        <button
-                          type="button"
-                          onClick={() => removeLineItem(idx)}
-                          className={`p-2 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-[3px] transition cursor-pointer inline-flex items-center justify-center ${
-                            lines.length === 1 ? 'opacity-20 cursor-not-allowed pointer-events-none' : ''
-                          }`}
-                          title="Remove item line"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={addLineItem}
-                          className="p-2 hover:bg-emerald-50 text-[#0F5B38] rounded-[3px] transition cursor-pointer inline-flex items-center justify-center focus:ring-2 focus:ring-emerald-500/20"
-                          title="Add item line"
-                        >
-                          <Plus className="h-4 w-4" />
-                        </button>
-                      </div>
-                    </td>
+                    {!isReadOnly && (
+                      <td className="p-0 border border-slate-200 align-middle text-center">
+                        <div className="flex items-center justify-center space-x-1.5 px-2">
+                          <button
+                            type="button"
+                            onClick={() => removeLineItem(idx)}
+                            className={`p-2 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-[3px] transition cursor-pointer inline-flex items-center justify-center ${lines.length === 1 ? 'opacity-20 cursor-not-allowed pointer-events-none' : ''
+                              }`}
+                            title="Remove item line"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={addLineItem}
+                            className="p-2 hover:bg-emerald-50 text-[#0F5B38] rounded-[3px] transition cursor-pointer inline-flex items-center justify-center focus:ring-2 focus:ring-emerald-500/20"
+                            title="Add item line"
+                          >
+                            <Plus className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -1691,15 +2071,17 @@ export function CreateInvoiceTab({
           </div>
 
           {/* Add Line Control Button */}
-          <div className="pt-2">
-            <button
-              onClick={addLineItem}
-              className="flex items-center space-x-1.5 bg-slate-50 hover:bg-slate-100 text-slate-655 font-bold text-[10px] px-4 py-2 border border-slate-200 rounded-[3px] transition cursor-pointer"
-            >
-              <Plus className="h-3.5 w-3.5 text-[#0F5B38]" />
-              <span>Add row</span>
-            </button>
-          </div>
+          {!isReadOnly && (
+            <div className="pt-2">
+              <button
+                onClick={addLineItem}
+                className="flex items-center space-x-1.5 bg-slate-50 hover:bg-slate-100 text-slate-655 font-bold text-[10px] px-4 py-2 border border-slate-200 rounded-[3px] transition cursor-pointer"
+              >
+                <Plus className="h-3.5 w-3.5 text-[#0F5B38]" />
+                <span>Add row</span>
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Bottom notes, attachments, and calculation summary */}
@@ -1711,10 +2093,12 @@ export function CreateInvoiceTab({
               <label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block">Additional Notes</label>
               <textarea
                 value={notes}
+                readOnly={isReadOnly}
                 onChange={e => setNotes(e.target.value)}
                 placeholder="Add any additional notes, terms, or conditions..."
                 rows={3}
-                className="w-full bg-white text-slate-800 border border-slate-200 rounded-[3px] px-3.5 py-2 text-xs font-normal focus:outline-none focus:border-[#0F5B38] transition resize-none placeholder:text-slate-400"
+                className={`w-full bg-white text-slate-800 border border-slate-200 rounded-[3px] px-3.5 py-2 text-xs font-normal focus:outline-none focus:border-[#0F5B38] transition resize-none placeholder:text-slate-400 ${isReadOnly ? 'bg-slate-50 text-slate-400 cursor-not-allowed border-slate-200' : ''
+                  }`}
               />
             </div>
 
@@ -1722,27 +2106,31 @@ export function CreateInvoiceTab({
             <div className="space-y-1.5">
               <label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block">Attachments (Optional)</label>
               <div className="flex items-center space-x-3">
-                <label className="bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 font-bold text-xs px-4 py-2.5 rounded-[3px] transition cursor-pointer select-none">
-                  <span>Choose File</span>
-                  <input
-                    type="file"
-                    onChange={handleFileChange}
-                    className="hidden"
-                  />
-                </label>
+                {!isReadOnly && (
+                  <label className="bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 font-bold text-xs px-4 py-2.5 rounded-[3px] transition cursor-pointer select-none">
+                    <span>Choose File</span>
+                    <input
+                      type="file"
+                      onChange={handleFileChange}
+                      className="hidden"
+                    />
+                  </label>
+                )}
                 {attachmentName ? (
-                  <div className="flex items-center space-x-2 text-xs text-slate-650 bg-slate-50 px-3 py-1.5 rounded-[3px] border border-slate-200 font-semibold font-normal">
+                  <div className="flex items-center space-x-2 text-xs text-slate-650 bg-slate-50 px-3 py-1.5 rounded-[3px] border border-slate-200 font-semibold">
                     <span className="truncate max-w-[200px] font-semibold">{attachmentName}</span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setAttachmentName('')
-                        setAttachmentFile(null)
-                      }}
-                      className="text-rose-500 hover:text-rose-700 font-bold cursor-pointer ml-1"
-                    >
-                      ✕
-                    </button>
+                    {!isReadOnly && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAttachmentName('')
+                          setAttachmentFile(null)
+                        }}
+                        className="text-rose-500 hover:text-rose-700 font-bold cursor-pointer ml-1"
+                      >
+                        ✕
+                      </button>
+                    )}
                   </div>
                 ) : (
                   <span className="text-xs text-slate-400 italic">No file attached</span>
@@ -1773,7 +2161,7 @@ export function CreateInvoiceTab({
       {/* Inline Modal for Creating a New Project */}
       {isCreateProjectOpen && (
         <div className="fixed inset-0 z-[10000] flex items-center justify-center font-sans">
-          <div 
+          <div
             className="fixed inset-0 bg-[#071f13]/35 backdrop-blur-md transition-opacity"
             onClick={() => setIsCreateProjectOpen(false)}
           ></div>
@@ -1832,11 +2220,11 @@ export function CreateInvoiceTab({
       {/* Inline Modal for Creating a New Contact */}
       {showQuickContactModal && (
         <div className="fixed inset-0 z-[10000] flex items-center justify-center font-sans">
-          <div 
+          <div
             className="fixed inset-0 bg-[#071f13]/35 backdrop-blur-md transition-opacity"
             onClick={() => setShowQuickContactModal(false)}
           ></div>
-          <form 
+          <form
             onSubmit={handleQuickAddContact}
             className="relative transform overflow-hidden bg-white text-left shadow-2xl transition-all w-full max-w-md p-6 space-y-6 mx-4 rounded-[3px] border border-slate-100 animate-scaleIn"
           >
@@ -1928,11 +2316,11 @@ export function CreateInvoiceTab({
       {/* Inline Modal for Creating a New Item */}
       {showQuickItemModal && (
         <div className="fixed inset-0 z-[10000] flex items-center justify-center font-sans">
-          <div 
+          <div
             className="fixed inset-0 bg-[#071f13]/35 backdrop-blur-md transition-opacity"
             onClick={() => setShowQuickItemModal(false)}
           ></div>
-          <form 
+          <form
             onSubmit={handleQuickAddItem}
             className="relative transform overflow-hidden bg-white text-left shadow-2xl transition-all w-full max-w-md p-6 space-y-6 mx-4 rounded-[3px] border border-slate-100 animate-scaleIn"
           >
@@ -2047,7 +2435,262 @@ export function CreateInvoiceTab({
           </form>
         </div>
       )}
+      {/* Record Payment Modal */}
+      {isPaymentModalOpen && (
+        <div className="fixed inset-0 z-[50000] flex items-center justify-center overflow-y-auto py-6 font-sans">
+          <div
+            className="fixed inset-0 bg-[#071f13]/35 backdrop-blur-md transition-opacity"
+            onClick={() => setIsPaymentModalOpen(false)}
+          ></div>
+          <div className="relative transform bg-white text-left shadow-2xl transition-all w-full max-w-lg p-6 space-y-6 mx-4 rounded-[3px] border border-slate-100 animate-scaleIn max-h-[90vh] overflow-y-auto">
+            <div className="space-y-1.5 border-b border-slate-100 pb-3">
+              <h3 className="text-base font-bold text-slate-850">Record Invoice Payment</h3>
+              <p className="text-slate-500 text-xs font-semibold leading-relaxed font-normal">
+                Log the receipt of funds for Invoice {invoiceNumber} and adjust ledger balances.
+              </p>
+            </div>
 
+            <div className="space-y-4">
+              {/* Payment Date */}
+              <div className="space-y-1.5">
+                <label className="text-[10px] text-slate-450 font-extrabold uppercase tracking-wider block">Payment Date</label>
+                <input
+                  type="date"
+                  value={paymentDate}
+                  onChange={e => setPaymentDate(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-[3px] px-3.5 py-2 text-xs font-normal focus:outline-none focus:border-[#0F5B38]"
+                />
+              </div>
+
+              {/* Single / Multiple toggle */}
+              <div className="space-y-1.5">
+                <label className="text-[10px] text-slate-450 font-extrabold uppercase tracking-wider block">Payment Option</label>
+                <div className="flex border border-slate-200 rounded-[3px] overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsSplitPayment(false)
+                      setSinglePaymentAmount(getGrandTotal().toFixed(2))
+                    }}
+                    className={`flex-1 text-center py-2 text-xs font-semibold transition ${!isSplitPayment
+                        ? 'bg-[#0F5B38] text-white'
+                        : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
+                      }`}
+                  >
+                    Single Bank Account
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsSplitPayment(true)
+                      setPaymentRows([{ accountId: bankAccounts[0]?.id || '', amount: getGrandTotal() }])
+                    }}
+                    className={`flex-1 text-center py-2 text-xs font-semibold transition ${isSplitPayment
+                        ? 'bg-[#0F5B38] text-white'
+                        : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
+                      }`}
+                  >
+                    Split Accounts
+                  </button>
+                </div>
+              </div>
+
+              {/* Account selection inputs */}
+              {!isSplitPayment ? (
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5 col-span-1">
+                    <label className="text-[10px] text-slate-450 font-extrabold uppercase tracking-wider block">Bank Account</label>
+                    <select
+                      value={singlePaymentAccountId}
+                      onChange={e => setSinglePaymentAccountId(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-[3px] px-3.5 py-2 text-xs font-normal focus:outline-none focus:border-[#0F5B38] h-[36px] cursor-pointer"
+                    >
+                      {bankAccounts.map(b => (
+                        <option key={b.id} value={b.id}>
+                          {b.name} ({b.code})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1.5 col-span-1">
+                    <label className="text-[10px] text-slate-455 font-extrabold uppercase tracking-wider block">Amount</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0.01"
+                      value={singlePaymentAmount}
+                      onChange={e => setSinglePaymentAmount(e.target.value)}
+                      placeholder="0.00"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-[3px] px-3.5 py-2 text-xs font-normal focus:outline-none focus:border-[#0F5B38] h-[36px]"
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <label className="text-[10px] text-slate-450 font-extrabold uppercase tracking-wider block">Split Distribution</label>
+                  <div className="max-h-48 overflow-y-auto space-y-2 pr-1.5">
+                    {paymentRows.map((row, idx) => (
+                      <div key={idx} className="flex items-center space-x-2">
+                        <select
+                          value={row.accountId}
+                          onChange={e => updatePaymentRow(idx, 'accountId', e.target.value)}
+                          className="flex-1 bg-slate-50 border border-slate-200 rounded-[3px] px-3 py-1.5 text-xs font-normal focus:outline-none focus:border-[#0F5B38] h-[34px] cursor-pointer"
+                        >
+                          <option value="">Select Account</option>
+                          {bankAccounts.map(b => (
+                            <option key={b.id} value={b.id}>
+                              {b.name} ({b.code})
+                            </option>
+                          ))}
+                        </select>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0.01"
+                          value={row.amount}
+                          onChange={e => updatePaymentRow(idx, 'amount', e.target.value === '' ? '' : Number(e.target.value))}
+                          placeholder="0.00"
+                          className="w-32 bg-slate-50 border border-slate-200 rounded-[3px] px-3 py-1.5 text-xs font-normal focus:outline-none focus:border-[#0F5B38] h-[34px]"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => removePaymentRow(idx)}
+                          disabled={paymentRows.length <= 1}
+                          className="p-1.5 text-slate-450 hover:text-rose-600 disabled:opacity-30 transition cursor-pointer"
+                          title="Remove split account"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={addPaymentRow}
+                    className="flex items-center space-x-1 text-[#0F5B38] hover:text-emerald-700 font-extrabold text-[10px] uppercase tracking-wider bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-[3px] px-3 py-1.5 transition cursor-pointer"
+                  >
+                    <Plus className="h-3 w-3" />
+                    <span>Add Bank Account</span>
+                  </button>
+                </div>
+              )}
+
+              {/* Match Verification & Info Banner */}
+              <div className="bg-slate-50/50 border border-slate-200 rounded-[3px] p-4 space-y-2.5 text-xs">
+                <div className="flex justify-between font-semibold text-slate-500">
+                  <span>Grand Total to Pay:</span>
+                  <span className="text-slate-800 font-bold">{currencySymbol}{grandTotal.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between font-semibold text-slate-500">
+                  <span>Total Amount Input:</span>
+                  <span className="text-slate-800 font-bold">{currencySymbol}{totalPaid.toFixed(2)}</span>
+                </div>
+                <div className="border-t border-slate-200/50 pt-2 flex justify-between font-extrabold text-[13px]">
+                  <span>Remaining / Difference:</span>
+                  <span className={isPaymentBalanced ? 'text-emerald-600 font-bold' : 'text-amber-600 font-bold'}>
+                    {currencySymbol}{paymentDiff.toFixed(2)}
+                  </span>
+                </div>
+                <div className="pt-1">
+                  {isPaymentBalanced ? (
+                    <span className="inline-flex items-center text-[10px] bg-emerald-50 text-emerald-700 font-bold px-2.5 py-0.5 rounded-full border border-emerald-100/30 uppercase tracking-wider">
+                      ✓ Amounts Match Exactly
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center text-[10px] bg-amber-50 text-amber-700 font-bold px-2.5 py-0.5 rounded-full border border-amber-100/30 uppercase tracking-wider animate-pulse">
+                      ⚠ Mismatch: Payments must match total
+                    </span>
+                  )}
+                </div>
+              </div>
+
+            </div>
+
+            <div className="flex space-x-3 pt-3 justify-end border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setIsPaymentModalOpen(false)}
+                className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200/50 text-slate-655 rounded-[3px] transition cursor-pointer text-xs font-semibold"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleRecordPayment}
+                disabled={isSubmitting || !isPaymentBalanced || (isSplitPayment && paymentRows.some(r => !r.accountId))}
+                className="px-5 py-2.5 rounded-[3px] shadow-md bg-[#0F5B38] hover:brightness-105 text-white transition text-xs font-medium cursor-pointer disabled:opacity-50"
+              >
+                {isSubmitting ? 'Recording...' : 'Record Payment'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      <EmailModal
+        isOpen={isEmailModalOpen}
+        onClose={() => setIsEmailModalOpen(false)}
+        defaultEmail={contacts.find(c => c.id === selectedContactId)?.email || ''}
+        documentType="Invoice"
+        documentNumber={invoiceNumber}
+        contactName={contacts.find(c => c.id === selectedContactId)?.name || ''}
+        totalAmount={`${currency} ${getGrandTotal().toFixed(2)}`}
+        orgName={activeOrg.name}
+        onSend={async (to, subject, message) => {
+          let resolvedId = invoiceDbId || editingInvoiceId
+          const needsApproval = status === 'Draft' || status === 'Awaiting Approval' || !resolvedId
+
+          if (needsApproval) {
+            resolvedId = await handleSaveInvoice('Awaiting Payment', false, true)
+            if (!resolvedId) {
+              throw new Error('Failed to save and approve invoice.')
+            }
+          }
+
+          if (isMockMode) {
+            await new Promise(resolve => setTimeout(resolve, 1000))
+            showAlert({
+              title: needsApproval ? 'Approved & Emailed (Sandbox)' : 'Email Sent (Sandbox)',
+              message: `Simulated emailing invoice to ${to}. Check backend console/logs.`,
+              type: 'success'
+            })
+            if (setEditingInvoiceId) setEditingInvoiceId(null)
+            setActiveTab('Invoices')
+            return
+          }
+          const payload = {
+            to,
+            subject,
+            message,
+            notes,
+            logo: localStorage.getItem(`kdm_org_logo_${activeOrg.id}`) || '',
+            payment_terms: salesSetting?.standard_payment_terms || '',
+            bank_details: {
+              bank_name: localStorage.getItem(`kdm_bank_name_${activeOrg.id}`) || '',
+              account_name: localStorage.getItem(`kdm_bank_account_name_${activeOrg.id}`) || '',
+              account_number: localStorage.getItem(`kdm_bank_account_number_${activeOrg.id}`) || '',
+              routing_number: localStorage.getItem(`kdm_bank_routing_number_${activeOrg.id}`) || ''
+            },
+            template_settings: {
+              theme_color: localStorage.getItem(`kdm_invoice_theme_color_${activeOrg.id}`) || '#0F5B38'
+            },
+            org_details: {
+              name: activeOrg.name,
+              country: activeOrg.country,
+              tax_id: activeOrg.tax_id
+            }
+          }
+          await apiService.sendInvoiceEmail(resolvedId!, payload)
+          showAlert({
+            title: needsApproval ? 'Approved & Emailed' : 'Email Sent',
+            message: needsApproval
+              ? `Invoice ${invoiceNumber} was successfully approved and emailed to ${to}.`
+              : `Invoice ${invoiceNumber} was successfully emailed to ${to}.`,
+            type: 'success'
+          })
+          if (setEditingInvoiceId) setEditingInvoiceId(null)
+          setActiveTab('Invoices')
+        }}
+      />
     </div>
   )
 }

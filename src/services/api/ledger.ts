@@ -196,4 +196,32 @@ export const ledgerApi = {
       body: JSON.stringify(data),
     })
   },
+
+  async sendInvoiceEmail(invoiceId: string, data: any): Promise<{ message: string }> {
+    return request(`/invoices/${invoiceId}/send-email/`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  },
+
+  async sendQuoteEmail(quoteId: string, data: any): Promise<{ message: string }> {
+    return request(`/quotes/${quoteId}/send-email/`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  },
+
+  async sendBillEmail(data: any): Promise<{ message: string }> {
+    return request('/bills/send-email/', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  },
+
+  async sendPurchaseOrderEmail(data: any): Promise<{ message: string }> {
+    return request('/purchase-orders/send-email/', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  },
 }

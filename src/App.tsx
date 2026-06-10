@@ -42,6 +42,7 @@ import { CreatePurchaseOrderTab } from './pages/tabs/CreatePurchaseOrderTab'
 import { CreateTransferMoney } from './pages/tabs/CreateTransferMoney'
 import { CreateSpendReceiveMoney } from './pages/tabs/CreateSpendReceiveMoney'
 import { CreateManualJournal } from './pages/tabs/CreateManualJournal'
+import { UserProfileTab } from './pages/tabs/UserProfileTab'
 
 // Type options
 import type { SelectOption } from './components/SearchableSelect'
@@ -248,7 +249,7 @@ function App() {
             if (!activeOrg || activeOrg.id !== found.organization.id) {
               setActiveOrg(found.organization)
             }
-            if (tab && ['Home', 'SalesOverview', 'Invoices', 'OnlinePayments', 'Quotes', 'Products', 'Customers', 'SalesSettings', 'PurchasesOverview', 'Bills', 'PurchaseOrders', 'Cheque', 'Expenses', 'Suppliers', 'PurchasesSettings', 'FixedAssets', 'Payroll', 'AllReports', 'AccountTransactions', 'BalanceSheet', 'ProfitAndLoss', 'ReportingSettings', 'reconcile', 'ChartOfAccounts', 'AccountingSettings', 'Contacts', 'ContactsSettings', 'TaxRates', 'CreateInvoice', 'CreateQuote', 'EditInvoice', 'EditQuote'].includes(tab)) {
+            if (tab && ['Home', 'SalesOverview', 'Invoices', 'OnlinePayments', 'Quotes', 'Products', 'Customers', 'SalesSettings', 'PurchasesOverview', 'Bills', 'PurchaseOrders', 'Cheque', 'Expenses', 'Suppliers', 'PurchasesSettings', 'FixedAssets', 'Payroll', 'AllReports', 'AccountTransactions', 'BalanceSheet', 'ProfitAndLoss', 'ReportingSettings', 'reconcile', 'ChartOfAccounts', 'AccountingSettings', 'Contacts', 'ContactsSettings', 'TaxRates', 'CreateInvoice', 'CreateQuote', 'EditInvoice', 'EditQuote', 'UserProfile'].includes(tab)) {
               if (activeTab !== tab) {
                 setActiveTab(tab)
               }
@@ -1065,7 +1066,7 @@ function App() {
               }
 
               // Transition to CreateInvoice and pre-populate with quote details
-              setEditingInvoiceId(`convert-quote-${quote.quote_number || quote.id}`)
+              setEditingInvoiceId(`convert-quote-${quote.id!}`)
               setActiveTab('CreateInvoice')
             } catch (err: any) {
               alert("Conversion failed: " + err.message)
@@ -1109,7 +1110,7 @@ function App() {
             setActiveTab('CreatePurchaseOrder')
           }}
           onConvertToBill={(po) => {
-            setEditingBillId(`convert-po-${po.po_number || po.id}`)
+            setEditingBillId(`convert-po-${po.id}`)
             setActiveTab('CreateBill')
           }}
         />
@@ -1201,6 +1202,15 @@ function App() {
       {activeTab === 'CreateManualJournal' && activeOrg && (
         <CreateManualJournal
           activeOrg={activeOrg}
+          isMockMode={isMockMode}
+          setActiveTab={setActiveTab}
+        />
+      )}
+
+      {activeTab === 'UserProfile' && (
+        <UserProfileTab
+          currentUser={currentUser}
+          setCurrentUser={setCurrentUser}
           isMockMode={isMockMode}
           setActiveTab={setActiveTab}
         />

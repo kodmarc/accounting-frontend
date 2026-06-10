@@ -540,13 +540,13 @@ export function QuotesTab({
               <button
                 key={tab}
                 onClick={() => { setStatusFilter(tab); setSelectedQuote(null); }}
-                className={`px-4 py-2 text-xs font-semibold transition-all border rounded-t-[3px] cursor-pointer whitespace-nowrap ${
+                className={`px-3 py-2 text-xs font-semibold transition-all border rounded-t-[3px] cursor-pointer whitespace-nowrap ${
                   isActive
                     ? 'bg-white text-[#0F5B38] border-slate-200 border-b-transparent font-bold -mb-[1px] relative z-10'
                     : 'bg-transparent hover:bg-slate-50 text-slate-450 hover:text-slate-855 border-slate-200'
                 }`}
               >
-                <span>{tab === 'All' ? 'All Quotes' : tab}</span>
+                <span>{tab}</span>
                 <span className={`ml-1.5 text-[9px] px-1.5 py-0.5 rounded-full font-bold ${isActive ? 'bg-emerald-50 text-[#0F5B38]' : 'bg-slate-100 text-slate-500'}`}>
                   {count}
                 </span>
@@ -556,28 +556,28 @@ export function QuotesTab({
         </div>
 
         {/* Right side search, sorting & bulk action container */}
-        <div className="flex items-end space-x-2 w-full xl:w-auto justify-end gap-2 pb-0 mb-[2px]">
+        <div className="flex flex-row items-center justify-end gap-2.5 flex-grow mb-[2px] w-full xl:w-auto ml-auto">
           {selectedIds.size > 0 && (
             <div className="flex items-center space-x-1.5 animate-fadeIn text-xs font-semibold">
               <button
                 onClick={handleBulkDelete}
-                className="px-2.5 py-1.5 bg-white border border-slate-200 text-slate-700 hover:text-rose-600 hover:border-slate-300 rounded-[3px] shadow-sm transition cursor-pointer"
+                className="px-2 py-1 bg-white border border-slate-200 text-slate-700 hover:text-rose-600 hover:border-slate-300 rounded-[3px] shadow-sm transition cursor-pointer"
               >
                 Delete
               </button>
               <button
                 onClick={() => handleBulkChangeStatus('Draft')}
-                className="px-2.5 py-1.5 bg-white border border-slate-200 text-slate-700 hover:text-[#0F5B38] hover:border-slate-300 rounded-[3px] shadow-sm transition cursor-pointer"
+                className="px-2 py-1 bg-white border border-slate-200 text-slate-700 hover:text-[#0F5B38] hover:border-slate-300 rounded-[3px] shadow-sm transition cursor-pointer"
               >
                 Mark as Draft
               </button>
-              <span className="text-[11px] text-slate-400 font-bold px-1 whitespace-nowrap hidden lg:inline">
+              <span className="text-[11px] text-slate-400 font-bold px-1 whitespace-nowrap hidden sm:inline">
                 {selectedIds.size} selected
               </span>
             </div>
           )}
 
-          <div className="relative w-full sm:w-64">
+          <div className="relative w-36 sm:w-36">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
             <input
               type="text"
@@ -592,7 +592,7 @@ export function QuotesTab({
             <select
               value={sortOption}
               onChange={e => setSortOption(e.target.value as any)}
-              className="bg-slate-50 border border-slate-200/80 rounded-[3px] px-3 py-2 text-xs font-semibold text-slate-705 focus:outline-none focus:border-[#0F5B38] cursor-pointer"
+              className="bg-slate-50 border border-slate-200/80 rounded-[3px] px-1.5 py-2 w-32 text-xs font-semibold text-slate-705 focus:outline-none focus:border-[#0F5B38] cursor-pointer"
             >
               <option value="date-desc">Date Latest</option>
               <option value="date-asc">Date Oldest</option>
@@ -655,7 +655,7 @@ export function QuotesTab({
                   return (
                     <tr 
                       key={q.id} 
-                      onClick={() => onEditQuote(q.quote_number || q.id!)}
+                      onClick={() => onEditQuote(q.id!)}
                       className="hover:bg-slate-50/70 transition-colors duration-150 cursor-pointer"
                     >
                       <td className="p-3 text-center" onClick={e => e.stopPropagation()}>
@@ -685,7 +685,7 @@ export function QuotesTab({
                        </td>
                        <td className="p-3 text-center" onClick={e => e.stopPropagation()}>
                          <button
-                           onClick={() => onEditQuote(q.quote_number || q.id!)}
+                           onClick={() => onEditQuote(q.id!)}
                            className="p-1 text-slate-400 hover:text-[#0F5B38] rounded-[3px] transition cursor-pointer"
                            title="Edit sales quotation"
                          >

@@ -26,7 +26,7 @@ export function BillsTab({
   // Loading & UI States
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
-  const [statusFilter, setStatusFilter] = useState<'All' | 'Draft' | 'Awaiting Payment' | 'Paid' | 'Overdue'>('All')
+  const [statusFilter, setStatusFilter] = useState<'All' | 'Draft' | 'Awaiting Approval' | 'Awaiting Payment' | 'Paid' | 'Overdue'>('All')
   const [sortOption, setSortOption] = useState<'date-desc' | 'date-asc' | 'amount-asc' | 'amount-desc'>('date-desc')
   
   // Selection check columns
@@ -183,7 +183,7 @@ export function BillsTab({
       {/* 2. Filter Menu Tabs */}
       <div className="flex flex-col xl:flex-row xl:items-end justify-between border-b border-slate-200 pb-0 gap-4">
         <div className="flex space-x-1 select-none text-xs font-semibold -mb-[1px] relative z-10 overflow-x-auto scrollbar-none">
-          {(['All', 'Draft', 'Awaiting Payment', 'Paid', 'Overdue'] as const).map(tab => {
+          {(['All', 'Draft', 'Awaiting Approval', 'Awaiting Payment', 'Paid', 'Overdue'] as const).map(tab => {
             const count = bills.filter(b => {
               if (tab === 'All') return true
               if (tab === 'Overdue') return b.status === 'Awaiting Payment' && new Date(b.due_date) < new Date()
@@ -195,13 +195,13 @@ export function BillsTab({
               <button
                 key={tab}
                 onClick={() => { setStatusFilter(tab); }}
-                className={`px-4 py-2 text-xs font-semibold transition-all border rounded-t-[3px] cursor-pointer whitespace-nowrap ${
+                className={`px-3 py-2 text-xs font-semibold transition-all border rounded-t-[3px] cursor-pointer whitespace-nowrap ${
                   isActive
                     ? 'bg-white text-[#0F5B38] border-slate-200 border-b-transparent font-bold -mb-[1px] relative z-10'
                     : 'bg-transparent hover:bg-slate-50 text-slate-450 hover:text-slate-855 border-slate-200'
                 }`}
               >
-                <span>{tab === 'All' ? 'All Bills' : tab}</span>
+                <span>{tab}</span>
                 <span className={`ml-1.5 text-[9px] px-1.5 py-0.5 rounded-full font-bold ${isActive ? 'bg-emerald-50 text-[#0F5B38]' : 'bg-slate-100 text-slate-500'}`}>
                   {count}
                 </span>
@@ -210,37 +210,37 @@ export function BillsTab({
           })}
         </div>
 
-        {/* Right side search & sorting */}
-        <div className="flex items-end space-x-2 w-full xl:w-auto justify-end gap-2 pb-0 mb-[2px]">
+        {/* Right side search, sorting & bulk actions */}
+        <div className="flex flex-row items-center justify-end gap-2.5 flex-grow mb-[2px] w-full xl:w-auto ml-auto">
           {selectedIds.size > 0 && (
             <div className="flex items-center space-x-1.5 animate-fadeIn text-xs font-semibold">
               <button
                 onClick={handleBulkMarkSent}
-                className="px-2.5 py-1.5 bg-white border border-slate-200 text-slate-700 hover:text-[#0F5B38] hover:border-slate-300 rounded-[3px] shadow-sm transition cursor-pointer"
+                className="px-2 py-1 bg-white border border-slate-200 text-slate-700 hover:text-[#0F5B38] hover:border-slate-300 rounded-[3px] shadow-sm transition cursor-pointer"
               >
                 Approve
               </button>
               <button
                 onClick={handleBulkMarkPaid}
-                className="px-2.5 py-1.5 bg-white border border-slate-200 text-slate-700 hover:text-[#0F5B38] hover:border-slate-300 rounded-[3px] shadow-sm transition cursor-pointer"
+                className="px-2 py-1 bg-white border border-slate-200 text-slate-700 hover:text-[#0F5B38] hover:border-slate-300 rounded-[3px] shadow-sm transition cursor-pointer"
               >
                 Mark Paid
               </button>
               {statusFilter === 'Draft' && (
                 <button
                   onClick={handleBulkDelete}
-                  className="px-2.5 py-1.5 bg-white border border-slate-200 text-slate-700 hover:text-rose-600 hover:border-slate-300 rounded-[3px] shadow-sm transition cursor-pointer"
+                  className="px-2 py-1 bg-white border border-slate-200 text-slate-700 hover:text-rose-600 hover:border-slate-300 rounded-[3px] shadow-sm transition cursor-pointer"
                 >
                   Delete
                 </button>
               )}
-              <span className="text-[11px] text-slate-400 font-bold px-1 whitespace-nowrap hidden lg:inline">
+              <span className="text-[11px] text-slate-400 font-bold px-1 whitespace-nowrap hidden sm:inline">
                 {selectedIds.size} selected
               </span>
             </div>
           )}
 
-          <div className="relative w-full sm:w-64">
+          <div className="relative w-36 sm:w-36">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
             <input
               type="text"
@@ -255,7 +255,7 @@ export function BillsTab({
             <select
               value={sortOption}
               onChange={e => setSortOption(e.target.value as any)}
-              className="bg-slate-50 border border-slate-200/80 rounded-[3px] px-3 py-2 text-xs font-semibold text-slate-705 focus:outline-none focus:border-[#0F5B38] cursor-pointer"
+              className="bg-slate-50 border border-slate-200/80 rounded-[3px] px-1.5 py-2 w-32 text-xs font-semibold text-slate-705 focus:outline-none focus:border-[#0F5B38] cursor-pointer"
             >
               <option value="date-desc">Date Latest</option>
               <option value="date-asc">Date Oldest</option>
@@ -319,7 +319,7 @@ export function BillsTab({
                   return (
                     <tr 
                       key={b.id} 
-                      onClick={() => onEditBill(b.bill_number || b.id)}
+                      onClick={() => onEditBill(b.id)}
                       className="hover:bg-slate-50/70 transition-colors duration-150 cursor-pointer"
                     >
                       <td className="p-3 text-center" onClick={e => e.stopPropagation()}>
@@ -339,16 +339,18 @@ export function BillsTab({
                        <td className="p-3 text-center whitespace-nowrap">
                          <span className={`text-[9px] font-extrabold px-2 py-0.5 rounded-full ${
                            b.status === 'Paid' ? 'bg-emerald-50 text-emerald-600 border border-emerald-100/30' :
+                           b.status === 'Awaiting Approval' ? 'bg-amber-50 text-amber-600 border border-amber-100/30' :
+                           b.status === 'Awaiting Payment' ? 'bg-blue-50 text-blue-600 border border-blue-100/30' :
                            b.status === 'Draft' ? 'bg-slate-100 text-slate-500' :
                            isOverdue ? 'bg-rose-50 text-rose-600 border border-rose-100/30' : 
-                           'bg-amber-50 text-amber-600 border border-amber-100/30'
+                           'bg-slate-100 text-slate-500'
                          }`}>
                            {isOverdue ? "Overdue" : b.status}
                          </span>
                        </td>
                        <td className="p-3 text-center" onClick={e => e.stopPropagation()}>
                          <button
-                           onClick={() => onEditBill(b.bill_number || b.id)}
+                           onClick={() => onEditBill(b.id)}
                            className="p-1 text-slate-400 hover:text-[#0F5B38] rounded-[3px] transition cursor-pointer"
                            title="Edit bill details"
                          >

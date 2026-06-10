@@ -122,7 +122,7 @@ export interface Invoice {
   due_date: string;
   status: 'Draft' | 'Awaiting Approval' | 'Awaiting Payment' | 'Paid' | 'Overdue';
   currency?: string;
-  tax_type?: 'Inclusive' | 'Exclusive';
+  tax_type?: 'Inclusive' | 'Exclusive' | 'No Tax';
   project?: string | null;
   subtotal: number;
   tax_total: number;
@@ -153,7 +153,7 @@ export interface Quote {
   expiry_date: string;
   status: 'Draft' | 'Sent' | 'Accepted' | 'Declined' | 'Invoiced';
   currency?: string;
-  tax_type?: 'Inclusive' | 'Exclusive';
+  tax_type?: 'Inclusive' | 'Exclusive' | 'No Tax';
   project?: string | null;
   subtotal: number;
   tax_total: number;

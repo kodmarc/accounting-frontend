@@ -1,0 +1,1250 @@
+diff --git a/src/pages/tabs/CreatePurchaseOrderTab.tsx b/src/pages/tabs/CreatePurchaseOrderTab.tsx
+index 9df0afe..f080e1d 100644
+--- a/src/pages/tabs/CreatePurchaseOrderTab.tsx
++++ b/src/pages/tabs/CreatePurchaseOrderTab.tsx
+@@ -1,5 +1,5 @@
+ import { useState, useEffect, useRef } from 'react'
+-import { ArrowLeft, Plus, Trash2, CheckCircle, Save, X, Loader2, ChevronDown, MoreVertical } from 'lucide-react'
++import { ArrowLeft, Plus, Trash2, CheckCircle, Save, X, Loader2, ChevronDown, MoreVertical, AlertCircle } from 'lucide-react'
+ import { apiService, API_BASE_URL } from '../../services/api'
+ import type { Organization, Contact, Item, Account, TaxRate, Project } from '../../services/api'
+ import { SearchableInput } from '../../components/SearchableInput'
+@@ -24,7 +24,7 @@ export function CreatePurchaseOrderTab({
+   setEditingBillId
+ }: CreatePurchaseOrderTabProps) {
+   const { showConfirm, showAlert } = usePopup()
+-  
++
+   // Database states
+   const [contacts, setContacts] = useState<Contact[]>([])
+   const [catalogItems, setCatalogItems] = useState<Item[]>([])
+@@ -47,7 +47,7 @@ export function CreatePurchaseOrderTab({
+   const [expiryDate, setExpiryDate] = useState('')
+   const [status, setStatus] = useState<'Draft' | 'Approved' | 'Billed' | 'Declined'>('Draft')
+   const [currency, setCurrency] = useState(activeOrg.currency || 'USD')
+-  const [taxType, setTaxType] = useState<'Inclusive' | 'Exclusive'>('Exclusive')
++  const [taxType, setTaxType] = useState<'Inclusive' | 'Exclusive' | 'No Tax'>('Exclusive')
+   const [selectedProjectId, setSelectedProjectId] = useState('')
+   const [notes, setNotes] = useState('')
+   const [attachmentName, setAttachmentName] = useState('')
+@@ -187,8 +187,8 @@ export function CreatePurchaseOrderTab({
+       const firstTax = loadedTaxRates[0]?.id || ''
+ 
+       // Load specific PO for editing if set
+-      const savedPurchases = localStorage.getItem(`kdm_purchase_settings_${activeOrg.id}`) || 
+-                             localStorage.getItem(`kdm_mock_purchase_settings_${activeOrg.id}`)
++      const savedPurchases = localStorage.getItem(`kdm_purchase_settings_${activeOrg.id}`) ||
++        localStorage.getItem(`kdm_mock_purchase_settings_${activeOrg.id}`)
+       let loadedPurchaseSetting = {
+         po_prefix: 'PO-',
+         next_po_number: 1001,
+@@ -219,7 +219,7 @@ export function CreatePurchaseOrderTab({
+           setCurrency(po.currency)
+           setTaxType(po.tax_type || 'Exclusive')
+           setSelectedProjectId(po.project || '')
+-          
++
+           const savedNotes = localStorage.getItem(`kdm_po_notes_${po.id}`)
+           if (savedNotes) setNotes(savedNotes)
+           else setNotes(po.notes || '')
+@@ -242,14 +242,14 @@ export function CreatePurchaseOrderTab({
+         const prefix = loadedPurchaseSetting.po_prefix
+         const nextNum = String(loadedPurchaseSetting.next_po_number).padStart(4, '0')
+         setPoNumber(`${prefix}${nextNum}`)
+-        
++
+         const today = new Date()
+         today.setDate(today.getDate() + 15) // default 15 days expiry
+         setExpiryDate(today.toISOString().split('T')[0])
+-        
++
+         setLines([{ id: '1', itemId: '', description: '', quantity: '', unitPrice: '', discount: '', accountId: firstAcc, taxRateId: firstTax }])
+         setNotes(loadedPurchaseSetting.purchase_footer || '')
+-        
++
+         if (loadedContacts.length > 0) {
+           setSelectedContactId(loadedContacts[0].id)
+         }
+@@ -276,7 +276,7 @@ export function CreatePurchaseOrderTab({
+     updated[index].itemId = itemId
+     updated[index].description = targetItem.purchase_description || targetItem.name
+     updated[index].unitPrice = Number(targetItem.purchase_unit_cost)
+-    
++
+     if (targetItem.purchase_account) updated[index].accountId = targetItem.purchase_account
+     if (targetItem.purchase_tax_rate) updated[index].taxRateId = targetItem.purchase_tax_rate
+ 
+@@ -288,15 +288,30 @@ export function CreatePurchaseOrderTab({
+       if (next[index]) {
+         const nextRow = { ...next[index] }
+         delete nextRow.itemId
+-        delete nextRow.accountId
++        delete nextRow.description
+         delete nextRow.quantity
+         delete nextRow.unitPrice
++        delete nextRow.accountId
++        delete nextRow.taxRateId
+         next[index] = nextRow
+       }
+       return next
+     })
+   }
+ 
++  const handleTaxTypeChange = (newType: 'Inclusive' | 'Exclusive' | 'No Tax') => {
++    setTaxType(newType)
++    if (newType === 'No Tax') {
++      const exemptRate = taxRates.find(t => t.name.toLowerCase().includes('exempt') || Number(t.rate) === 0)
++      if (exemptRate) {
++        setLines(prev => prev.map(line => ({
++          ...line,
++          taxRateId: exemptRate.id
++        })))
++      }
++    }
++  }
++
+   // Row line updates
+   const updateLineField = (index: number, field: keyof LineFormItem, value: any) => {
+     const updated = [...lines]
+@@ -304,6 +319,23 @@ export function CreatePurchaseOrderTab({
+       ...updated[index],
+       [field]: value
+     }
++
++    if (field === 'unitPrice' && value !== '' && Number(value) >= 0) {
++      if (!updated[index].quantity || Number(updated[index].quantity) <= 0) {
++        updated[index].quantity = 1
++      }
++      if (!updated[index].accountId) {
++        const defaultAccount = accounts.find(a => a.code === '300' || a.name.toLowerCase().includes('purchases') || a.class_type === 'Expense')?.id || accounts[0]?.id || ''
++        updated[index].accountId = defaultAccount
++      }
++      if (!updated[index].taxRateId) {
++        const defaultTax = taxType === 'No Tax'
++          ? (taxRates.find(t => t.name.toLowerCase().includes('exempt') || Number(t.rate) === 0)?.id || '')
++          : (taxRates.find(t => t.name.toLowerCase().includes('purchases'))?.id || taxRates[0]?.id || '')
++        updated[index].taxRateId = defaultTax
++      }
++    }
++
+     setLines(updated)
+ 
+     // Clear validation error on change
+@@ -321,8 +353,10 @@ export function CreatePurchaseOrderTab({
+   }
+ 
+   const addLineItem = () => {
+-    const defaultAcc = accounts.find(a => a.class_type === 'Expense')?.id || accounts[0]?.id || ''
+-    const defaultTax = taxRates[0]?.id || ''
++    const defaultAcc = accounts.find(a => a.code === '300' || a.name.toLowerCase().includes('purchases') || a.class_type === 'Expense')?.id || accounts[0]?.id || ''
++    const defaultTax = taxType === 'No Tax'
++      ? (taxRates.find(t => t.name.toLowerCase().includes('exempt') || Number(t.rate) === 0)?.id || '')
++      : (taxRates.find(t => t.name.toLowerCase().includes('purchases'))?.id || taxRates[0]?.id || '')
+     setLines([...lines, {
+       id: String(Date.now()),
+       itemId: '',
+@@ -349,7 +383,7 @@ export function CreatePurchaseOrderTab({
+       const u = Number(line.unitPrice) || 0
+       const d = Number(line.discount) || 0
+       const lineTotal = q * u * (1 - d / 100)
+-      
++
+       if (taxType === 'Inclusive') {
+         const rateObj = taxRates.find(t => t.id === line.taxRateId)
+         const rateVal = rateObj ? Number(rateObj.rate) : 0
+@@ -367,10 +401,10 @@ export function CreatePurchaseOrderTab({
+       const u = Number(line.unitPrice) || 0
+       const d = Number(line.discount) || 0
+       const lineTotal = q * u * (1 - d / 100)
+-      
++
+       const rateObj = taxRates.find(t => t.id === line.taxRateId)
+       const rateVal = rateObj ? Number(rateObj.rate) : 0
+-      
++
+       if (taxType === 'Inclusive') {
+         const lineTax = lineTotal * (rateVal / (100 + rateVal))
+         return sum + lineTax
+@@ -435,7 +469,7 @@ export function CreatePurchaseOrderTab({
+ 
+       setSelectedContactId(createdContact.id)
+       setShowQuickContactModal(false)
+-      
++
+       // Reset form
+       setQuickContactName('')
+       setQuickContactEmail('')
+@@ -579,17 +613,16 @@ export function CreatePurchaseOrderTab({
+     }
+ 
+     lines.forEach((l, idx) => {
+-      const q = Number(l.quantity) || 0
+       const rowErr: Record<string, boolean> = {}
+       let rowHasErr = false
+ 
+-      if (q <= 0 || l.quantity === '') {
+-        rowErr.quantity = true
++      if (!l.description || !l.description.trim()) {
++        rowErr.description = true
+         rowHasErr = true
+         hasValidationErrors = true
+       }
+-      if (!l.accountId) {
+-        rowErr.accountId = true
++      if (l.unitPrice === '' || Number(l.unitPrice) < 0) {
++        rowErr.unitPrice = true
+         rowHasErr = true
+         hasValidationErrors = true
+       }
+@@ -602,11 +635,6 @@ export function CreatePurchaseOrderTab({
+     if (hasValidationErrors) {
+       setErrors(formErrors)
+       setLineErrors(rowErrors)
+-      showAlert({ 
+-        title: 'Validation Error', 
+-        message: 'Please fill in all required fields highlighted in red before proceeding.', 
+-        type: 'warning' 
+-      })
+       return
+     }
+ 
+@@ -624,14 +652,20 @@ export function CreatePurchaseOrderTab({
+         const u = Number(l.unitPrice) || 0
+         const d = Number(l.discount) || 0
+         const lineTotal = q * u * (1 - d / 100)
++
++        const fallbackAcc = accounts.find(a => a.code === '300' || a.name.toLowerCase().includes('purchases') || a.class_type === 'Expense')?.id || accounts[0]?.id || ''
++        const fallbackTax = taxType === 'No Tax'
++          ? (taxRates.find(t => t.name.toLowerCase().includes('exempt') || Number(t.rate) === 0)?.id || null)
++          : (taxRates.find(t => t.name.toLowerCase().includes('purchases'))?.id || taxRates[0]?.id || null)
++
+         return {
+           item: l.itemId || null,
+           description: l.description,
+           quantity: q,
+           unit_price: u,
+           discount: d,
+-          account: l.accountId,
+-          tax_rate: l.taxRateId || null,
++          account: l.accountId || fallbackAcc,
++          tax_rate: l.taxRateId || fallbackTax,
+           total: lineTotal
+         }
+       })
+@@ -662,8 +696,8 @@ export function CreatePurchaseOrderTab({
+       } else {
+         list = [payload, ...list]
+         // Auto-increment sequence number in localStorage Purchases Settings upon successful save!
+-        const savedPurchases = localStorage.getItem(`kdm_purchase_settings_${activeOrg.id}`) || 
+-                               localStorage.getItem(`kdm_mock_purchase_settings_${activeOrg.id}`)
++        const savedPurchases = localStorage.getItem(`kdm_purchase_settings_${activeOrg.id}`) ||
++          localStorage.getItem(`kdm_mock_purchase_settings_${activeOrg.id}`)
+         if (savedPurchases) {
+           const parsed = JSON.parse(savedPurchases)
+           parsed.next_po_number = (Number(parsed.next_po_number) || 1001) + 1
+@@ -677,7 +711,7 @@ export function CreatePurchaseOrderTab({
+       localStorage.setItem(`kdm_po_attachment_${payload.id}`, attachmentName)
+ 
+       showAlert({ title: 'Success', message: 'Purchase Order successfully stored in the acquisitions ledger.', type: 'success' })
+-      
++
+       if (setEditingPoId) setEditingPoId(null)
+       setActiveTab('PurchaseOrders')
+     } catch (err: any) {
+@@ -694,7 +728,7 @@ export function CreatePurchaseOrderTab({
+     try {
+       const savedPOs = localStorage.getItem(`kdm_mock_purchase_orders_${activeOrg.id}`)
+       let poList = savedPOs ? JSON.parse(savedPOs) : []
+-      
++
+       // Update PO status to Billed
+       poList = poList.map((p: any) => {
+         if (p.id === editingPoId || p.po_number === editingPoId) {
+@@ -709,10 +743,10 @@ export function CreatePurchaseOrderTab({
+       if (activePO) {
+         const savedBills = localStorage.getItem(`kdm_mock_bills_${activeOrg.id}`)
+         let billList = savedBills ? JSON.parse(savedBills) : []
+-        
++
+         const newBillId = `mock-bill-${Date.now()}`
+         const nextNum = billList.length + 1001
+-        
++
+         const newBill = {
+           id: newBillId,
+           contact: activePO.contact,
+@@ -791,18 +825,18 @@ export function CreatePurchaseOrderTab({
+       const logo = localStorage.getItem(`kdm_org_logo_${activeOrg.id}`) || ''
+       const bankDetails = JSON.parse(localStorage.getItem(`kdm_bank_details_${activeOrg.id}`) || '{}')
+       const templateSettings = JSON.parse(
+-        localStorage.getItem(`kdm_purchase_template_settings_${activeOrg.id}`) || 
+-        localStorage.getItem(`kdm_sales_template_settings_${activeOrg.id}`) || 
++        localStorage.getItem(`kdm_purchase_template_settings_${activeOrg.id}`) ||
++        localStorage.getItem(`kdm_sales_template_settings_${activeOrg.id}`) ||
+         '{}'
+       )
+       const orgDetails = JSON.parse(localStorage.getItem(`kdm_org_extensions_${activeOrg.id}`) || '{}')
+-      
++
+       const supplierObj = contacts.find(c => c.id === selectedContactId)
+       const projectObj = projects.find(p => p.id === selectedProjectId)
+-      
++
+       // Load purchases settings to send standard terms fallback
+-      const savedPurchases = localStorage.getItem(`kdm_purchase_settings_${activeOrg.id}`) || 
+-                             localStorage.getItem(`kdm_mock_purchase_settings_${activeOrg.id}`)
++      const savedPurchases = localStorage.getItem(`kdm_purchase_settings_${activeOrg.id}`) ||
++        localStorage.getItem(`kdm_mock_purchase_settings_${activeOrg.id}`)
+       let supplierTerms = '30 days'
+       if (savedPurchases) {
+         const parsed = JSON.parse(savedPurchases)
+@@ -992,73 +1026,40 @@ export function CreatePurchaseOrderTab({
+               {editingPoId ? `Purchase Order: ${poNumber}` : 'Create new purchase order'}
+             </h2>
+             {editingPoId && (
+-              <span className={`inline-block text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider mt-1 border ${
+-                status === 'Approved' ? 'bg-emerald-50 text-emerald-600 border-emerald-100/30' :
+-                status === 'Billed' ? 'bg-indigo-50 text-indigo-600 border-indigo-100/30' :
+-                status === 'Declined' ? 'bg-rose-50 text-rose-600 border-rose-100/30' :
+-                'bg-slate-100 text-slate-500 border-slate-200/50'
+-              }`}>
++              <span className={`inline-block text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider mt-1 border ${status === 'Approved' ? 'bg-emerald-50 text-emerald-600 border-emerald-100/30' :
++                  status === 'Billed' ? 'bg-indigo-50 text-indigo-600 border-indigo-100/30' :
++                    status === 'Declined' ? 'bg-rose-50 text-rose-600 border-rose-100/30' :
++                      'bg-slate-100 text-slate-500 border-slate-200/50'
++                }`}>
+                 {status}
+               </span>
+             )}
+           </div>
+-        </div>
++              <div className="flex items-center space-x-2.5 flex-wrap sm:justify-end gap-2">
++          {/* Always display Cancel button */}
++          <button
++            onClick={() => {
++              if (setEditingPoId) setEditingPoId(null)
++              setActiveTab('PurchaseOrders')
++            }}
++            className="bg-white hover:bg-slate-50 text-slate-555 border border-slate-200 font-medium text-xs px-4.5 py-2 rounded-[3px] shadow-sm transition duration-200 cursor-pointer h-[38px] flex items-center justify-center"
++          >
++            Cancel
++          </button>
+ 
+-        <div className="flex items-center space-x-2.5 flex-wrap sm:justify-end gap-2">
+-          {editingPoId ? (
++          {!editingPoId ? (
++            /* NEW PO MODE */
+             <>
+               <button
+-                onClick={() => {
+-                  if (setEditingPoId) setEditingPoId(null)
+-                  setActiveTab('PurchaseOrders')
+-                }}
+-                className="bg-white hover:bg-slate-50 text-slate-555 border border-slate-200 font-medium text-xs px-4.5 py-2 rounded-[3px] shadow-sm transition duration-200 cursor-pointer h-[38px] flex items-center justify-center"
+-              >
+-                Cancel
+-              </button>
+-
+-              <button
+-                onClick={handlePrintPDF}
+-                className="bg-white hover:bg-slate-50 text-slate-700 hover:text-[#0F5B38] border border-slate-200 hover:border-slate-300 font-medium text-xs px-4.5 py-2 rounded-[3px] shadow-sm transition duration-200 cursor-pointer h-[38px] flex items-center justify-center space-x-1.5"
++                onClick={() => handleSavePO('Draft')}
++                disabled={isSubmitting}
++                className="bg-white hover:bg-slate-50 text-slate-700 hover:text-[#0F5B38] border border-slate-200 hover:border-slate-300 font-medium text-xs px-4.5 py-2 rounded-[3px] shadow-sm transition duration-200 cursor-pointer h-[38px] flex items-center justify-center disabled:bg-slate-50 disabled:text-slate-400"
+               >
+-                Save PDF
++                Save as Draft
+               </button>
+ 
+-              {status === 'Draft' && (
+-                <button
+-                  onClick={() => handleSavePO('Approved')}
+-                  disabled={isSubmitting}
+-                  className="bg-[#0F5B38] hover:brightness-105 text-white font-medium text-xs px-4.5 py-2 rounded-[3px] shadow-md transition duration-200 cursor-pointer disabled:brightness-90 flex items-center justify-center space-x-1.5 h-[38px]"
+-                >
+-                  {isSubmitting ? (
+-                    <>
+-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+-                      <span>Submitting...</span>
+-                    </>
+-                  ) : (
+-                    <span>Submit for Approval</span>
+-                  )}
+-                </button>
+-              )}
++              {renderApproveAndEmailButton()}
+ 
+-              {status === 'Approved' && (
+-                <button
+-                  onClick={handleConvertToBillOnTheSpot}
+-                  disabled={isSubmitting}
+-                  className="bg-[#0F5B38] hover:brightness-105 text-white font-medium text-xs px-4.5 py-2 rounded-[3px] shadow-md transition duration-200 cursor-pointer disabled:brightness-90 flex items-center justify-center space-x-1.5 h-[38px]"
+-                >
+-                  {isSubmitting ? (
+-                    <>
+-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+-                      <span>Billing...</span>
+-                    </>
+-                  ) : (
+-                    <span>Mark as Billed</span>
+-                  )}
+-                </button>
+-              )}
+-
+-              {/* Symmetrical Three Vertical Dots Dropdown Menu */}
+               <div className="relative">
+                 <button
+                   onClick={() => setIsMoreDropdownOpen(!isMoreDropdownOpen)}
+@@ -1072,66 +1073,29 @@ export function CreatePurchaseOrderTab({
+                     <div className="fixed inset-0 z-40" onClick={() => setIsMoreDropdownOpen(false)}></div>
+                     <div className="absolute right-0 mt-2 w-48 bg-white border border-slate-200 rounded-[3px] shadow-xl z-50 p-1.5 divide-y divide-slate-50 font-normal text-xs text-slate-700">
+                       <div className="py-1 space-y-0.5">
+-                        {status === 'Draft' && (
+-                          <button
+-                            onClick={() => {
+-                              handleSavePO('Approved')
+-                              setIsMoreDropdownOpen(false)
+-                            }}
+-                            disabled={isSubmitting}
+-                            className="w-full text-left px-4 py-2 hover:bg-slate-50 transition cursor-pointer text-slate-700 font-normal rounded-[3px]"
+-                          >
+-                            Approve PO
+-                          </button>
+-                        )}
+-                        {status === 'Approved' && (
+-                          <button
+-                            onClick={() => {
+-                              handleSavePO('Draft')
+-                              setIsMoreDropdownOpen(false)
+-                            }}
+-                            disabled={isSubmitting}
+-                            className="w-full text-left px-4 py-2 hover:bg-slate-50 transition cursor-pointer text-slate-700 font-normal rounded-[3px]"
+-                          >
+-                            Revert to Draft
+-                          </button>
+-                        )}
+-                        {status === 'Approved' && (
+-                          <button
+-                            onClick={() => {
+-                              handleSavePO('Declined')
+-                              setIsMoreDropdownOpen(false)
+-                            }}
+-                            disabled={isSubmitting}
+-                            className="w-full text-left px-4 py-2 hover:bg-slate-50 transition cursor-pointer text-slate-700 font-normal rounded-[3px]"
+-                          >
+-                            Mark as Declined
+-                          </button>
+-                        )}
+-                        {status !== 'Billed' && (
+-                          <button
+-                            onClick={() => {
+-                              handleDeletePO()
+-                              setIsMoreDropdownOpen(false)
+-                            }}
+-                            disabled={isSubmitting}
+-                            className="w-full text-left px-4 py-2 hover:bg-rose-50 hover:text-rose-600 transition cursor-pointer text-rose-500 font-normal rounded-[3px]"
+-                          >
+-                            Delete
+-                          </button>
+-                        )}
+-                        {status === 'Billed' && (
+-                          <button
+-                            onClick={() => {
+-                              handleDeletePO()
+-                              setIsMoreDropdownOpen(false)
+-                            }}
+-                            disabled={isSubmitting}
+-                            className="w-full text-left px-4 py-2 hover:bg-rose-50 hover:text-rose-600 transition cursor-pointer text-rose-500 font-normal rounded-[3px]"
+-                          >
+-                            Delete
+-                          </button>
+-                        )}
++                        <button
++                          onClick={() => {
++                            handleSavePO('Awaiting Approval')
++                            setIsMoreDropdownOpen(false)
++                          }}
++                          disabled={isSubmitting}
++                          className="w-full text-left px-4 py-2 hover:bg-slate-50 transition cursor-pointer text-slate-700 font-normal rounded-[3px]"
++                        >
++                          Submit for Approval
++                        </button>
++                        <button
++                          onClick={() => {
++                            showAlert({
++                              title: 'Save PDF',
++                              message: 'Please save the purchase order as a Draft or Approve it first before downloading PDF.',
++                              type: 'warning'
++                            })
++                            setIsMoreDropdownOpen(false)
++                          }}
++                          className="w-full text-left px-4 py-2 hover:bg-slate-50 transition cursor-pointer text-slate-700 font-normal rounded-[3px]"
++                        >
++                          Save PDF
++                        </button>
+                       </div>
+                     </div>
+                   </>
+@@ -1139,41 +1103,308 @@ export function CreatePurchaseOrderTab({
+               </div>
+             </>
+           ) : (
++            /* EDITING PO MODE */
+             <>
+-              {/* Creating new purchase order actions */}
+-              <button
+-                onClick={() => {
+-                  if (setEditingPoId) setEditingPoId(null)
+-                  setActiveTab('PurchaseOrders')
+-                }}
+-                className="bg-white hover:bg-slate-50 text-slate-550 border border-slate-200 font-medium text-xs px-4.5 py-2 rounded-[3px] shadow-sm transition duration-200 cursor-pointer h-[38px] flex items-center justify-center"
+-              >
+-                Cancel
+-              </button>
+-              <button
+-                onClick={() => handleSavePO('Draft')}
+-                disabled={isSubmitting}
+-                className="bg-white hover:bg-slate-50 text-slate-700 hover:text-[#0F5B38] border border-slate-200 hover:border-slate-300 font-medium text-xs px-4.5 py-2 rounded-[3px] shadow-sm transition duration-200 cursor-pointer h-[38px] flex items-center justify-center disabled:bg-slate-50 disabled:text-slate-400"
+-              >
+-                Save as Draft
+-              </button>
+-              <button
+-                onClick={() => handleSavePO('Approved')}
+-                disabled={isSubmitting}
+-                className="bg-[#0F5B38] hover:brightness-105 text-white font-medium text-xs px-4.5 py-2 rounded-[3px] shadow-md transition duration-200 cursor-pointer disabled:brightness-90 flex items-center justify-center space-x-1.5 h-[38px]"
+-              >
+-                {isSubmitting ? (
+-                  <>
+-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+-                    <span>Submitting...</span>
+-                  </>
+-                ) : (
+-                  <>
+-                    <CheckCircle className="h-3.5 w-3.5" />
+-                    <span>Submit for Approval</span>
+-                  </>
+-                )}
+-              </button>
++              {/* Draft PO */}
++              {status === 'Draft' && (
++                <>
++                  <button
++                    onClick={() => handleSavePO('Draft')}
++                    disabled={isSubmitting}
++                    className="bg-white hover:bg-slate-50 text-slate-700 hover:text-[#0F5B38] border border-slate-200 hover:border-slate-300 font-medium text-xs px-4.5 py-2 rounded-[3px] shadow-sm transition duration-200 cursor-pointer h-[38px] flex items-center justify-center disabled:bg-slate-50 disabled:text-slate-400"
++                  >
++                    Save as Draft
++                  </button>
++
++                  {renderApproveAndEmailButton()}
++
++                  <div className="relative">
++                    <button
++                      onClick={() => setIsMoreDropdownOpen(!isMoreDropdownOpen)}
++                      className="flex items-center justify-center bg-white hover:bg-slate-50 text-slate-500 hover:text-[#0F5B38] border border-slate-200 hover:border-slate-300 w-[38px] h-[38px] rounded-[3px] transition duration-200 cursor-pointer shadow-sm"
++                      title="More actions"
++                    >
++                      <MoreVertical className="h-4.5 w-4.5" />
++                    </button>
++                    {isMoreDropdownOpen && (
++                      <>
++                        <div className="fixed inset-0 z-40" onClick={() => setIsMoreDropdownOpen(false)}></div>
++                        <div className="absolute right-0 mt-2 w-48 bg-white border border-slate-200 rounded-[3px] shadow-xl z-50 p-1.5 divide-y divide-slate-50 font-normal text-xs text-slate-700">
++                          <div className="py-1 space-y-0.5">
++                            <button
++                              onClick={() => {
++                                handleSavePO('Awaiting Approval')
++                                setIsMoreDropdownOpen(false)
++                              }}
++                              disabled={isSubmitting}
++                              className="w-full text-left px-4 py-2 hover:bg-slate-50 transition cursor-pointer text-slate-700 font-normal rounded-[3px]"
++                            >
++                              Submit for Approval
++                            </button>
++                            <button
++                              onClick={() => {
++                                handlePrintPDF()
++                                setIsMoreDropdownOpen(false)
++                              }}
++                              className="w-full text-left px-4 py-2 hover:bg-slate-50 transition cursor-pointer text-slate-700 font-normal rounded-[3px]"
++                            >
++                              Save PDF
++                            </button>
++                            <button
++                              onClick={() => {
++                                handleDeletePO()
++                                setIsMoreDropdownOpen(false)
++                              }}
++                              disabled={isSubmitting}
++                              className="w-full text-left px-4 py-2 hover:bg-rose-50 hover:text-rose-600 transition cursor-pointer text-rose-500 font-normal rounded-[3px]"
++                            >
++                              Delete
++                            </button>
++                          </div>
++                        </div>
++                      </>
++                    )}
++                  </div>
++                </>
++              )}
++
++              {/* Awaiting Approval PO */}
++              {status === 'Awaiting Approval' && (
++                <>
++                  <button
++                    onClick={() => handleSavePO('Awaiting Approval')}
++                    disabled={isSubmitting}
++                    className="bg-white hover:bg-slate-50 text-slate-700 hover:text-[#0F5B38] border border-slate-200 hover:border-slate-300 font-medium text-xs px-4.5 py-2 rounded-[3px] shadow-sm transition duration-200 cursor-pointer h-[38px] flex items-center justify-center disabled:bg-slate-50 disabled:text-slate-400"
++                  >
++                    Save
++                  </button>
++
++                  {renderApproveAndEmailButton()}
++
++                  <div className="relative">
++                    <button
++                      onClick={() => setIsMoreDropdownOpen(!isMoreDropdownOpen)}
++                      className="flex items-center justify-center bg-white hover:bg-slate-50 text-slate-550 hover:text-[#0F5B38] border border-slate-200 hover:border-slate-300 w-[38px] h-[38px] rounded-[3px] transition duration-200 cursor-pointer shadow-sm"
++                      title="More actions"
++                    >
++                      <MoreVertical className="h-4.5 w-4.5" />
++                    </button>
++                    {isMoreDropdownOpen && (
++                      <>
++                        <div className="fixed inset-0 z-40" onClick={() => setIsMoreDropdownOpen(false)}></div>
++                        <div className="absolute right-0 mt-2 w-48 bg-white border border-slate-200 rounded-[3px] shadow-xl z-50 p-1.5 divide-y divide-slate-50 font-normal text-xs text-slate-700">
++                          <div className="py-1 space-y-0.5">
++                            <button
++                              onClick={() => {
++                                handlePrintPDF()
++                                setIsMoreDropdownOpen(false)
++                              }}
++                              className="w-full text-left px-4 py-2 hover:bg-slate-50 transition cursor-pointer text-slate-700 font-normal rounded-[3px]"
++                            >
++                              Save PDF
++                            </button>
++                            <button
++                              onClick={() => {
++                                handleDeletePO()
++                                setIsMoreDropdownOpen(false)
++                              }}
++                              disabled={isSubmitting}
++                              className="w-full text-left px-4 py-2 hover:bg-rose-50 hover:text-rose-600 transition cursor-pointer text-rose-500 font-normal rounded-[3px]"
++                            >
++                              Delete
++                            </button>
++                          </div>
++                        </div>
++                      </>
++                    )}
++                  </div>
++                </>
++              )}
++
++              {/* Approved PO */}
++              {status === 'Approved' && (
++                <>
++                  <button
++                    onClick={handlePrintPDF}
++                    className="bg-white hover:bg-slate-50 text-slate-700 hover:text-[#0F5B38] border border-slate-200 hover:border-slate-300 font-medium text-xs px-4.5 py-2 rounded-[3px] shadow-sm transition duration-200 cursor-pointer h-[38px] flex items-center justify-center space-x-1.5"
++                  >
++                    Save PDF
++                  </button>
++
++                  <button
++                    onClick={handleConvertToBillOnTheSpot}
++                    disabled={isSubmitting}
++                    className="bg-[#0F5B38] hover:brightness-105 text-white font-medium text-xs px-4.5 py-2 rounded-[3px] shadow-md transition duration-200 cursor-pointer disabled:brightness-90 flex items-center justify-center space-x-1.5 h-[38px]"
++                  >
++                    {isSubmitting ? (
++                      <>
++                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
++                        <span>Billing...</span>
++                      </>
++                    ) : (
++                      <span>Create Invoice</span>
++                    )}
++                  </button>
++
++                  <div className="relative">
++                    <button
++                      onClick={() => setIsMoreDropdownOpen(!isMoreDropdownOpen)}
++                      className="flex items-center justify-center bg-white hover:bg-slate-50 text-slate-500 hover:text-[#0F5B38] border border-slate-200 hover:border-slate-300 w-[38px] h-[38px] rounded-[3px] transition duration-200 cursor-pointer shadow-sm"
++                      title="More actions"
++                    >
++                      <MoreVertical className="h-4.5 w-4.5" />
++                    </button>
++                    {isMoreDropdownOpen && (
++                      <>
++                        <div className="fixed inset-0 z-40" onClick={() => setIsMoreDropdownOpen(false)}></div>
++                        <div className="absolute right-0 mt-2 w-48 bg-white border border-slate-200 rounded-[3px] shadow-xl z-50 p-1.5 divide-y divide-slate-50 font-normal text-xs text-slate-700">
++                          <div className="py-1 space-y-0.5">
++                            <button
++                              onClick={() => {
++                                showAlert({
++                                  title: 'Email Notification',
++                                  message: 'Email sending is not configured. (Blank operation executed)',
++                                  type: 'info'
++                                })
++                                setIsMoreDropdownOpen(false)
++                              }}
++                              className="w-full text-left px-4 py-2 hover:bg-slate-50 transition cursor-pointer text-slate-700 font-normal rounded-[3px]"
++                            >
++                              Send
++                            </button>
++                            <button
++                              onClick={() => handleUpdateStatusOnTheSpot('Draft')}
++                              disabled={isSubmitting}
++                              className="w-full text-left px-4 py-2 hover:bg-slate-50 transition cursor-pointer text-slate-700 font-normal rounded-[3px]"
++                            >
++                              Unmark as Approve
++                            </button>
++                            <button
++                              onClick={() => handleUpdateStatusOnTheSpot('Billed')}
++                              disabled={isSubmitting}
++                              className="w-full text-left px-4 py-2 hover:bg-slate-50 transition cursor-pointer text-slate-700 font-normal rounded-[3px]"
++                            >
++                              Mark as Billed
++                            </button>
++                            <button
++                              onClick={() => {
++                                handleDeletePO()
++                                setIsMoreDropdownOpen(false)
++                              }}
++                              disabled={isSubmitting}
++                              className="w-full text-left px-4 py-2 hover:bg-rose-50 hover:text-rose-600 transition cursor-pointer text-rose-500 font-normal rounded-[3px]"
++                            >
++                              Delete
++                            </button>
++                          </div>
++                        </div>
++                      </>
++                    )}
++                  </div>
++                </>
++              )}
++
++              {/* Billed PO */}
++              {status === 'Billed' && (
++                <>
++                  <button
++                    onClick={handlePrintPDF}
++                    className="bg-white hover:bg-slate-50 text-slate-700 hover:text-[#0F5B38] border border-slate-200 hover:border-slate-300 font-medium text-xs px-4.5 py-2 rounded-[3px] shadow-sm transition duration-200 cursor-pointer h-[38px] flex items-center justify-center space-x-1.5"
++                  >
++                    Save PDF
++                  </button>
++
++                  <button
++                    onClick={() => {
++                      showAlert({
++                        title: 'Email Notification',
++                        message: 'Email sending is not configured. (Blank operation executed)',
++                        type: 'info'
++                      })
++                    }}
++                    className="bg-white hover:bg-slate-50 text-slate-700 hover:text-[#0F5B38] border border-slate-200 hover:border-[#0F5B38] font-medium text-xs px-4.5 py-2 rounded-[3px] shadow-sm transition duration-200 cursor-pointer h-[38px] flex items-center justify-center"
++                  >
++                    Email
++                  </button>
++
++                  <div className="relative">
++                    <button
++                      onClick={() => setIsMoreDropdownOpen(!isMoreDropdownOpen)}
++                      className="flex items-center justify-center bg-white hover:bg-slate-50 text-slate-550 border border-slate-200 hover:border-slate-300 w-[38px] h-[38px] rounded-[3px] transition duration-200 cursor-pointer shadow-sm"
++                      title="More actions"
++                    >
++                      <MoreVertical className="h-4.5 w-4.5" />
++                    </button>
++                    {isMoreDropdownOpen && (
++                      <>
++                        <div className="fixed inset-0 z-40" onClick={() => setIsMoreDropdownOpen(false)}></div>
++                        <div className="absolute right-0 mt-2 w-48 bg-white border border-slate-200 rounded-[3px] shadow-xl z-50 p-1.5 divide-y divide-slate-50 font-normal text-xs text-slate-700">
++                          <div className="py-1 space-y-0.5">
++                            <button
++                              onClick={() => {
++                                handleDeletePO()
++                                setIsMoreDropdownOpen(false)
++                              }}
++                              disabled={isSubmitting}
++                              className="w-full text-left px-4 py-2 hover:bg-rose-50 hover:text-rose-600 transition cursor-pointer text-rose-500 font-normal rounded-[3px]"
++                            >
++                              Delete
++                            </button>
++                          </div>
++                        </div>
++                      </>
++                    )}
++                  </div>
++                </>
++              )}
++
++              {/* Fallback for Declined status */}
++              {status === 'Declined' && (
++                <>
++                  <button
++                    onClick={handlePrintPDF}
++                    className="bg-white hover:bg-slate-50 text-slate-700 hover:text-[#0F5B38] border border-slate-200 hover:border-slate-300 font-medium text-xs px-4.5 py-2 rounded-[3px] shadow-sm transition duration-200 cursor-pointer h-[38px] flex items-center justify-center space-x-1.5"
++                  >
++                    Save PDF
++                  </button>
++
++                  <div className="relative">
++                    <button
++                      onClick={() => setIsMoreDropdownOpen(!isMoreDropdownOpen)}
++                      className="flex items-center justify-center bg-white hover:bg-slate-50 text-slate-500 hover:text-[#0F5B38] border border-slate-200 hover:border-slate-300 w-[38px] h-[38px] rounded-[3px] transition duration-200 cursor-pointer shadow-sm"
++                      title="More actions"
++                    >
++                      <MoreVertical className="h-4.5 w-4.5" />
++                    </button>
++                    {isMoreDropdownOpen && (
++                      <>
++                        <div className="fixed inset-0 z-40" onClick={() => setIsMoreDropdownOpen(false)}></div>
++                        <div className="absolute right-0 mt-2 w-48 bg-white border border-slate-200 rounded-[3px] shadow-xl z-50 p-1.5 divide-y divide-slate-50 font-normal text-xs text-slate-700">
++                          <div className="py-1 space-y-0.5">
++                            <button
++                              onClick={() => handleUpdateStatusOnTheSpot('Draft')}
++                              disabled={isSubmitting}
++                              className="w-full text-left px-4 py-2 hover:bg-slate-50 transition cursor-pointer text-slate-700 font-normal rounded-[3px]"
++                            >
++                              Revert to Draft
++                            </button>
++                            <button
++                              onClick={() => {
++                                handleDeletePO()
++                                setIsMoreDropdownOpen(false)
++                              }}
++                              disabled={isSubmitting}
++                              className="w-full text-left px-4 py-2 hover:bg-rose-50 hover:text-rose-600 transition cursor-pointer text-rose-500 font-normal rounded-[3px]"
++                            >
++                              Delete
++                            </button>
++                          </div>
++                        </div>
++                      </>
++                    )}
++                  </div>
++                </>
++              )}
+             </>
+           )}
+         </div>
+@@ -1185,9 +1416,19 @@ export function CreatePurchaseOrderTab({
+         </div>
+       )}
+ 
++      {(Object.keys(errors).length > 0 || Object.keys(lineErrors).length > 0) && (
++        <div className="bg-rose-50 border border-rose-100/80 text-rose-700 p-4 rounded-[3px] text-xs font-semibold flex items-start space-x-2.5 animate-fadeIn mb-1">
++          <AlertCircle className="h-4 w-4 text-rose-500 shrink-0 mt-0.5" />
++          <div>
++            <p className="font-bold text-[13px] text-rose-800">Validation Error</p>
++            <p className="text-rose-600/90 mt-0.5 font-medium">Please fill in all required fields highlighted in red below before proceeding.</p>
++          </div>
++        </div>
++      )}
++
+       {/* Main PO Form Wrapper */}
+       <div id="printable-area" className="bg-white rounded-[3px] border border-slate-200 shadow-sm p-6 md:p-8 space-y-8">
+-        
++
+         {/* Form Metadata Section */}
+         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+           {/* Supplier select */}
+@@ -1196,6 +1437,7 @@ export function CreatePurchaseOrderTab({
+             <SearchableInput
+               options={clientOptions}
+               value={selectedContactId}
++              disabled={isReadOnly}
+               onChange={(val) => {
+                 setSelectedContactId(val)
+                 if (val) {
+@@ -1212,9 +1454,8 @@ export function CreatePurchaseOrderTab({
+                 setShowQuickContactModal(true)
+               }}
+               createNewLabel="Add new supplier"
+-              className={`w-full bg-white text-slate-800 border rounded-[3px] px-3.5 py-2 text-[15px] font-normal focus:outline-none transition cursor-pointer ${
+-                errors.contact ? 'border-rose-500 focus:border-rose-500 bg-rose-50/10' : 'border-slate-200 focus:border-[#0F5B38]'
+-              }`}
++              className={`w-full text-slate-800 border rounded-[3px] px-3.5 py-2 text-[15px] font-normal focus:outline-none transition ${isReadOnly ? 'bg-slate-50 text-slate-400 cursor-not-allowed border-slate-200' : 'bg-white cursor-pointer border-slate-200 focus:border-[#0F5B38]'
++                } ${errors.contact ? 'border-rose-500 focus:border-rose-500 bg-rose-50/10' : ''}`}
+             />
+             {errors.contact && (
+               <span className="text-rose-500 text-[11px] font-semibold block mt-1">{errors.contact}</span>
+@@ -1227,6 +1468,7 @@ export function CreatePurchaseOrderTab({
+             <XeroDatePicker
+               id="poDateInput"
+               value={date}
++              disabled={isReadOnly}
+               onChange={(val) => {
+                 setDate(val)
+                 if (val) {
+@@ -1250,6 +1492,7 @@ export function CreatePurchaseOrderTab({
+             <XeroDatePicker
+               id="poDeliveryInput"
+               value={expiryDate}
++              disabled={isReadOnly}
+               onChange={(val) => {
+                 setExpiryDate(val)
+                 if (val) {
+@@ -1289,8 +1532,9 @@ export function CreatePurchaseOrderTab({
+               type="text"
+               placeholder=""
+               value={reference}
++              readOnly={isReadOnly}
+               onChange={e => setReference(e.target.value)}
+-              className="w-full bg-white text-slate-800 border border-slate-200 rounded-[3px] px-3.5 py-2 text-[15px] font-normal focus:outline-none focus:border-[#0F5B38] transition"
++              className={`w-full text-slate-800 border border-slate-200 rounded-[3px] px-3.5 py-2 text-[15px] font-normal focus:outline-none transition ${isReadOnly ? 'bg-slate-50 text-slate-400 cursor-not-allowed border-slate-200' : 'bg-white focus:border-[#0F5B38]'}`}
+             />
+           </div>
+ 
+@@ -1301,8 +1545,9 @@ export function CreatePurchaseOrderTab({
+               options={currenciesList}
+               value={currency}
+               onChange={setCurrency}
++              disabled={isReadOnly}
+               placeholder=""
+-              className="w-full bg-white text-slate-800 border border-slate-200 rounded-[3px] px-3.5 py-2 text-[15px] font-normal focus:outline-none focus:border-[#0F5B38] transition cursor-pointer"
++              className={`w-full text-slate-800 border border-slate-200 rounded-[3px] px-3.5 py-2 text-[15px] font-normal focus:outline-none transition ${isReadOnly ? 'bg-slate-50 text-slate-400 cursor-not-allowed border-slate-200' : 'bg-white cursor-pointer focus:border-[#0F5B38]'}`}
+             />
+           </div>
+ 
+@@ -1311,11 +1556,13 @@ export function CreatePurchaseOrderTab({
+             <label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block">Tax Type</label>
+             <select
+               value={taxType}
+-              onChange={e => setTaxType(e.target.value as 'Inclusive' | 'Exclusive')}
+-              className="w-full bg-white text-slate-800 border border-slate-200 rounded-[3px] px-3.5 py-2 text-[15px] font-normal focus:outline-none focus:border-[#0F5B38] transition cursor-pointer h-[38px]"
++              onChange={e => handleTaxTypeChange(e.target.value as 'Inclusive' | 'Exclusive' | 'No Tax')}
++              disabled={isReadOnly}
++              className={`w-full text-slate-800 border border-slate-200 rounded-[3px] px-3.5 py-2 text-[15px] font-normal focus:outline-none transition h-[38px] ${isReadOnly ? 'bg-slate-50 text-slate-400 cursor-not-allowed border-slate-200' : 'bg-white cursor-pointer focus:border-[#0F5B38]'}`}
+             >
+               <option value="Exclusive">Tax Exclusive</option>
+               <option value="Inclusive">Tax Inclusive</option>
++              <option value="No Tax">No Tax</option>
+             </select>
+           </div>
+         </div>
+@@ -1329,20 +1576,23 @@ export function CreatePurchaseOrderTab({
+                 options={projectOptions}
+                 value={selectedProjectId}
+                 onChange={setSelectedProjectId}
++                disabled={isReadOnly}
+                 placeholder="Search projects..."
+-                className="w-full bg-white text-slate-800 border border-slate-200 rounded-[3px] px-3.5 py-2 text-[15px] font-normal focus:outline-none focus:border-[#0F5B38] transition cursor-pointer"
++                className={`w-full text-slate-800 border border-slate-200 rounded-[3px] px-3.5 py-2 text-[15px] font-normal focus:outline-none transition ${isReadOnly ? 'bg-slate-50 text-slate-400 cursor-not-allowed border-slate-200' : 'bg-white cursor-pointer focus:border-[#0F5B38]'}`}
+               />
+-              <button
+-                type="button"
+-                onClick={() => {
+-                  lastActiveElementRef.current = document.activeElement as HTMLElement
+-                  setIsCreateProjectOpen(true)
+-                }}
+-                className="ml-2 bg-white border border-slate-200 hover:bg-slate-50 text-[#0F5B38] rounded-[3px] p-2 transition flex items-center justify-center shrink-0 h-[38px] w-[38px]"
+-                title="Create a new project"
+-              >
+-                <Plus className="h-4.5 w-4.5" />
+-              </button>
++              {!isReadOnly && (
++                <button
++                  type="button"
++                  onClick={() => {
++                    lastActiveElementRef.current = document.activeElement as HTMLElement
++                    setIsCreateProjectOpen(true)
++                  }}
++                  className="ml-2 bg-white border border-slate-200 hover:bg-slate-50 text-[#0F5B38] rounded-[3px] p-2 transition flex items-center justify-center shrink-0 h-[38px] w-[38px]"
++                  title="Create a new project"
++                >
++                  <Plus className="h-4.5 w-4.5" />
++                </button>
++              )}
+             </div>
+           </div>
+         </div>
+@@ -1365,7 +1615,7 @@ export function CreatePurchaseOrderTab({
+                   <th className="p-2 border border-slate-200 w-[15%]">Expense Account</th>
+                   <th className="p-2 border border-slate-200 w-[12%]">Tax Rate</th>
+                   <th className="p-2 border border-slate-200 text-right w-[10%]">Amount</th>
+-                  <th className="p-2 border border-slate-200 text-center w-[3%]"></th>
++                  {!isReadOnly && <th className="p-2 border border-slate-200 text-center w-[3%]"></th>}
+                 </tr>
+               </thead>
+               <tbody className="divide-y divide-slate-200 text-xs font-normal text-slate-700">
+@@ -1382,6 +1632,7 @@ export function CreatePurchaseOrderTab({
+                         <SearchableInput
+                           options={catalogOptions}
+                           value={line.itemId}
++                          disabled={isReadOnly}
+                           onChange={(val) => handleCatalogSelect(idx, val)}
+                           placeholder=""
+                           onCreateNew={(el) => {
+@@ -1390,7 +1641,7 @@ export function CreatePurchaseOrderTab({
+                             setShowQuickItemModal(true)
+                           }}
+                           createNewLabel="Add new item"
+-                          className="w-full bg-transparent text-slate-800 border-none rounded-none px-2.5 py-2.5 text-xs font-normal focus:outline-none focus:ring-0 cursor-pointer"
++                          className={`w-full bg-transparent border-none rounded-none px-2.5 py-2.5 text-xs font-normal focus:outline-none focus:ring-0 ${isReadOnly ? 'cursor-not-allowed text-slate-400' : 'cursor-pointer text-slate-800'}`}
+                         />
+                       </td>
+ 
+@@ -1400,21 +1651,24 @@ export function CreatePurchaseOrderTab({
+                           type="text"
+                           placeholder=""
+                           value={line.description}
++                          readOnly={isReadOnly}
+                           onChange={e => updateLineField(idx, 'description', e.target.value)}
+-                          className="w-full bg-transparent text-slate-800 border-none rounded-none px-2.5 py-2.5 text-xs font-normal focus:outline-none focus:ring-0"
++                          className={`w-full bg-transparent text-slate-800 border rounded-[3px] px-2.5 py-2.5 text-xs font-normal focus:outline-none transition ${isReadOnly ? 'cursor-not-allowed text-slate-400 bg-slate-50/10 border-transparent' : lineErrors[idx]?.description
++                              ? 'border-rose-500 bg-rose-50/10'
++                              : 'border-transparent focus:border-[#0F5B38]'
++                            }`}
+                         />
+                       </td>
+ 
+                       {/* Qty */}
+-                      <td className={`p-0 border border-slate-200 align-middle ${lineErrors[idx]?.quantity ? 'bg-rose-50/30' : ''}`}>
++                      <td className="p-0 border border-slate-200 align-middle">
+                         <input
+                           type="number"
+                           step="any"
+                           value={line.quantity}
++                          readOnly={isReadOnly}
+                           onChange={e => updateLineField(idx, 'quantity', e.target.value === '' ? '' : Number(e.target.value))}
+-                          className={`w-full bg-transparent text-slate-800 border-none rounded-none px-2.5 py-2.5 text-xs font-normal text-center focus:outline-none focus:ring-0 ${
+-                            lineErrors[idx]?.quantity ? 'text-rose-700 font-semibold bg-rose-100/20' : ''
+-                          }`}
++                          className={`w-full bg-transparent text-slate-800 border rounded-[3px] px-2.5 py-2.5 text-xs font-normal text-center focus:outline-none transition ${isReadOnly ? 'cursor-not-allowed text-slate-400 bg-slate-50/10 border-transparent' : 'border-transparent focus:border-[#0F5B38]'}`}
+                         />
+                       </td>
+ 
+@@ -1424,8 +1678,12 @@ export function CreatePurchaseOrderTab({
+                           type="number"
+                           step="any"
+                           value={line.unitPrice}
++                          readOnly={isReadOnly}
+                           onChange={e => updateLineField(idx, 'unitPrice', e.target.value === '' ? '' : Number(e.target.value))}
+-                          className="w-full bg-transparent text-slate-800 border-none rounded-none px-2.5 py-2.5 text-xs font-normal text-right focus:outline-none focus:ring-0"
++                          className={`w-full bg-transparent text-slate-800 border rounded-[3px] px-2.5 py-2.5 text-xs font-normal text-right focus:outline-none transition ${isReadOnly ? 'cursor-not-allowed text-slate-400 bg-slate-50/10 border-transparent' : lineErrors[idx]?.unitPrice
++                              ? 'border-rose-500 bg-rose-50/10'
++                              : 'border-transparent focus:border-[#0F5B38]'
++                            }`}
+                         />
+                       </td>
+ 
+@@ -1438,21 +1696,21 @@ export function CreatePurchaseOrderTab({
+                           step="any"
+                           placeholder=""
+                           value={line.discount}
++                          readOnly={isReadOnly}
+                           onChange={e => updateLineField(idx, 'discount', e.target.value === '' ? '' : Number(e.target.value))}
+-                          className="w-full bg-transparent text-slate-800 border-none rounded-none px-2.5 py-2.5 text-xs font-normal text-center focus:outline-none focus:ring-0"
++                          className={`w-full bg-transparent text-slate-800 border rounded-[3px] px-2.5 py-2.5 text-xs font-normal text-center focus:outline-none transition ${isReadOnly ? 'cursor-not-allowed text-slate-400 bg-slate-50/10 border-transparent' : 'border-transparent focus:border-[#0F5B38]'}`}
+                         />
+                       </td>
+ 
+                       {/* Expense Account Searchable Select */}
+-                      <td className={`p-0 border border-slate-200 align-middle ${lineErrors[idx]?.accountId ? 'bg-rose-50/30' : ''}`}>
++                      <td className="p-0 border border-slate-200 align-middle">
+                         <SearchableInput
+                           options={accountOptions}
+                           value={line.accountId}
++                          disabled={isReadOnly}
+                           onChange={(val) => updateLineField(idx, 'accountId', val)}
+                           placeholder=""
+-                          className={`w-full bg-transparent text-slate-800 border-none rounded-none px-2.5 py-2.5 text-xs font-normal focus:outline-none focus:ring-0 cursor-pointer ${
+-                            lineErrors[idx]?.accountId ? 'text-rose-700 font-semibold bg-rose-100/20' : ''
+-                          }`}
++                          className={`w-full bg-transparent border rounded-[3px] px-2.5 py-2.5 text-xs font-normal focus:outline-none transition ${isReadOnly ? 'cursor-not-allowed text-slate-400 bg-slate-50/10 border-transparent' : 'cursor-pointer text-slate-800 border-transparent focus:border-[#0F5B38]'}`}
+                         />
+                       </td>
+ 
+@@ -1463,7 +1721,8 @@ export function CreatePurchaseOrderTab({
+                           value={line.taxRateId}
+                           onChange={(val) => updateLineField(idx, 'taxRateId', val)}
+                           placeholder=""
+-                          className="w-full bg-transparent text-slate-800 border-none rounded-none px-2.5 py-2.5 text-xs font-normal focus:outline-none focus:ring-0 cursor-pointer"
++                          disabled={isReadOnly || taxType === 'No Tax'}
++                          className={`w-full bg-transparent border rounded-[3px] px-2.5 py-2.5 text-xs font-normal focus:outline-none transition ${isReadOnly || taxType === 'No Tax' ? 'cursor-not-allowed text-slate-400 bg-slate-50/10 border-transparent' : 'cursor-pointer text-slate-800 border-transparent focus:border-[#0F5B38]'}`}
+                         />
+                       </td>
+ 
+@@ -1473,28 +1732,29 @@ export function CreatePurchaseOrderTab({
+                       </td>
+ 
+                       {/* Action Trash & Plus */}
+-                      <td className="p-0 border border-slate-200 align-middle text-center">
+-                        <div className="flex items-center justify-center space-x-1.5 px-2">
+-                          <button
+-                            type="button"
+-                            onClick={() => removeLineItem(idx)}
+-                            className={`p-2 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-[3px] transition cursor-pointer inline-flex items-center justify-center ${
+-                              lines.length === 1 ? 'opacity-20 cursor-not-allowed pointer-events-none' : ''
+-                            }`}
+-                            title="Remove item line"
+-                          >
+-                            <Trash2 className="h-4 w-4" />
+-                          </button>
+-                          <button
+-                            type="button"
+-                            onClick={addLineItem}
+-                            className="p-2 hover:bg-emerald-50 text-[#0F5B38] rounded-[3px] transition cursor-pointer inline-flex items-center justify-center focus:ring-2 focus:ring-emerald-500/20"
+-                            title="Add item line"
+-                          >
+-                            <Plus className="h-4 w-4" />
+-                          </button>
+-                        </div>
+-                      </td>
++                      {!isReadOnly && (
++                        <td className="p-0 border border-slate-200 align-middle text-center">
++                          <div className="flex items-center justify-center space-x-1.5 px-2">
++                            <button
++                              type="button"
++                              onClick={() => removeLineItem(idx)}
++                              className={`p-2 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-[3px] transition cursor-pointer inline-flex items-center justify-center ${lines.length === 1 ? 'opacity-20 cursor-not-allowed pointer-events-none' : ''
++                                }`}
++                              title="Remove item line"
++                            >
++                              <Trash2 className="h-4 w-4" />
++                            </button>
++                            <button
++                              type="button"
++                              onClick={addLineItem}
++                              className="p-2 hover:bg-emerald-50 text-[#0F5B38] rounded-[3px] transition cursor-pointer inline-flex items-center justify-center focus:ring-2 focus:ring-emerald-500/20"
++                              title="Add item line"
++                            >
++                              <Plus className="h-4 w-4" />
++                            </button>
++                          </div>
++                        </td>
++                      )}
+                     </tr>
+                   )
+                 })}
+@@ -1503,15 +1763,17 @@ export function CreatePurchaseOrderTab({
+           </div>
+ 
+           {/* Add Line Control Button */}
+-          <div className="pt-2">
+-            <button
+-              onClick={addLineItem}
+-              className="flex items-center space-x-1.5 bg-slate-50 hover:bg-slate-100 text-slate-655 font-bold text-[10px] px-4 py-2 border border-slate-200 rounded-[3px] transition cursor-pointer"
+-            >
+-              <Plus className="h-3.5 w-3.5 text-[#0F5B38]" />
+-              <span>Add row</span>
+-            </button>
+-          </div>
++          {!isReadOnly && (
++            <div className="pt-2">
++              <button
++                onClick={addLineItem}
++                className="flex items-center space-x-1.5 bg-slate-50 hover:bg-slate-100 text-slate-655 font-bold text-[10px] px-4 py-2 border border-slate-200 rounded-[3px] transition cursor-pointer"
++              >
++                <Plus className="h-3.5 w-3.5 text-[#0F5B38]" />
++                <span>Add row</span>
++              </button>
++            </div>
++          )}
+         </div>
+ 
+         {/* Bottom notes, attachments, and calculation summary */}
+@@ -1524,9 +1786,10 @@ export function CreatePurchaseOrderTab({
+               <textarea
+                 value={notes}
+                 onChange={e => setNotes(e.target.value)}
++                readOnly={isReadOnly}
+                 placeholder="Add any additional notes, terms, or conditions..."
+                 rows={3}
+-                className="w-full bg-white text-slate-800 border border-slate-200 rounded-[3px] px-3.5 py-2 text-xs font-normal focus:outline-none focus:border-[#0F5B38] transition resize-none placeholder:text-slate-400"
++                className={`w-full text-slate-800 border border-slate-200 rounded-[3px] px-3.5 py-2 text-xs font-normal focus:outline-none transition resize-none placeholder:text-slate-400 ${isReadOnly ? 'bg-slate-50 text-slate-400 cursor-not-allowed border-slate-200' : 'bg-white focus:border-[#0F5B38]'}`}
+               />
+             </div>
+ 
+@@ -1534,28 +1797,35 @@ export function CreatePurchaseOrderTab({
+             <div className="space-y-1.5">
+               <label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block">Attachments (Optional)</label>
+               <div className="flex items-center space-x-3">
+-                <label className="bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 font-bold text-xs px-4 py-2.5 rounded-[3px] transition cursor-pointer select-none">
+-                  <span>Choose File</span>
+-                  <input
+-                    type="file"
+-                    onChange={handleFileChange}
+-                    className="hidden"
+-                  />
+-                </label>
++                {!isReadOnly ? (
++                  <label className="bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 font-bold text-xs px-4 py-2.5 rounded-[3px] transition cursor-pointer select-none">
++                    <span>Choose File</span>
++                    <input
++                      type="file"
++                      disabled={isReadOnly}
++                      onChange={handleFileChange}
++                      className="hidden"
++                    />
++                  </label>
++                ) : null}
+                 {attachmentName ? (
+                   <div className="flex items-center space-x-2 text-xs text-slate-650 bg-slate-50 px-3 py-1.5 rounded-[3px] border border-slate-200 font-semibold font-normal">
+                     <span className="truncate max-w-[200px] font-semibold">{attachmentName}</span>
+-                    <button
+-                      type="button"
+-                      onClick={() => {
+-                        setAttachmentName('')
+-                        setAttachmentFile(null)
+-                      }}
+-                      className="text-rose-500 hover:text-rose-700 font-bold cursor-pointer ml-1"
+-                    >
+-                      ???
+-                    </button>
++                    {!isReadOnly && (
++                      <button
++                        type="button"
++                        onClick={() => {
++                          setAttachmentName('')
++                          setAttachmentFile(null)
++                        }}
++                        className="text-rose-500 hover:text-rose-700 font-bold cursor-pointer ml-1"
++                      >
++                        ???
++                      </button>
++                    )}
+                   </div>
++                ) : isReadOnly ? (
++                  <span className="text-xs text-slate-400 italic">No attachments</span>
+                 ) : (
+                   <span className="text-xs text-slate-400 italic">No file attached</span>
+                 )}
+@@ -1585,7 +1855,7 @@ export function CreatePurchaseOrderTab({
+       {/* Inline Modal for Creating a New Project */}
+       {isCreateProjectOpen && (
+         <div className="fixed inset-0 z-[10000] flex items-center justify-center font-sans">
+-          <div 
++          <div
+             className="fixed inset-0 bg-[#071f13]/35 backdrop-blur-md transition-opacity"
+             onClick={() => setIsCreateProjectOpen(false)}
+           ></div>
+@@ -1644,11 +1914,11 @@ export function CreatePurchaseOrderTab({
+       {/* Inline Modal for Creating a New Contact */}
+       {showQuickContactModal && (
+         <div className="fixed inset-0 z-[10000] flex items-center justify-center font-sans">
+-          <div 
++          <div
+             className="fixed inset-0 bg-[#071f13]/35 backdrop-blur-md transition-opacity"
+             onClick={() => setShowQuickContactModal(false)}
+           ></div>
+-          <form 
++          <form
+             onSubmit={handleQuickAddContact}
+             className="relative transform overflow-hidden bg-white text-left shadow-2xl transition-all w-full max-w-md p-6 space-y-6 mx-4 rounded-[3px] border border-slate-100 animate-scaleIn"
+           >
+@@ -1740,11 +2010,11 @@ export function CreatePurchaseOrderTab({
+       {/* Inline Modal for Creating a New Catalog Item */}
+       {showQuickItemModal && (
+         <div className="fixed inset-0 z-[10000] flex items-center justify-center font-sans">
+-          <div 
++          <div
+             className="fixed inset-0 bg-[#071f13]/35 backdrop-blur-md transition-opacity"
+             onClick={() => setShowQuickItemModal(false)}
+           ></div>
+-          <form 
++          <form
+             onSubmit={handleQuickAddItem}
+             className="relative transform overflow-hidden bg-white text-left shadow-2xl transition-all w-full max-w-md p-6 space-y-6 mx-4 rounded-[3px] border border-slate-100 animate-scaleIn"
+           >

@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from 'react'
-import { ArrowLeft, Plus, Trash2, CheckCircle, Save, X, Loader2, ChevronDown, MoreVertical } from 'lucide-react'
+import { ArrowLeft, Plus, Trash2, CheckCircle, Save, X, Loader2, ChevronDown, MoreVertical, AlertCircle } from 'lucide-react'
 import { apiService, API_BASE_URL } from '../../services/api'
 import type { Organization, Contact, Item, Account, TaxRate, SalesSetting, Quote, Project } from '../../services/api'
 import { SearchableInput } from '../../components/SearchableInput'
+import { EmailModal } from '../../components/EmailModal'
 import { usePopup } from '../../components/PopupProvider'
 import { XeroDatePicker } from '../../components/XeroDatePicker'
 
@@ -39,6 +40,8 @@ export function CreateQuoteTab({
   const [isDownloadingPdf, setIsDownloadingPdf] = useState(false)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [isMoreDropdownOpen, setIsMoreDropdownOpen] = useState(false)
+  const [isSendDropdownOpen, setIsSendDropdownOpen] = useState(false)
+  const [isEmailModalOpen, setIsEmailModalOpen] = useState(false)
 
   // Form Fields
   const [selectedContactId, setSelectedContactId] = useState('')
@@ -48,7 +51,7 @@ export function CreateQuoteTab({
   const [expiryDate, setExpiryDate] = useState('')
   const [status, setStatus] = useState<'Draft' | 'Sent' | 'Accepted' | 'Declined' | 'Invoiced'>('Draft')
   const [currency, setCurrency] = useState(activeOrg.currency || 'USD')
-  const [taxType, setTaxType] = useState<'Inclusive' | 'Exclusive'>('Exclusive')
+  const [taxType, setTaxType] = useState<'Inclusive' | 'Exclusive' | 'No Tax'>('Exclusive')
   const [selectedProjectId, setSelectedProjectId] = useState('')
   const [notes, setNotes] = useState('')
   const [attachmentName, setAttachmentName] = useState('')
@@ -262,7 +265,7 @@ export function CreateQuoteTab({
           setSelectedProjectId(targetQuote.project || '')
           setNotes(localStorage.getItem(`kdm_quote_notes_${targetQuote.id}`) || '')
           setAttachmentName(localStorage.getItem(`kdm_quote_attachment_${targetQuote.id}`) || '')
-          
+
           if (targetQuote.lines && targetQuote.lines.length > 0) {
             setLines(targetQuote.lines.map((l: any, idx: number) => ({
               id: l.id || String(idx),
@@ -280,7 +283,11 @@ export function CreateQuoteTab({
         setQuoteDbId(null)
         // Initialize new quote defaults - start completely empty
         setSelectedContactId('')
-        setLines([{ id: '1', itemId: '', description: '', quantity: '', unitPrice: '', discount: '', accountId: '', taxRateId: '' }])
+        const defaultAcc = loadedAccounts.find(a => a.code === '200' || a.name.toLowerCase().includes('sales') || a.class_type === 'Revenue')?.id || loadedAccounts[0]?.id || ''
+        const defaultTax = taxType === 'No Tax'
+          ? (loadedTaxRates.find(t => t.name.toLowerCase().includes('exempt') || Number(t.rate) === 0)?.id || '')
+          : (loadedTaxRates.find(t => t.name.toLowerCase().includes('consulting'))?.id || loadedTaxRates[0]?.id || '')
+        setLines([{ id: '1', itemId: '', description: '', quantity: '', unitPrice: '', discount: '', accountId: defaultAcc, taxRateId: defaultTax }])
         setNotes('')
         setAttachmentName('')
         setAttachmentFile(null)
@@ -346,9 +353,11 @@ export function CreateQuoteTab({
       if (next[index]) {
         const nextRow = { ...next[index] }
         delete nextRow.itemId
-        delete nextRow.accountId
+        delete nextRow.description
         delete nextRow.quantity
         delete nextRow.unitPrice
+        delete nextRow.accountId
+        delete nextRow.taxRateId
         next[index] = nextRow
       }
       return next
@@ -397,7 +406,7 @@ export function CreateQuoteTab({
 
       setSelectedContactId(createdContact.id)
       setShowQuickContactModal(false)
-      
+
       // Reset form fields
       setQuickContactName('')
       setQuickContactEmail('')
@@ -484,12 +493,42 @@ export function CreateQuoteTab({
     }
   }
 
+  const handleTaxTypeChange = (newType: 'Inclusive' | 'Exclusive' | 'No Tax') => {
+    setTaxType(newType)
+    if (newType === 'No Tax') {
+      const exemptRate = taxRates.find(t => t.name.toLowerCase().includes('exempt') || Number(t.rate) === 0)
+      if (exemptRate) {
+        setLines(prev => prev.map(line => ({
+          ...line,
+          taxRateId: exemptRate.id
+        })))
+      }
+    }
+  }
+
   const updateLineField = (index: number, field: keyof LineFormItem, value: any) => {
     const updated = [...lines]
     updated[index] = {
       ...updated[index],
       [field]: value
     }
+
+    if (field === 'unitPrice' && value !== '' && Number(value) >= 0) {
+      if (!updated[index].quantity || Number(updated[index].quantity) <= 0) {
+        updated[index].quantity = 1
+      }
+      if (!updated[index].accountId) {
+        const defaultAccount = accounts.find(a => a.code === '200' || a.name.toLowerCase().includes('sales') || a.class_type === 'Revenue')?.id || ''
+        updated[index].accountId = defaultAccount
+      }
+      if (!updated[index].taxRateId) {
+        const defaultTax = taxType === 'No Tax'
+          ? (taxRates.find(t => t.name.toLowerCase().includes('exempt') || Number(t.rate) === 0)?.id || '')
+          : (taxRates.find(t => t.name.toLowerCase().includes('consulting'))?.id || '')
+        updated[index].taxRateId = defaultTax
+      }
+    }
+
     setLines(updated)
 
     // Clear validation error on change
@@ -507,6 +546,10 @@ export function CreateQuoteTab({
   }
 
   const addLineItem = () => {
+    const defaultAcc = accounts.find(a => a.code === '200' || a.name.toLowerCase().includes('sales') || a.class_type === 'Revenue')?.id || accounts[0]?.id || ''
+    const defaultTaxRate = taxType === 'No Tax'
+      ? (taxRates.find(t => t.name.toLowerCase().includes('exempt') || Number(t.rate) === 0)?.id || '')
+      : (taxRates.find(t => t.name.toLowerCase().includes('consulting'))?.id || taxRates[0]?.id || '')
     setLines([...lines, {
       id: String(Date.now()),
       itemId: '',
@@ -514,8 +557,8 @@ export function CreateQuoteTab({
       quantity: '',
       unitPrice: '',
       discount: '',
-      accountId: '',
-      taxRateId: ''
+      accountId: defaultAcc,
+      taxRateId: defaultTaxRate
     }])
   }
 
@@ -533,7 +576,7 @@ export function CreateQuoteTab({
       const u = Number(line.unitPrice) || 0
       const d = Number(line.discount) || 0
       const lineTotal = q * u * (1 - d / 100)
-      
+
       if (taxType === 'Inclusive') {
         const rateObj = taxRates.find(t => t.id === line.taxRateId)
         const rateVal = rateObj ? Number(rateObj.rate) : 0
@@ -552,10 +595,10 @@ export function CreateQuoteTab({
       const u = Number(line.unitPrice) || 0
       const d = Number(line.discount) || 0
       const lineTotal = q * u * (1 - d / 100)
-      
+
       const rateObj = taxRates.find(t => t.id === line.taxRateId)
       const rateVal = rateObj ? Number(rateObj.rate) : 0
-      
+
       if (taxType === 'Inclusive') {
         const lineTax = lineTotal * (rateVal / (100 + rateVal))
         return sum + lineTax
@@ -579,9 +622,7 @@ export function CreateQuoteTab({
     }
   }
 
-  // Save / Update quote
-  const handleSaveQuote = async (statusUpdate?: 'Draft' | 'Sent' | 'Accepted' | 'Declined' | 'Invoiced') => {
-    // Form Validation
+  const validateForm = (): boolean => {
     const formErrors: Record<string, string> = {}
     const rowErrors: Record<number, Record<string, boolean>> = {}
     let hasValidationErrors = false
@@ -600,17 +641,16 @@ export function CreateQuoteTab({
     }
 
     lines.forEach((l, idx) => {
-      const q = Number(l.quantity) || 0
       const rowErr: Record<string, boolean> = {}
       let rowHasErr = false
 
-      if (q <= 0 || l.quantity === '') {
-        rowErr.quantity = true
+      if (!l.description || !l.description.trim()) {
+        rowErr.description = true
         rowHasErr = true
         hasValidationErrors = true
       }
-      if (!l.accountId) {
-        rowErr.accountId = true
+      if (l.unitPrice === '' || Number(l.unitPrice) < 0) {
+        rowErr.unitPrice = true
         rowHasErr = true
         hasValidationErrors = true
       }
@@ -623,17 +663,24 @@ export function CreateQuoteTab({
     if (hasValidationErrors) {
       setErrors(formErrors)
       setLineErrors(rowErrors)
-      showAlert({ 
-        title: 'Validation Error', 
-        message: 'Please fill in all required fields highlighted in red before proceeding.', 
-        type: 'warning' 
-      })
-      return
+      return false
     }
 
     // Clear errors if valid
     setErrors({})
     setLineErrors({})
+    return true
+  }
+
+  // Save / Update quote
+  const handleSaveQuote = async (
+    statusUpdate?: 'Draft' | 'Sent' | 'Accepted' | 'Declined' | 'Invoiced',
+    isEmailing: boolean = false,
+    silent: boolean = false
+  ): Promise<string | null> => {
+    if (!validateForm()) {
+      return null
+    }
 
     setIsSubmitting(true)
 
@@ -642,14 +689,20 @@ export function CreateQuoteTab({
       const u = Number(l.unitPrice) || 0
       const d = Number(l.discount) || 0
       const lineTotal = q * u * (1 - d / 100)
+
+      const fallbackAcc = accounts.find(a => a.code === '200' || a.name.toLowerCase().includes('sales') || a.class_type === 'Revenue')?.id || accounts[0]?.id || ''
+      const fallbackTax = taxType === 'No Tax'
+        ? (taxRates.find(t => t.name.toLowerCase().includes('exempt') || Number(t.rate) === 0)?.id || null)
+        : (taxRates.find(t => t.name.toLowerCase().includes('consulting'))?.id || taxRates[0]?.id || null)
+
       return {
         item: l.itemId ? l.itemId : null,
         description: l.description,
         quantity: q,
         unit_price: u,
         discount: d,
-        account: l.accountId,
-        tax_rate: l.taxRateId ? l.taxRateId : null,
+        account: l.accountId || fallbackAcc,
+        tax_rate: l.taxRateId || fallbackTax,
         total: lineTotal
       }
     })
@@ -672,13 +725,15 @@ export function CreateQuoteTab({
     }
 
     try {
-      if (editingQuoteId) {
+      const isEdit = !!editingQuoteId
+
+      if (isEdit) {
         const resolvedId = quoteDbId || editingQuoteId
         if (isMockMode) {
           const contactObj = contacts.find(c => c.id === selectedContactId)
           const savedQuotes = localStorage.getItem(`kdm_mock_quotes_${activeOrg.id}`)
           const list = savedQuotes ? JSON.parse(savedQuotes) : []
-          
+
           const updatedList = list.map((q: Quote) => {
             if (q.id === resolvedId || q.quote_number === editingQuoteId) {
               return {
@@ -690,23 +745,41 @@ export function CreateQuoteTab({
             }
             return q
           })
-          
+
           localStorage.setItem(`kdm_mock_quotes_${activeOrg.id}`, JSON.stringify(updatedList))
           localStorage.setItem(`kdm_quote_notes_${editingQuoteId}`, notes)
           localStorage.setItem(`kdm_quote_attachment_${editingQuoteId}`, attachmentName)
-          showAlert({ title: 'Quote Updated', message: 'Quote updated successfully in Local Sandbox.', type: 'success' })
-          if (setEditingQuoteId) setEditingQuoteId(null)
-          setActiveTab('Quotes')
-          return
+
+          if (!silent) {
+            showAlert({ title: 'Quote Updated', message: 'The quote has been updated successfully.', type: 'success' })
+
+            if (isEmailing) {
+              setQuoteDbId(resolvedId || null)
+              setIsEmailModalOpen(true)
+            } else {
+              if (setEditingQuoteId) setEditingQuoteId(null)
+              setActiveTab('Quotes')
+            }
+          }
+          return resolvedId
         }
 
-        await apiService.updateQuote(resolvedId, payload)
+        await apiService.updateQuote(resolvedId!, payload)
         localStorage.setItem(`kdm_quote_notes_${editingQuoteId}`, notes)
         localStorage.setItem(`kdm_quote_attachment_${editingQuoteId}`, attachmentName)
-        showAlert({ title: 'Quote Updated', message: 'The quote has been updated successfully.', type: 'success' })
-        if (setEditingQuoteId) setEditingQuoteId(null)
-        setActiveTab('Quotes')
-        return
+
+        if (!silent) {
+          showAlert({ title: 'Quote Updated', message: 'The quote has been updated successfully.', type: 'success' })
+
+          if (isEmailing) {
+            setQuoteDbId(resolvedId || null)
+            setIsEmailModalOpen(true)
+          } else {
+            if (setEditingQuoteId) setEditingQuoteId(null)
+            setActiveTab('Quotes')
+          }
+        }
+        return resolvedId
       }
 
       // Create new quote
@@ -749,9 +822,20 @@ export function CreateQuoteTab({
           localStorage.setItem(`kdm_mock_settings_${activeOrg.id}`, JSON.stringify(updatedSetting))
         }
 
-        showAlert({ title: 'Quote Created', message: `Quote ${quoteNumber} has been created successfully.`, type: 'success' })
-        setActiveTab('Quotes')
-        return
+        if (!silent) {
+          showAlert({ title: 'Quote Created', message: `Quote ${quoteNumber} has been created successfully.`, type: 'success' })
+
+          if (isEmailing) {
+            setQuoteDbId(mockCreated.id || null)
+            setIsEmailModalOpen(true)
+          } else {
+            if (setEditingQuoteId) setEditingQuoteId(null)
+            setActiveTab('Quotes')
+          }
+        } else {
+          setQuoteDbId(mockCreated.id || null)
+        }
+        return mockCreated.id || null
       }
 
       const created = await apiService.createQuote(activeOrg.id, payload)
@@ -759,10 +843,24 @@ export function CreateQuoteTab({
         localStorage.setItem(`kdm_quote_notes_${created.id}`, notes)
         localStorage.setItem(`kdm_quote_attachment_${created.id}`, attachmentName)
       }
-      showAlert({ title: 'Quote Created', message: `Quote ${quoteNumber} has been created successfully.`, type: 'success' })
-      setActiveTab('Quotes')
+
+      if (!silent) {
+        showAlert({ title: 'Quote Created', message: `Quote ${quoteNumber} has been created successfully.`, type: 'success' })
+
+        if (isEmailing) {
+          setQuoteDbId(created.id || null)
+          setIsEmailModalOpen(true)
+        } else {
+          if (setEditingQuoteId) setEditingQuoteId(null)
+          setActiveTab('Quotes')
+        }
+      } else {
+        setQuoteDbId(created.id || null)
+      }
+      return created.id || null
     } catch (err: any) {
       showAlert({ title: 'Save Error', message: "An error occurred while saving the quote: " + (err.message || "Please check if the quote number is unique."), type: 'error' })
+      return null
     } finally {
       setIsSubmitting(false)
       setIsMoreDropdownOpen(false)
@@ -795,7 +893,7 @@ export function CreateQuoteTab({
 
       // Fetch PDF from Django backend with POST transmitting customization payloads
       const url = `${API_BASE_URL}/quotes/${resolvedId}/download-pdf/?_t=${Date.now()}`
-      
+
       const logo = localStorage.getItem(`kdm_org_logo_${activeOrg.id}`) || ''
       const templateSettings = JSON.parse(localStorage.getItem(`kdm_sales_template_settings_${activeOrg.id}`) || '{}')
       const orgDetails = JSON.parse(localStorage.getItem(`kdm_org_extensions_${activeOrg.id}`) || '{}')
@@ -848,7 +946,7 @@ export function CreateQuoteTab({
       isDestructive: true
     })
     if (!confirmed) return
-    
+
     setIsSubmitting(true)
     try {
       const resolvedId = quoteDbId || editingQuoteId!
@@ -860,7 +958,7 @@ export function CreateQuoteTab({
       } else {
         await apiService.deleteQuote(resolvedId)
       }
-      
+
       if (setEditingQuoteId) setEditingQuoteId(null)
       setActiveTab('Quotes')
     } catch (err: any) {
@@ -940,7 +1038,7 @@ export function CreateQuoteTab({
           created_at: new Date().toISOString()
         }
         localStorage.setItem(`kdm_mock_invoices_${activeOrg.id}`, JSON.stringify([createdInv, ...list]))
-        
+
         const resolvedId = quoteDbId || editingQuoteId
         const savedQuotes = localStorage.getItem(`kdm_mock_quotes_${activeOrg.id}`)
         const quoteList = savedQuotes ? JSON.parse(savedQuotes) : []
@@ -1166,7 +1264,7 @@ export function CreateQuoteTab({
           </div>
         </div>
       )}
-      
+
       {/* Page Header Back */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-100 pb-4 gap-4">
         <div className="flex items-center space-x-3">
@@ -1186,13 +1284,12 @@ export function CreateQuoteTab({
               {editingQuoteId ? `Sales Quote: ${quoteNumber}` : 'Create new sales quote'}
             </h2>
             {editingQuoteId && (
-              <span className={`inline-block text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider mt-1 border ${
-                status === 'Accepted' ? 'bg-emerald-50 text-emerald-600 border-emerald-100/30' :
-                status === 'Declined' ? 'bg-rose-50 text-rose-600 border-rose-100/30' :
-                status === 'Sent' ? 'bg-blue-50 text-blue-600 border-blue-100/30' :
-                status === 'Invoiced' ? 'bg-indigo-50 text-indigo-600 border-indigo-100/30' :
-                'bg-slate-100 text-slate-500 border-slate-200/50'
-              }`}>
+              <span className={`inline-block text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider mt-1 border ${status === 'Accepted' ? 'bg-emerald-50 text-emerald-600 border-emerald-100/30' :
+                  status === 'Declined' ? 'bg-rose-50 text-rose-600 border-rose-100/30' :
+                    status === 'Sent' ? 'bg-blue-50 text-blue-600 border-blue-100/30' :
+                      status === 'Invoiced' ? 'bg-indigo-50 text-indigo-600 border-indigo-100/30' :
+                        'bg-slate-100 text-slate-500 border-slate-200/50'
+                }`}>
                 {status}
               </span>
             )}
@@ -1221,24 +1318,57 @@ export function CreateQuoteTab({
                 Save PDF
               </button>
 
-              {/* Primary Action Button based on Status */}
+              {/* Draft Status Actions */}
               {status === 'Draft' && (
-                <button
-                  onClick={() => handleSaveQuote('Sent')}
-                  disabled={isSubmitting}
-                  className="bg-[#0F5B38] hover:brightness-105 text-white font-medium text-xs px-4.5 py-2 rounded-[3px] shadow-md transition duration-200 cursor-pointer disabled:brightness-90 flex items-center justify-center space-x-1.5 h-[38px]"
-                >
-                  {isSubmitting ? (
+                <div className="relative flex items-center">
+                  <button
+                    onClick={() => {
+                      if (validateForm()) {
+                        setIsEmailModalOpen(true)
+                      }
+                    }}
+                    disabled={isSubmitting}
+                    className="bg-[#0F5B38] hover:bg-[#0c4b2e] text-white font-medium text-xs px-4 py-2 rounded-l-[3px] shadow-md transition duration-200 cursor-pointer disabled:bg-slate-300 disabled:cursor-not-allowed flex items-center justify-center space-x-1.5 h-[38px] border-r border-[#0d4f30]"
+                  >
+                    {isSubmitting ? (
+                      <>
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        <span>Sending...</span>
+                      </>
+                    ) : (
+                      <span>Send</span>
+                    )}
+                  </button>
+                  <button
+                    onClick={() => setIsSendDropdownOpen(!isSendDropdownOpen)}
+                    disabled={isSubmitting}
+                    className="bg-[#0F5B38] hover:bg-[#0c4b2e] text-white font-medium text-xs px-2.5 h-[38px] rounded-r-[3px] shadow-md transition duration-200 cursor-pointer flex items-center justify-center border-l border-emerald-900/10"
+                    title="More send options"
+                  >
+                    <ChevronDown className="h-3.5 w-3.5" />
+                  </button>
+
+                  {isSendDropdownOpen && (
                     <>
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      <span>Sending...</span>
+                      <div className="fixed inset-0 z-40" onClick={() => setIsSendDropdownOpen(false)}></div>
+                      <div className="absolute right-0 top-full mt-1.5 w-40 bg-white border border-slate-200 rounded-[3px] shadow-xl z-50 p-1 animate-fadeIn font-normal">
+                        <button
+                          onClick={() => {
+                            setIsSendDropdownOpen(false)
+                            handleSaveQuote('Sent')
+                          }}
+                          disabled={isSubmitting}
+                          className="w-full text-left px-3 py-2 hover:bg-slate-50 text-slate-700 text-xs font-normal rounded-[3px] transition cursor-pointer"
+                        >
+                          Mark as Sent
+                        </button>
+                      </div>
                     </>
-                  ) : (
-                    <span>Send</span>
                   )}
-                </button>
+                </div>
               )}
 
+              {/* Sent Status Actions */}
               {status === 'Sent' && (
                 <button
                   onClick={() => handleUpdateStatusOnTheSpot('Accepted')}
@@ -1256,6 +1386,7 @@ export function CreateQuoteTab({
                 </button>
               )}
 
+              {/* Accepted Status Actions */}
               {status === 'Accepted' && (
                 <button
                   onClick={handleConvertToInvoiceOnTheSpot}
@@ -1273,10 +1404,32 @@ export function CreateQuoteTab({
                 </button>
               )}
 
+              {/* Declined Status Actions */}
+              {status === 'Declined' && (
+                <button
+                  onClick={() => handleUpdateStatusOnTheSpot('Draft')}
+                  disabled={isSubmitting}
+                  className="bg-[#0F5B38] hover:brightness-105 text-white font-medium text-xs px-4.5 py-2 rounded-[3px] shadow-md transition duration-200 cursor-pointer disabled:brightness-90 flex items-center justify-center space-x-1.5 h-[38px]"
+                >
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      <span>Unmarking...</span>
+                    </>
+                  ) : (
+                    <span>Unmark as declined</span>
+                  )}
+                </button>
+              )}
+
               {status === 'Invoiced' && (
-                <div className="text-xs font-bold text-slate-400 italic bg-slate-50 border border-slate-200 rounded-[3px] px-3.5 py-2">
-                  Converted to Invoice
-                </div>
+                <button
+                  onClick={() => setIsEmailModalOpen(true)}
+                  className="bg-white hover:bg-slate-50 text-slate-700 hover:text-[#0F5B38] border border-slate-200 hover:border-slate-300 font-medium text-xs px-4.5 py-2 rounded-[3px] shadow-sm transition duration-200 cursor-pointer h-[38px] flex items-center justify-center animate-fadeIn"
+                  type="button"
+                >
+                  Email
+                </button>
               )}
 
               {/* Three Vertical Dots Dropdown Menu */}
@@ -1322,6 +1475,18 @@ export function CreateQuoteTab({
                           <>
                             <button
                               onClick={() => {
+                                if (validateForm()) {
+                                  setIsEmailModalOpen(true)
+                                }
+                                setIsMoreDropdownOpen(false)
+                              }}
+                              disabled={isSubmitting}
+                              className="w-full text-left px-4 py-2 hover:bg-slate-50 transition cursor-pointer text-slate-700 font-normal rounded-[3px]"
+                            >
+                              Send
+                            </button>
+                            <button
+                              onClick={() => {
                                 handleUpdateStatusOnTheSpot('Declined')
                                 setIsMoreDropdownOpen(false)
                               }}
@@ -1347,6 +1512,18 @@ export function CreateQuoteTab({
                           <>
                             <button
                               onClick={() => {
+                                if (validateForm()) {
+                                  setIsEmailModalOpen(true)
+                                }
+                                setIsMoreDropdownOpen(false)
+                              }}
+                              disabled={isSubmitting}
+                              className="w-full text-left px-4 py-2 hover:bg-slate-50 transition cursor-pointer text-slate-700 font-normal rounded-[3px]"
+                            >
+                              Send
+                            </button>
+                            <button
+                              onClick={() => {
                                 handleUpdateStatusOnTheSpot('Sent')
                                 setIsMoreDropdownOpen(false)
                               }}
@@ -1357,7 +1534,7 @@ export function CreateQuoteTab({
                             </button>
                             <button
                               onClick={() => {
-                                handleMarkAsInvoiced()
+                                handleUpdateStatusOnTheSpot('Invoiced')
                                 setIsMoreDropdownOpen(false)
                               }}
                               disabled={isSubmitting}
@@ -1382,13 +1559,15 @@ export function CreateQuoteTab({
                           <>
                             <button
                               onClick={() => {
-                                handleUpdateStatusOnTheSpot('Sent')
+                                if (validateForm()) {
+                                  setIsEmailModalOpen(true)
+                                }
                                 setIsMoreDropdownOpen(false)
                               }}
                               disabled={isSubmitting}
                               className="w-full text-left px-4 py-2 hover:bg-slate-50 transition cursor-pointer text-slate-700 font-normal rounded-[3px]"
                             >
-                              Unmark as declined
+                              Send
                             </button>
                             <button
                               onClick={() => {
@@ -1440,23 +1619,57 @@ export function CreateQuoteTab({
               >
                 Save as Draft
               </button>
-              <button
-                onClick={() => handleSaveQuote('Sent')}
-                disabled={isSubmitting}
-                className="bg-[#0F5B38] hover:brightness-105 text-white font-medium text-xs px-4.5 py-2 rounded-[3px] shadow-md transition duration-200 cursor-pointer disabled:brightness-90 flex items-center justify-center space-x-1.5 h-[38px]"
-              >
-                {isSubmitting ? (
+
+              {/* Send Dropdown Button */}
+              <div className="relative flex items-center">
+                <button
+                  onClick={() => {
+                    if (validateForm()) {
+                      setIsEmailModalOpen(true)
+                    }
+                  }}
+                  disabled={isSubmitting}
+                  className="bg-[#0F5B38] hover:bg-[#0c4b2e] text-white font-medium text-xs px-4.5 py-2 rounded-l-[3px] shadow-md transition duration-200 cursor-pointer disabled:bg-slate-300 disabled:cursor-not-allowed flex items-center justify-center space-x-1.5 h-[38px] border-r border-[#0d4f30]"
+                >
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      <span>Sending...</span>
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle className="h-3.5 w-3.5" />
+                      <span>Send</span>
+                    </>
+                  )}
+                </button>
+                <button
+                  onClick={() => setIsSendDropdownOpen(!isSendDropdownOpen)}
+                  disabled={isSubmitting}
+                  className="bg-[#0F5B38] hover:bg-[#0c4b2e] text-white font-medium text-xs px-2.5 h-[38px] rounded-r-[3px] shadow-md transition duration-200 cursor-pointer flex items-center justify-center border-l border-emerald-900/10"
+                  title="More send options"
+                >
+                  <ChevronDown className="h-3.5 w-3.5" />
+                </button>
+
+                {isSendDropdownOpen && (
                   <>
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    <span>Sending...</span>
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle className="h-3.5 w-3.5" />
-                    <span>Send</span>
+                    <div className="fixed inset-0 z-40" onClick={() => setIsSendDropdownOpen(false)}></div>
+                    <div className="absolute right-0 top-full mt-1.5 w-40 bg-white border border-slate-200 rounded-[3px] shadow-xl z-50 p-1 animate-fadeIn font-normal">
+                      <button
+                        onClick={() => {
+                          setIsSendDropdownOpen(false)
+                          handleSaveQuote('Sent')
+                        }}
+                        disabled={isSubmitting}
+                        className="w-full text-left px-3 py-2 hover:bg-slate-50 text-slate-700 text-xs font-normal rounded-[3px] transition cursor-pointer"
+                      >
+                        Mark as Sent
+                      </button>
+                    </div>
                   </>
                 )}
-              </button>
+              </div>
             </>
           )}
         </div>
@@ -1466,9 +1679,19 @@ export function CreateQuoteTab({
         <div className="bg-rose-50 border border-rose-100 text-rose-655 p-4 rounded-[3px] text-xs font-semibold">
           {errorMsg}
         </div>
+      )}
+
+      {(Object.keys(errors).length > 0 || Object.keys(lineErrors).length > 0) && (
+        <div className="bg-rose-50 border border-rose-100/80 text-rose-700 p-4 rounded-[3px] text-xs font-semibold flex items-start space-x-2.5 animate-fadeIn mb-1">
+          <AlertCircle className="h-4 w-4 text-rose-500 shrink-0 mt-0.5" />
+          <div>
+            <p className="font-bold text-[13px] text-rose-800">Validation Error</p>
+            <p className="text-rose-600/90 mt-0.5 font-medium">Please fill in all required fields highlighted in red below before proceeding.</p>
+          </div>
+        </div>
       )}      {/* Main Quote Form Wrapper */}
       <div id="printable-area" className="bg-white rounded-[3px] border border-slate-200 shadow-sm p-6 md:p-8 space-y-8">
-        
+
         {/* Form Metadata Section */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
           {/* Customer select */}
@@ -1493,9 +1716,8 @@ export function CreateQuoteTab({
                 setShowQuickContactModal(true)
               }}
               createNewLabel="Add new contact"
-              className={`w-full bg-white text-slate-800 border rounded-[3px] px-3.5 py-2 text-[15px] font-normal focus:outline-none transition cursor-pointer ${
-                errors.contact ? 'border-rose-500 focus:border-rose-500 bg-rose-50/10' : 'border-slate-200 focus:border-[#0F5B38]'
-              }`}
+              className={`w-full bg-white text-slate-800 border rounded-[3px] px-3.5 py-2 text-[15px] font-normal focus:outline-none transition cursor-pointer ${errors.contact ? 'border-rose-500 focus:border-rose-500 bg-rose-50/10' : 'border-slate-200 focus:border-[#0F5B38]'
+                }`}
             />
             {errors.contact && (
               <span className="text-rose-500 text-[11px] font-semibold block mt-1">{errors.contact}</span>
@@ -1592,11 +1814,12 @@ export function CreateQuoteTab({
             <label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block">Tax Type</label>
             <select
               value={taxType}
-              onChange={e => setTaxType(e.target.value as 'Inclusive' | 'Exclusive')}
+              onChange={e => handleTaxTypeChange(e.target.value as 'Inclusive' | 'Exclusive' | 'No Tax')}
               className="w-full bg-white text-slate-800 border border-slate-200 rounded-[3px] px-3.5 py-2 text-[15px] font-normal focus:outline-none focus:border-[#0F5B38] transition cursor-pointer h-[38px]"
             >
               <option value="Exclusive">Tax Exclusive</option>
               <option value="Inclusive">Tax Inclusive</option>
+              <option value="No Tax">No Tax</option>
             </select>
           </div>
         </div>
@@ -1654,7 +1877,7 @@ export function CreateQuoteTab({
                   <tr key={line.id} className="hover:bg-slate-50/30 transition-colors">
                     {/* Item Catalog Searchable Select */}
                     <td className="p-0 border border-slate-200 align-middle">
-                       <SearchableInput
+                      <SearchableInput
                         options={catalogOptions}
                         value={line.itemId}
                         onChange={(val) => handleCatalogSelect(idx, val)}
@@ -1676,20 +1899,21 @@ export function CreateQuoteTab({
                         placeholder=""
                         value={line.description}
                         onChange={e => updateLineField(idx, 'description', e.target.value)}
-                        className="w-full bg-transparent text-slate-800 border-none rounded-none px-2.5 py-2.5 text-xs font-normal focus:outline-none focus:ring-0"
+                        className={`w-full bg-transparent text-slate-800 border rounded-[3px] px-2.5 py-2.5 text-xs font-normal focus:outline-none transition ${lineErrors[idx]?.description
+                            ? 'border-rose-500 bg-rose-50/10'
+                            : 'border-transparent focus:border-[#0F5B38]'
+                          }`}
                       />
                     </td>
 
                     {/* Qty */}
-                    <td className={`p-0 border border-slate-200 align-middle ${lineErrors[idx]?.quantity ? 'bg-rose-50/30' : ''}`}>
+                    <td className="p-0 border border-slate-200 align-middle">
                       <input
                         type="number"
                         min="1"
                         value={line.quantity}
                         onChange={e => updateLineField(idx, 'quantity', e.target.value === '' ? '' : Number(e.target.value))}
-                        className={`w-full bg-transparent text-slate-800 border-none rounded-none px-2.5 py-2.5 text-xs font-normal text-center focus:outline-none focus:ring-0 ${
-                          lineErrors[idx]?.quantity ? 'text-rose-700 font-semibold bg-rose-100/20' : ''
-                        }`}
+                        className="w-full bg-transparent text-slate-800 border border-transparent rounded-[3px] px-2.5 py-2.5 text-xs font-normal text-center focus:outline-none focus:border-[#0F5B38] transition"
                       />
                     </td>
 
@@ -1701,7 +1925,10 @@ export function CreateQuoteTab({
                         step="0.01"
                         value={line.unitPrice}
                         onChange={e => updateLineField(idx, 'unitPrice', e.target.value === '' ? '' : Number(e.target.value))}
-                        className="w-full bg-transparent text-slate-800 border-none rounded-none px-2.5 py-2.5 text-xs font-normal text-right focus:outline-none focus:ring-0"
+                        className={`w-full bg-transparent text-slate-800 border rounded-[3px] px-2.5 py-2.5 text-xs font-normal text-right focus:outline-none transition ${lineErrors[idx]?.unitPrice
+                            ? 'border-rose-500 bg-rose-50/10'
+                            : 'border-transparent focus:border-[#0F5B38]'
+                          }`}
                       />
                     </td>
 
@@ -1715,20 +1942,18 @@ export function CreateQuoteTab({
                         placeholder=""
                         value={line.discount}
                         onChange={e => updateLineField(idx, 'discount', e.target.value === '' ? '' : Number(e.target.value))}
-                        className="w-full bg-transparent text-slate-800 border-none rounded-none px-2.5 py-2.5 text-xs font-normal text-center focus:outline-none focus:ring-0"
+                        className="w-full bg-transparent text-slate-800 border border-transparent rounded-[3px] px-2.5 py-2.5 text-xs font-normal text-center focus:outline-none focus:border-[#0F5B38] transition"
                       />
                     </td>
 
                     {/* Sales Account Searchable Select */}
-                    <td className={`p-0 border border-slate-200 align-middle ${lineErrors[idx]?.accountId ? 'bg-rose-50/30' : ''}`}>
+                    <td className="p-0 border border-slate-200 align-middle">
                       <SearchableInput
                         options={accountOptions}
                         value={line.accountId}
                         onChange={(val) => updateLineField(idx, 'accountId', val)}
                         placeholder=""
-                        className={`w-full bg-transparent text-slate-800 border-none rounded-none px-2.5 py-2.5 text-xs font-normal focus:outline-none focus:ring-0 cursor-pointer ${
-                          lineErrors[idx]?.accountId ? 'text-rose-700 font-semibold bg-rose-100/20' : ''
-                        }`}
+                        className="w-full bg-transparent text-slate-800 border border-transparent rounded-[3px] px-2.5 py-2.5 text-xs font-normal focus:outline-none focus:border-[#0F5B38] transition cursor-pointer"
                       />
                     </td>
 
@@ -1739,7 +1964,8 @@ export function CreateQuoteTab({
                         value={line.taxRateId}
                         onChange={(val) => updateLineField(idx, 'taxRateId', val)}
                         placeholder=""
-                        className="w-full bg-transparent text-slate-800 border-none rounded-none px-2.5 py-2.5 text-xs font-normal focus:outline-none focus:ring-0 cursor-pointer"
+                        disabled={taxType === 'No Tax'}
+                        className="w-full bg-transparent text-slate-800 border border-transparent rounded-[3px] px-2.5 py-2.5 text-xs font-normal focus:outline-none focus:border-[#0F5B38] transition cursor-pointer"
                       />
                     </td>
 
@@ -1754,9 +1980,8 @@ export function CreateQuoteTab({
                         <button
                           type="button"
                           onClick={() => removeLineItem(idx)}
-                          className={`p-2 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-[3px] transition cursor-pointer inline-flex items-center justify-center ${
-                            lines.length === 1 ? 'opacity-20 cursor-not-allowed pointer-events-none' : ''
-                          }`}
+                          className={`p-2 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-[3px] transition cursor-pointer inline-flex items-center justify-center ${lines.length === 1 ? 'opacity-20 cursor-not-allowed pointer-events-none' : ''
+                            }`}
                           title="Remove item line"
                         >
                           <Trash2 className="h-4 w-4" />
@@ -1860,7 +2085,7 @@ export function CreateQuoteTab({
       {/* Inline Modal for Creating a New Project */}
       {isCreateProjectOpen && (
         <div className="fixed inset-0 z-[10000] flex items-center justify-center font-sans">
-          <div 
+          <div
             className="fixed inset-0 bg-[#071f13]/35 backdrop-blur-md transition-opacity"
             onClick={() => setIsCreateProjectOpen(false)}
           ></div>
@@ -1919,11 +2144,11 @@ export function CreateQuoteTab({
       {/* Inline Modal for Creating a New Contact */}
       {showQuickContactModal && (
         <div className="fixed inset-0 z-[10000] flex items-center justify-center font-sans">
-          <div 
+          <div
             className="fixed inset-0 bg-[#071f13]/35 backdrop-blur-md transition-opacity"
             onClick={() => setShowQuickContactModal(false)}
           ></div>
-          <form 
+          <form
             onSubmit={handleQuickAddContact}
             className="relative transform overflow-hidden bg-white text-left shadow-2xl transition-all w-full max-w-md p-6 space-y-6 mx-4 rounded-[3px] border border-slate-100 animate-scaleIn"
           >
@@ -2015,11 +2240,11 @@ export function CreateQuoteTab({
       {/* Inline Modal for Creating a New Item */}
       {showQuickItemModal && (
         <div className="fixed inset-0 z-[10000] flex items-center justify-center font-sans">
-          <div 
+          <div
             className="fixed inset-0 bg-[#071f13]/35 backdrop-blur-md transition-opacity"
             onClick={() => setShowQuickItemModal(false)}
           ></div>
-          <form 
+          <form
             onSubmit={handleQuickAddItem}
             className="relative transform overflow-hidden bg-white text-left shadow-2xl transition-all w-full max-w-md p-6 space-y-6 mx-4 rounded-[3px] border border-slate-100 animate-scaleIn"
           >
@@ -2135,6 +2360,65 @@ export function CreateQuoteTab({
         </div>
       )}
 
+      <EmailModal
+        isOpen={isEmailModalOpen}
+        onClose={() => setIsEmailModalOpen(false)}
+        defaultEmail={contacts.find(c => c.id === selectedContactId)?.email || ''}
+        documentType="Quote"
+        documentNumber={quoteNumber}
+        contactName={contacts.find(c => c.id === selectedContactId)?.name || ''}
+        totalAmount={`${currency} ${getGrandTotal().toFixed(2)}`}
+        orgName={activeOrg.name}
+        onSend={async (to, subject, message) => {
+          let resolvedId = quoteDbId || editingQuoteId
+          const needsSave = status === 'Draft' || !resolvedId
+
+          if (needsSave) {
+            resolvedId = await handleSaveQuote('Sent', false, true)
+            if (!resolvedId) {
+              throw new Error('Failed to save quote.')
+            }
+          }
+
+          if (isMockMode) {
+            await new Promise(resolve => setTimeout(resolve, 1000))
+            showAlert({
+              title: needsSave ? 'Sent & Emailed (Sandbox)' : 'Email Sent (Sandbox)',
+              message: `Simulated emailing quote to ${to}. Check backend console/logs.`,
+              type: 'success'
+            })
+            if (setEditingQuoteId) setEditingQuoteId(null)
+            setActiveTab('Quotes')
+            return
+          }
+          const payload = {
+            to,
+            subject,
+            message,
+            notes,
+            logo: localStorage.getItem(`kdm_org_logo_${activeOrg.id}`) || '',
+            payment_terms: salesSetting?.standard_payment_terms || '',
+            template_settings: {
+              theme_color: localStorage.getItem(`kdm_quote_theme_color_${activeOrg.id}`) || '#0F5B38'
+            },
+            org_details: {
+              name: activeOrg.name,
+              country: activeOrg.country,
+              tax_id: activeOrg.tax_id
+            }
+          }
+          await apiService.sendQuoteEmail(resolvedId!, payload)
+          showAlert({
+            title: needsSave ? 'Sent & Emailed' : 'Email Sent',
+            message: needsSave
+              ? `Quote ${quoteNumber} was successfully saved and emailed to ${to}.`
+              : `Quote ${quoteNumber} was successfully emailed to ${to}.`,
+            type: 'success'
+          })
+          if (setEditingQuoteId) setEditingQuoteId(null)
+          setActiveTab('Quotes')
+        }}
+      />
     </div>
   )
 }

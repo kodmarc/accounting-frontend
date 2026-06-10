@@ -38,4 +38,11 @@ export const authApi = {
   async getMe(): Promise<User> {
     return request('/auth/me/')
   },
+
+  async updateMe(firstName: string, lastName: string, password?: string): Promise<{ user: User; message: string }> {
+    return request('/auth/me/', {
+      method: 'PUT',
+      body: JSON.stringify({ first_name: firstName, last_name: lastName, password }),
+    })
+  },
 }

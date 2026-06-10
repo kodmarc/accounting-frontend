@@ -43,4 +43,5 @@ export type TabId =
   | 'CreateSpendMoney'
   | 'CreateReceiveMoney'
   | 'CreateManualJournal'
-  | 'Projects';
+  | 'Projects'
+  | 'UserProfile';
