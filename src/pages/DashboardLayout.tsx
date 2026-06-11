@@ -212,7 +212,7 @@ export function DashboardLayout({
   return (
     <div className="min-h-screen bg-[#f7f9f8] text-[#071f13] font-sans antialiased flex flex-col">
       {/* Top Header Navigation (Xero-Style) */}
-      <header className="bg-[#071f13] text-white shadow-md relative z-10 shrink-0 select-none">
+      <header className="bg-[#071f13] text-white shadow-md relative z-0 shrink-0 select-none">
         <div className="w-full px-6 lg:px-8">
           <div className="flex items-center justify-between h-[66px] w-full">
             
