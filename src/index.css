@@ -227,3 +227,9 @@ input[type="radio"] {
 .fixed::-webkit-scrollbar-thumb:hover {
   background: rgba(15, 91, 56, 0.45) !important;
 }
+
+/* Global scroll lock: disable background scrolling on main when modal is active */
+main:has(.fixed.flex.items-center) {
+  overflow: hidden !important;
+}
+
