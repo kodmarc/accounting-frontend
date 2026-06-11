@@ -694,7 +694,7 @@ export function DashboardLayout({
       </header>
 
       {/* Main Pages Content Area */}
-      <main className="flex-1 overflow-y-auto">
+      <main className="flex-1 overflow-y-auto relative z-20">
         <div className="p-8 w-full space-y-8 animate-fadeIn">
           {children}
         </div>
