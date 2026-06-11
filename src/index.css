@@ -208,5 +208,22 @@ input[type="radio"] {
   display: none !important;
 }
 
-
-
+/* Custom premium scrollbars for modals and popups */
+.fixed *::-webkit-scrollbar,
+.fixed::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.fixed *::-webkit-scrollbar-track,
+.fixed::-webkit-scrollbar-track {
+  background: transparent;
+}
+.fixed *::-webkit-scrollbar-thumb,
+.fixed::-webkit-scrollbar-thumb {
+  background: rgba(15, 91, 56, 0.25) !important;
+  border-radius: 9999px;
+}
+.fixed *::-webkit-scrollbar-thumb:hover,
+.fixed::-webkit-scrollbar-thumb:hover {
+  background: rgba(15, 91, 56, 0.45) !important;
+}
