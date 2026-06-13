@@ -272,7 +272,8 @@ function App() {
       }, 1500)
     } catch (e: any) {
       setAuthStatus('idle')
-      setErrorMsg(e.message || 'Failed to sign up.')
+      const isNetworkError = e.message === 'Failed to fetch' || e.message?.includes('NetworkError')
+      setErrorMsg(isNetworkError ? 'Cannot reach the server. Please check your connection and try again.' : (e.message || 'Failed to sign up.'))
     }
   }
 
@@ -324,7 +325,8 @@ function App() {
       }, 1500)
     } catch (err: any) {
       setAuthStatus('idle')
-      setErrorMsg(err.message || 'Invalid credentials.')
+      const isNetworkError = err.message === 'Failed to fetch' || err.message?.includes('NetworkError')
+      setErrorMsg(isNetworkError ? 'Cannot reach the server. Please check your connection and try again.' : (err.message || 'Invalid credentials.'))
     }
   }
 
