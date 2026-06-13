@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Plus, FileText, Search, Eye } from 'lucide-react'
+import { apiService } from '../../services/api'
 import type { Organization, Contact } from '../../services/api'
 import { usePopup } from '../../components/PopupProvider'
 
@@ -37,8 +38,14 @@ export function PurchaseOrdersTab({
   const loadData = async () => {
     setLoading(true)
     try {
-      const savedPOs = localStorage.getItem(`kdm_mock_purchase_orders_${activeOrg.id}`)
-      setPurchaseOrders(savedPOs ? JSON.parse(savedPOs) : [])
+      let poList: any[] = []
+      if (isMockMode) {
+        const savedPOs = localStorage.getItem(`kdm_mock_purchase_orders_${activeOrg.id}`)
+        poList = savedPOs ? JSON.parse(savedPOs) : []
+      } else {
+        poList = await apiService.getPurchaseOrders(activeOrg.id)
+      }
+      setPurchaseOrders(poList)
     } catch (e: any) {
       console.warn("Failed to load PO suite", e)
     } finally {
@@ -99,13 +106,43 @@ export function PurchaseOrdersTab({
     })
     if (!confirmed) return
 
+    if (!isMockMode) {
+      try {
+        await Promise.all(targets.map(po => apiService.deletePurchaseOrder(po.id)))
+      } catch (err: any) {
+        showAlert({ title: 'Error deleting purchase orders', message: err.message || 'API failed to delete purchase orders.', type: 'error' })
+        return
+      }
+    } else {
+      const remaining = purchaseOrders.filter(po => !selectedIds.has(po.id))
+      localStorage.setItem(`kdm_mock_purchase_orders_${activeOrg.id}`, JSON.stringify(remaining))
+    }
+
     const remaining = purchaseOrders.filter(po => !selectedIds.has(po.id))
     setPurchaseOrders(remaining)
-    localStorage.setItem(`kdm_mock_purchase_orders_${activeOrg.id}`, JSON.stringify(remaining))
     setSelectedIds(new Set())
   }
 
   const handleBulkChangeStatus = async (status: 'Draft' | 'Awaiting Approval' | 'Approved' | 'Billed' | 'Declined') => {
+    if (!isMockMode) {
+      try {
+        await Promise.all(
+          purchaseOrders.filter(po => selectedIds.has(po.id)).map(po => apiService.updatePurchaseOrder(po.id, { status }))
+        )
+      } catch (err: any) {
+        showAlert({ title: 'Error updating purchase orders', message: err.message || 'API failed to update purchase orders.', type: 'error' })
+        return
+      }
+    } else {
+      const updated = purchaseOrders.map(po => {
+        if (selectedIds.has(po.id)) {
+          return { ...po, status }
+        }
+        return po
+      })
+      localStorage.setItem(`kdm_mock_purchase_orders_${activeOrg.id}`, JSON.stringify(updated))
+    }
+
     const updated = purchaseOrders.map(po => {
       if (selectedIds.has(po.id)) {
         return { ...po, status }
@@ -113,7 +150,6 @@ export function PurchaseOrdersTab({
       return po
     })
     setPurchaseOrders(updated)
-    localStorage.setItem(`kdm_mock_purchase_orders_${activeOrg.id}`, JSON.stringify(updated))
     setSelectedIds(new Set())
   }
 

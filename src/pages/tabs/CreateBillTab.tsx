@@ -224,16 +224,25 @@ export function CreateBillTab({
 
       let loadedBanks: Account[] = []
       if (isMockMode) {
-        loadedBanks = [
-          { id: 'mock-bank-090', code: '090', name: 'ANZ Business Account', class_type: 'Asset', type: 'Bank', description: 'Primary business operating checking account', is_system_account: true, created_at: '', default_tax_rate: null },
-          { id: 'mock-bank-092', code: '092', name: 'ANZ Savings Account', class_type: 'Asset', type: 'Bank', description: 'Corporate reserve savings account', is_system_account: false, created_at: '', default_tax_rate: null }
-        ]
-        const savedCustomBanks = localStorage.getItem(`kdm_mock_custom_banks_${activeOrg.id}`)
-        if (savedCustomBanks) {
-          loadedBanks = [...loadedBanks, ...JSON.parse(savedCustomBanks)]
+        const saved = localStorage.getItem(`kdm_bank_accounts_${activeOrg.id}`)
+        loadedBanks = saved ? JSON.parse(saved) : []
+        if (loadedBanks.length === 0) {
+          loadedBanks = [
+            {
+              id: 'bank-090',
+              code: '090',
+              name: 'ANZ Business Account',
+              class_type: 'Asset',
+              type: 'Bank',
+              description: 'ANZ Business Daily Transaction Account',
+              is_system_account: true,
+              created_at: new Date().toISOString()
+            }
+          ]
+          localStorage.setItem(`kdm_bank_accounts_${activeOrg.id}`, JSON.stringify(loadedBanks))
         }
       } else {
-        loadedBanks = loadedAccounts.filter(a => a.type === 'Bank' || (a.class_type === 'Asset' && a.code === '090') || a.name.toLowerCase().includes('bank'))
+        loadedBanks = loadedAccounts.filter(a => a.type === 'Bank')
       }
       setBankAccounts(loadedBanks)
       if (loadedBanks.length > 0) {
@@ -263,10 +272,18 @@ export function CreateBillTab({
       }
 
       if (editingBillId) {
-        // STANDARD EDIT MODE: Load existing bill details from LocalStorage (Bills are stored in localStorage workspace)
-        const savedBills = localStorage.getItem(`kdm_mock_bills_${activeOrg.id}`)
-        const list = savedBills ? JSON.parse(savedBills) : []
-        const targetBill = list.find((b: any) => b.bill_number === editingBillId || b.id === editingBillId) || null
+        let targetBill: any = null
+        if (isMockMode) {
+          const savedBills = localStorage.getItem(`kdm_mock_bills_${activeOrg.id}`)
+          const list = savedBills ? JSON.parse(savedBills) : []
+          targetBill = list.find((b: any) => b.bill_number === editingBillId || b.id === editingBillId) || null
+        } else {
+          try {
+            targetBill = await apiService.getBill(editingBillId)
+          } catch (err) {
+            console.error("Failed to load bill via API:", err)
+          }
+        }
 
         if (targetBill) {
           setSelectedContactId(targetBill.contact)
@@ -706,7 +723,7 @@ export function CreateBillTab({
     return true
   }
 
-  // Save / Update bill (Always saves to LocalStorage cleanly to support online/offline gracefully!)
+  // Save / Update bill (Saves via backend API or mock LocalStorage)
   const handleSaveBill = async (
     statusUpdate?: 'Draft' | 'Awaiting Approval' | 'Awaiting Payment' | 'Paid',
     isEmailing: boolean = false,
@@ -741,9 +758,8 @@ export function CreateBillTab({
     })
 
     const finalStatus = statusUpdate || status
-    const resolvedBillId = editingBillId || `mock-bill-${Date.now()}`
+    const isEdit = editingBillId ? true : false
     const payload = {
-      id: resolvedBillId,
       contact: selectedContactId,
       bill_number: billNumber,
       reference,
@@ -760,47 +776,59 @@ export function CreateBillTab({
     }
 
     try {
-      const isEdit = editingBillId ? true : false
-      const contactObj = contacts.find(c => c.id === selectedContactId)
-      const savedBills = localStorage.getItem(`kdm_mock_bills_${activeOrg.id}`)
-      const list = savedBills ? JSON.parse(savedBills) : []
-      
-      let updatedList: any[] = []
-      if (isEdit) {
-        updatedList = list.map((b: any) => {
-          if (b.id === editingBillId || b.bill_number === editingBillId) {
-            return {
-              ...b,
-              ...payload,
-              contact_name: contactObj ? contactObj.name : b.contact_name,
-              lines: postLines.map((pl, idx) => ({ ...pl, id: `mock-bill-l-${idx}-${Date.now()}` }))
-            }
-          }
-          return b
-        })
+      let resolvedBillId = editingBillId || `mock-bill-${Date.now()}`
+      if (!isMockMode) {
+        if (isEdit) {
+          const res = await apiService.updateBill(editingBillId!, payload)
+          resolvedBillId = res.id || editingBillId!
+        } else {
+          const res = await apiService.createBill(activeOrg.id, payload)
+          resolvedBillId = res.id || ''
+        }
       } else {
-        const mockCreated = {
-          ...payload,
-          contact_name: contactObj ? contactObj.name : "Mock Supplier",
-          lines: postLines.map((pl, idx) => ({ ...pl, id: `mock-bill-l-${idx}-${Date.now()}` })),
-          created_at: new Date().toISOString()
-        }
-        updatedList = [mockCreated, ...list]
+        const contactObj = contacts.find(c => c.id === selectedContactId)
+        const savedBills = localStorage.getItem(`kdm_mock_bills_${activeOrg.id}`)
+        const list = savedBills ? JSON.parse(savedBills) : []
+        
+        let updatedList: any[] = []
+        if (isEdit) {
+          updatedList = list.map((b: any) => {
+            if (b.id === editingBillId || b.bill_number === editingBillId) {
+              return {
+                ...b,
+                ...payload,
+                contact_name: contactObj ? contactObj.name : b.contact_name,
+                lines: postLines.map((pl, idx) => ({ ...pl, id: `mock-bill-l-${idx}-${Date.now()}` }))
+              }
+            }
+            return b
+          })
+        } else {
+          const mockCreated = {
+            ...payload,
+            id: resolvedBillId,
+            contact_name: contactObj ? contactObj.name : "Mock Supplier",
+            lines: postLines.map((pl, idx) => ({ ...pl, id: `mock-bill-l-${idx}-${Date.now()}` })),
+            created_at: new Date().toISOString()
+          }
+          updatedList = [mockCreated, ...list]
 
-        // Auto-increment sequence number in localStorage Purchases Settings upon successful save!
-        const savedPurchases = localStorage.getItem(`kdm_purchase_settings_${activeOrg.id}`) || 
-                               localStorage.getItem(`kdm_mock_purchase_settings_${activeOrg.id}`)
-        if (savedPurchases) {
-          const parsed = JSON.parse(savedPurchases)
-          parsed.next_bill_number = (Number(parsed.next_bill_number) || 1001) + 1
-          localStorage.setItem(`kdm_purchase_settings_${activeOrg.id}`, JSON.stringify(parsed))
-          localStorage.setItem(`kdm_mock_purchase_settings_${activeOrg.id}`, JSON.stringify(parsed))
+          // Auto-increment sequence number in localStorage Purchases Settings upon successful save!
+          const savedPurchases = localStorage.getItem(`kdm_purchase_settings_${activeOrg.id}`) || 
+                                 localStorage.getItem(`kdm_mock_purchase_settings_${activeOrg.id}`)
+          if (savedPurchases) {
+            const parsed = JSON.parse(savedPurchases)
+            parsed.next_bill_number = (Number(parsed.next_bill_number) || 1001) + 1
+            localStorage.setItem(`kdm_purchase_settings_${activeOrg.id}`, JSON.stringify(parsed))
+            localStorage.setItem(`kdm_mock_purchase_settings_${activeOrg.id}`, JSON.stringify(parsed))
+          }
         }
+        
+        localStorage.setItem(`kdm_mock_bills_${activeOrg.id}`, JSON.stringify(updatedList))
       }
-      
-      localStorage.setItem(`kdm_mock_bills_${activeOrg.id}`, JSON.stringify(updatedList))
-      localStorage.setItem(`kdm_bill_notes_${payload.id}`, notes)
-      localStorage.setItem(`kdm_bill_attachment_${payload.id}`, attachmentName)
+
+      localStorage.setItem(`kdm_bill_notes_${resolvedBillId}`, notes)
+      localStorage.setItem(`kdm_bill_attachment_${resolvedBillId}`, attachmentName)
       
       if (!silent) {
         showAlert({ title: isEdit ? 'Bill Updated' : 'Bill Created', message: `Bill ${billNumber} has been saved successfully.`, type: 'success' })
@@ -943,11 +971,15 @@ export function CreateBillTab({
     
     setIsSubmitting(true)
     try {
-      const resolvedId = editingBillId
-      const savedBills = localStorage.getItem(`kdm_mock_bills_${activeOrg.id}`)
-      const list = savedBills ? JSON.parse(savedBills) : []
-      const updatedList = list.filter((b: any) => b.id !== resolvedId && b.bill_number !== editingBillId)
-      localStorage.setItem(`kdm_mock_bills_${activeOrg.id}`, JSON.stringify(updatedList))
+      if (!isMockMode) {
+        await apiService.deleteBill(editingBillId!)
+      } else {
+        const resolvedId = editingBillId
+        const savedBills = localStorage.getItem(`kdm_mock_bills_${activeOrg.id}`)
+        const list = savedBills ? JSON.parse(savedBills) : []
+        const updatedList = list.filter((b: any) => b.id !== resolvedId && b.bill_number !== editingBillId)
+        localStorage.setItem(`kdm_mock_bills_${activeOrg.id}`, JSON.stringify(updatedList))
+      }
       
       if (setEditingBillId) setEditingBillId(null)
       setActiveTab('Bills')
@@ -963,16 +995,20 @@ export function CreateBillTab({
     if (!editingBillId) return
     setIsSubmitting(true)
     try {
-      const resolvedId = editingBillId
-      const savedBills = localStorage.getItem(`kdm_mock_bills_${activeOrg.id}`)
-      const list = savedBills ? JSON.parse(savedBills) : []
-      const updatedList = list.map((b: any) => {
-        if (b.id === resolvedId || b.bill_number === editingBillId) {
-          return { ...b, status: newStatus }
-        }
-        return b
-      })
-      localStorage.setItem(`kdm_mock_bills_${activeOrg.id}`, JSON.stringify(updatedList))
+      if (!isMockMode) {
+        await apiService.updateBill(editingBillId, { status: newStatus })
+      } else {
+        const resolvedId = editingBillId
+        const savedBills = localStorage.getItem(`kdm_mock_bills_${activeOrg.id}`)
+        const list = savedBills ? JSON.parse(savedBills) : []
+        const updatedList = list.map((b: any) => {
+          if (b.id === resolvedId || b.bill_number === editingBillId) {
+            return { ...b, status: newStatus }
+          }
+          return b
+        })
+        localStorage.setItem(`kdm_mock_bills_${activeOrg.id}`, JSON.stringify(updatedList))
+      }
       setStatus(newStatus)
       setIsMoreDropdownOpen(false)
     } catch (err: any) {
@@ -1017,13 +1053,13 @@ export function CreateBillTab({
       const balanceKey = `kdm_bank_balances_${activeOrg.id}`;
       const savedBalances = localStorage.getItem(balanceKey);
       const balances = savedBalances ? JSON.parse(savedBalances) : {
-        'mock-bank-090': 5142.90,
-        'bank-090': 5142.90
+        'mock-bank-090': 0.00,
+        'bank-090': 0.00
       };
 
       payments.forEach(p => {
         if (balances[p.accountId] === undefined) {
-          balances[p.accountId] = p.accountId.includes('090') ? 5142.90 : 0.00;
+          balances[p.accountId] = p.accountId.includes('090') ? 0.00 : 0.00;
         }
         // Cost outflow deducts bank balance
         balances[p.accountId] = parseFloat((balances[p.accountId] - p.amount).toFixed(2));
@@ -1053,19 +1089,23 @@ export function CreateBillTab({
       });
       localStorage.setItem(txKey, JSON.stringify(transactions));
 
-      const resolvedId = editingBillId || `mock-bill-${Date.now()}`;
-      const savedBills = localStorage.getItem(`kdm_mock_bills_${activeOrg.id}`);
-      const list = savedBills ? JSON.parse(savedBills) : [];
-      const updatedList = list.map((b: any) => {
-        if (b.id === resolvedId || b.bill_number === editingBillId) {
-          return {
-            ...b,
-            status: 'Paid' as const
-          };
-        }
-        return b;
-      });
-      localStorage.setItem(`kdm_mock_bills_${activeOrg.id}`, JSON.stringify(updatedList));
+      if (!isMockMode) {
+        await apiService.updateBill(editingBillId!, { status: 'Paid' })
+      } else {
+        const resolvedId = editingBillId || `mock-bill-${Date.now()}`;
+        const savedBills = localStorage.getItem(`kdm_mock_bills_${activeOrg.id}`);
+        const list = savedBills ? JSON.parse(savedBills) : [];
+        const updatedList = list.map((b: any) => {
+          if (b.id === resolvedId || b.bill_number === editingBillId) {
+            return {
+              ...b,
+              status: 'Paid' as const
+            };
+          }
+          return b;
+        });
+        localStorage.setItem(`kdm_mock_bills_${activeOrg.id}`, JSON.stringify(updatedList));
+      }
 
       setStatus('Paid');
       setIsPaymentModalOpen(false);
@@ -1238,10 +1278,45 @@ export function CreateBillTab({
     }))
   ]
 
-  const accountOptions = accounts.filter(a => a.class_type === 'Expense' || a.class_type === 'Asset' || a.type === 'Direct Costs').map(a => ({
-    value: a.id,
-    label: `${a.code} - ${a.name}`
-  }))
+  const getCategorizedAccountOptions = (accountsList: Account[]) => {
+    const sales = accountsList.filter(a => a.type !== 'Bank' && a.class_type === 'Revenue')
+    const directCosts = accountsList.filter(a => a.type !== 'Bank' && a.type === 'Direct Costs')
+    const expenses = accountsList.filter(a => a.type !== 'Bank' && a.class_type === 'Expense' && a.type !== 'Direct Costs')
+    const assets = accountsList.filter(a => a.type !== 'Bank' && a.class_type === 'Asset')
+    const liabilities = accountsList.filter(a => a.type !== 'Bank' && a.class_type === 'Liability')
+    const equity = accountsList.filter(a => a.type !== 'Bank' && a.class_type === 'Equity')
+
+    const options: { value: string; label: string; isHeader?: boolean }[] = []
+
+    if (sales.length > 0) {
+      options.push({ value: 'header-sales', label: 'Sales / Revenue', isHeader: true })
+      sales.forEach(a => options.push({ value: a.id, label: `${a.code} - ${a.name}` }))
+    }
+    if (directCosts.length > 0) {
+      options.push({ value: 'header-dc', label: 'Direct Costs', isHeader: true })
+      directCosts.forEach(a => options.push({ value: a.id, label: `${a.code} - ${a.name}` }))
+    }
+    if (expenses.length > 0) {
+      options.push({ value: 'header-expenses', label: 'Expenses', isHeader: true })
+      expenses.forEach(a => options.push({ value: a.id, label: `${a.code} - ${a.name}` }))
+    }
+    if (assets.length > 0) {
+      options.push({ value: 'header-assets', label: 'Assets', isHeader: true })
+      assets.forEach(a => options.push({ value: a.id, label: `${a.code} - ${a.name}` }))
+    }
+    if (liabilities.length > 0) {
+      options.push({ value: 'header-liabilities', label: 'Liabilities', isHeader: true })
+      liabilities.forEach(a => options.push({ value: a.id, label: `${a.code} - ${a.name}` }))
+    }
+    if (equity.length > 0) {
+      options.push({ value: 'header-equity', label: 'Equity', isHeader: true })
+      equity.forEach(a => options.push({ value: a.id, label: `${a.code} - ${a.name}` }))
+    }
+
+    return options
+  }
+
+  const accountOptions = getCategorizedAccountOptions(accounts)
 
   const taxOptions = taxRates.map(t => ({
     value: t.id,
@@ -1331,16 +1406,6 @@ export function CreateBillTab({
         </div>
 
         <div className="flex items-center space-x-2.5 flex-wrap sm:justify-end gap-2">
-          {/* Cancel button */}
-          <button
-            onClick={() => {
-              if (setEditingBillId) setEditingBillId(null)
-              setActiveTab('Bills')
-            }}
-            className="bg-white hover:bg-slate-50 text-slate-555 border border-slate-200 font-medium text-xs px-4.5 py-2 rounded-[3px] shadow-sm transition duration-200 cursor-pointer h-[38px] flex items-center justify-center animate-fadeIn"
-          >
-            Cancel
-          </button>
 
           {!editingBillId ? (
             /* NEW BILL MODE */
@@ -1836,7 +1901,7 @@ export function CreateBillTab({
                   <th className="p-2 border border-slate-200 text-center w-[7%]">Qty</th>
                   <th className="p-2 border border-slate-200 text-right w-[10%]">Unit Price</th>
                   <th className="p-2 border border-slate-200 text-center w-[8%]">Disc %</th>
-                  <th className="p-2 border border-slate-200 w-[15%]">Expense Account</th>
+                  <th className="p-2 border border-slate-200 w-[15%]">Account</th>
                   <th className="p-2 border border-slate-200 w-[12%]">Tax Rate</th>
                   <th className="p-2 border border-slate-200 text-right w-[10%]">Amount</th>
                   {!isReadOnly && <th className="p-2 border border-slate-200 text-center w-[3%]"></th>}

@@ -3,23 +3,23 @@ import {
   Calculator,
   Building,
   Check,
-  Search,
   Plus,
   LogOut,
   UserCheck,
   Settings
 } from 'lucide-react'
 import type { User, Membership, Organization } from '../services/api'
+import type { TabId } from '../types/tabs'
 
-const cleanOrgNameForUrl = (name: string) => name.replace(/\s+/g, '');
+const cleanOrgNameForUrl = (name: string) => name.replace(/\s+/g, '')
 
 interface DashboardLayoutProps {
   currentUser: User | null
   organizations: Membership[]
   activeOrg: Organization | null
-  setActiveOrg: (org: Organization) => void
-  activeTab: any
-  setActiveTab: (tab: any) => void
+  setActiveOrg: (org: Organization | null) => void
+  activeTab: TabId
+  setActiveTab: (tab: TabId) => void
   orgDropdownOpen: boolean
   setOrgDropdownOpen: (open: boolean) => void
   profileDropdownOpen: boolean
@@ -52,7 +52,7 @@ interface DropdownItem {
     | 'BalanceSheet'
     | 'ProfitAndLoss'
     | 'ReportingSettings'
-    | 'reconcile'
+    | 'BankAccounts'
     | 'ChartOfAccounts'
     | 'TaxRates'
     | 'AccountingSettings'
@@ -80,11 +80,10 @@ export function DashboardLayout({
   handleLogout,
   children
 }: DashboardLayoutProps) {
-  // Navigation Dropdown state toggles
   const [activeDropdown, setActiveDropdown] = useState<'sales' | 'purchases' | 'reports' | 'accounting' | 'contacts' | null>(null)
   const [quickAddOpen, setQuickAddOpen] = useState(false)
-  // Anchor navigation handler to support right-click and modifier key tab duplication
-  const handleTabClick = (tabKey: typeof activeTab, e: React.MouseEvent<HTMLAnchorElement>) => {
+
+  const handleTabClick = (tabKey: TabId, e: React.MouseEvent<HTMLAnchorElement>) => {
     if (e.button === 1 || e.ctrlKey || e.metaKey || e.shiftKey) {
       return
     }
@@ -93,21 +92,16 @@ export function DashboardLayout({
     setActiveDropdown(null)
   }
 
-  // Find current membership payload to inspect role & custom JSON permissions
   const currentMemb = organizations.find(m => m.organization.id === activeOrg?.id)
   const isUserRole = currentMemb?.role === 'User'
   const userPermissions = currentMemb?.permissions || {}
 
-  // Helper function to check if a specific tab key is allowed
   const isTabAllowed = (permKey?: string): boolean => {
-    if (!isUserRole) return true // Admins bypass all restrictions
-    if (!permKey) return true    // Tab has no permissions required (e.g. Home)
-    
-    // Lock tab if permission is explicitly set to false
+    if (!isUserRole) return true
+    if (!permKey) return true
     return userPermissions[permKey] !== false
   }
 
-  // Effect: Enforce URL Path Validation (prevent direct access via direct address bar editing)
   useEffect(() => {
     const permissionMap: Record<string, string> = {
       Home: '',
@@ -132,7 +126,7 @@ export function DashboardLayout({
       BalanceSheet: 'reporting',
       ProfitAndLoss: 'reporting',
       ReportingSettings: 'reporting',
-      reconcile: 'reconcile',
+      BankAccounts: '',
       ChartOfAccounts: 'accounts',
       AccountingSettings: 'accounts',
       Contacts: 'contacts',
@@ -140,19 +134,16 @@ export function DashboardLayout({
       CreateInvoice: 'sales',
       CreateQuote: 'sales',
       EditInvoice: 'sales',
-      EditQuote: 'sales'
+      EditQuote: 'sales',
+      Projects: ''
     }
 
     const permKey = permissionMap[activeTab]
-    if (permKey !== undefined) {
-      if (!isTabAllowed(permKey)) {
-        console.warn(`Access denied to tab ${activeTab}. Redirecting to Home.`)
-        setActiveTab('Home')
-      }
+    if (permKey !== undefined && !isTabAllowed(permKey)) {
+      setActiveTab('Home')
     }
   }, [activeTab, currentMemb])
 
-  // Exact option lists specified by the user
   const salesDropdownItems: DropdownItem[] = [
     { key: 'SalesOverview', label: 'Sales overview', permissionKey: 'sales' },
     { key: 'Invoices', label: 'Invoices', permissionKey: 'sales' },
@@ -182,9 +173,9 @@ export function DashboardLayout({
   ]
 
   const accountingDropdownItems: DropdownItem[] = [
-    { key: 'reconcile', label: 'Bank accounts', permissionKey: 'reconcile' },
+    { key: 'BankAccounts', label: 'Bank accounts', permissionKey: '' },
     { key: 'ChartOfAccounts', label: 'Chart of accounts', permissionKey: 'accounts' },
-    { key: 'AccountingSettings', label: 'Tax rates', permissionKey: 'accounts' },
+    { key: 'TaxRates', label: 'Tax rates', permissionKey: 'accounts' },
     { key: 'AccountingSettings', label: 'Accounting settings', permissionKey: 'accounts' }
   ]
 
@@ -195,14 +186,12 @@ export function DashboardLayout({
     { key: 'ContactsSettings', label: 'Contacts settings', permissionKey: 'contacts' }
   ]
 
-  // Filter items based on active role permissions
   const allowedSalesItems = salesDropdownItems.filter(item => isTabAllowed(item.permissionKey))
   const allowedPurchasesItems = purchasesDropdownItems.filter(item => isTabAllowed(item.permissionKey))
   const allowedReportsItems = reportsDropdownItems.filter(item => isTabAllowed(item.permissionKey))
   const allowedAccountingItems = accountingDropdownItems.filter(item => isTabAllowed(item.permissionKey))
   const allowedContactsItems = contactsDropdownItems.filter(item => isTabAllowed(item.permissionKey))
 
-  // Determine active states for highlighters
   const isSalesActive = salesDropdownItems.some(i => i.key === activeTab)
   const isPurchasesActive = purchasesDropdownItems.some(i => i.key === activeTab)
   const isReportsActive = reportsDropdownItems.some(i => i.key === activeTab)
@@ -211,18 +200,18 @@ export function DashboardLayout({
 
   return (
     <div className="min-h-screen bg-[#f7f9f8] text-[#071f13] font-sans antialiased flex flex-col">
-      {/* Top Header Navigation (Xero-Style) */}
-      <header className="bg-[#071f13] text-white shadow-md relative z-0 shrink-0 select-none">
+      {/* Top Header Navigation */}
+      <header className="bg-[#071f13] text-white shadow-md shrink-0 select-none">
         <div className="w-full px-6 lg:px-8">
           <div className="flex items-center justify-between h-[66px] w-full">
-            
+
             {/* Left Section */}
             <div className="flex items-center space-x-4 py-1 select-none">
               <div className="flex items-center space-x-3 shrink-0">
                 <div className="p-1.5 bg-white/10 rounded-[3px] shrink-0">
                   <Calculator className="h-4.5 w-4.5 text-emerald-300" />
                 </div>
-                
+
                 {/* Organization Switcher Dropdown */}
                 <div className="relative">
                   <button
@@ -242,7 +231,7 @@ export function DashboardLayout({
                       <div className="fixed inset-0 z-40" onClick={() => setOrgDropdownOpen(false)}></div>
                       <div className="absolute left-0 mt-2 w-64 bg-white border border-slate-200 rounded-[3px] shadow-xl z-50 p-2.5 animate-fadeIn text-slate-800 font-sans">
                         <p className="text-[15px] text-slate-400 font-normal uppercase px-3 py-1.5 tracking-wider">Switch Organization</p>
-                        
+
                         <div className="space-y-1 max-h-48 overflow-y-auto">
                           {organizations.map(memb => (
                             <a
@@ -295,7 +284,7 @@ export function DashboardLayout({
                                 return
                               }
                               e.preventDefault()
-                              setActiveOrg(null as any)
+                              setActiveOrg(null)
                               setOrgDropdownOpen(false)
                             }}
                             className="w-full text-left px-3 py-2 rounded-[3px] text-[15px] font-normal text-slate-500 hover:bg-slate-50 flex items-center space-x-2 transition cursor-pointer"
@@ -310,7 +299,7 @@ export function DashboardLayout({
                 </div>
               </div>
 
-              {/* Dropdown Headers (Clean buttons with no chevrons) */}
+              {/* Navigation Dropdown Headers */}
               <nav className="flex space-x-0.5 shrink-0 items-center">
                 {/* 1. Home */}
                 <a
@@ -439,7 +428,20 @@ export function DashboardLayout({
                   </a>
                 )}
 
-                {/* 6. Reports Dropdown */}
+                {/* 6. Projects (Direct Link) */}
+                <a
+                  href={activeOrg ? `/org/${cleanOrgNameForUrl(activeOrg.name)}/Projects` : '#'}
+                  onClick={(e) => handleTabClick('Projects', e)}
+                  className={`px-3 py-1.5 rounded-[3px] transition duration-200 cursor-pointer font-medium text-[15px] ${
+                    activeTab === 'Projects'
+                      ? 'bg-white/15 text-white shadow-inner border-b-2 border-emerald-300'
+                      : 'text-emerald-100/80 hover:bg-white/5 hover:text-white'
+                  }`}
+                >
+                  Projects
+                </a>
+
+                {/* 7. Reports Dropdown */}
                 {allowedReportsItems.length > 0 && (
                   <div className="relative">
                     <button
@@ -481,7 +483,7 @@ export function DashboardLayout({
                   </div>
                 )}
 
-                {/* 7. Accounting Dropdown */}
+                {/* 8. Accounting Dropdown */}
                 {allowedAccountingItems.length > 0 && (
                   <div className="relative">
                     <button
@@ -523,7 +525,7 @@ export function DashboardLayout({
                   </div>
                 )}
 
-                {/* 8. Contacts Dropdown */}
+                {/* 9. Contacts Dropdown */}
                 {allowedContactsItems.length > 0 && (
                   <div className="relative">
                     <button
@@ -569,17 +571,8 @@ export function DashboardLayout({
 
             {/* Right Section */}
             <div className="flex items-center space-x-3 shrink-0 z-10 pl-4">
-              <div className="relative w-40 hidden md:block">
-                <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-emerald-200/50" />
-                <input
-                  type="text"
-                  placeholder="Search..."
-                  className="w-full bg-white/10 hover:bg-white/15 focus:bg-white text-white focus:text-slate-800 border border-emerald-800/30 focus:border-white rounded-full pl-8 pr-3 py-1.5 text-[15px] font-normal focus:outline-none transition-all duration-300 placeholder-emerald-200/40"
-                />
-              </div>
-
               <div className="relative">
-                <button 
+                <button
                   onClick={() => {
                     setQuickAddOpen(!quickAddOpen)
                     setOrgDropdownOpen(false)
@@ -601,17 +594,17 @@ export function DashboardLayout({
                       </div>
                       <div className="space-y-0.5 max-h-80 overflow-y-auto">
                         {[
-                          { key: 'CreateInvoice', label: 'Invoice' },
-                          { key: 'CreateBill', label: 'Bill' },
-                          { key: 'Contacts', label: 'Contact', action: () => {
+                          { key: 'CreateInvoice' as TabId, label: 'Invoice' },
+                          { key: 'CreateBill' as TabId, label: 'Bill' },
+                          { key: 'Contacts' as TabId, label: 'Contact', action: () => {
                             localStorage.setItem('kdm_auto_open_contact_modal', 'true')
                           }},
-                          { key: 'CreateQuote', label: 'Quote' },
-                          { key: 'CreatePurchaseOrder', label: 'Purchase order' },
-                          { key: 'CreateManualJournal', label: 'Manual journal' },
-                          { key: 'CreateSpendMoney', label: 'Spend money' },
-                          { key: 'CreateReceiveMoney', label: 'Receive money' },
-                          { key: 'CreateTransferMoney', label: 'Transfer money' },
+                          { key: 'CreateQuote' as TabId, label: 'Quote' },
+                          { key: 'CreatePurchaseOrder' as TabId, label: 'Purchase order' },
+                          { key: 'CreateManualJournal' as TabId, label: 'Manual journal' },
+                          { key: 'CreateSpendMoney' as TabId, label: 'Spend money' },
+                          { key: 'CreateReceiveMoney' as TabId, label: 'Receive money' },
+                          { key: 'CreateTransferMoney' as TabId, label: 'Transfer money' },
                         ].map(item => (
                           <button
                             key={item.label}
@@ -694,7 +687,7 @@ export function DashboardLayout({
       </header>
 
       {/* Main Pages Content Area */}
-      <main className="flex-1 overflow-y-auto relative z-20">
+      <main className="flex-1 overflow-y-auto">
         <div className="p-8 w-full space-y-8 animate-fadeIn">
           {children}
         </div>

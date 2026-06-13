@@ -4,6 +4,7 @@ import { Plus } from 'lucide-react'
 export interface SelectOption {
   value: string
   label: string
+  isHeader?: boolean
 }
 
 interface SearchableInputProps {
@@ -102,9 +103,11 @@ export function SearchableInput({
           e.preventDefault()
           e.stopPropagation()
           const selected = filtered[highlightedIndex]
-          onChange(selected.value)
-          setQuery(selected.label)
-          setIsOpen(false)
+          if (!selected.isHeader) {
+            onChange(selected.value)
+            setQuery(selected.label)
+            setIsOpen(false)
+          }
         } else if (highlightedIndex === filtered.length && onCreateNew) {
           e.preventDefault()
           e.stopPropagation()
@@ -119,8 +122,10 @@ export function SearchableInput({
       if (isOpen) {
         if (highlightedIndex >= 0 && highlightedIndex < filtered.length) {
           const selected = filtered[highlightedIndex]
-          onChange(selected.value)
-          setQuery(selected.label)
+          if (!selected.isHeader) {
+            onChange(selected.value)
+            setQuery(selected.label)
+          }
         } else if (highlightedIndex === filtered.length && onCreateNew) {
           e.preventDefault()
           e.stopPropagation()
@@ -156,25 +161,37 @@ export function SearchableInput({
       {isOpen && (
         <div className="absolute left-0 right-0 mt-1 bg-white border border-slate-200 shadow-lg z-[100] max-h-48 overflow-y-auto divide-y divide-slate-50 p-1 scrollbar-thin rounded-[3px]">
           {filtered.length > 0 ? (
-            filtered.map((opt, idx) => (
-              <button
-                key={opt.value}
-                type="button"
-                onMouseDown={() => {
-                  onChange(opt.value)
-                  setIsOpen(false)
-                  setQuery(opt.label)
-                }}
-                onMouseEnter={() => setHighlightedIndex(idx)}
-                className={`w-full text-left px-3 py-2 rounded-[3px] text-[11px] font-semibold transition-all cursor-pointer ${
-                  idx === highlightedIndex 
-                    ? 'bg-emerald-50 text-[#0F5B38]' 
-                    : 'text-slate-600 hover:bg-slate-50'
-                }`}
-              >
-                {opt.label}
-              </button>
-            ))
+            filtered.map((opt, idx) => {
+              if (opt.isHeader) {
+                return (
+                  <div
+                    key={opt.value}
+                    className="px-3 py-1.5 text-[9px] font-bold text-slate-400 uppercase tracking-widest bg-slate-50/50 select-none cursor-default text-left"
+                  >
+                    {opt.label}
+                  </div>
+                )
+              }
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onMouseDown={() => {
+                    onChange(opt.value)
+                    setIsOpen(false)
+                    setQuery(opt.label)
+                  }}
+                  onMouseEnter={() => setHighlightedIndex(idx)}
+                  className={`w-full text-left px-3 py-2 rounded-[3px] text-[11px] font-semibold transition-all cursor-pointer ${
+                    idx === highlightedIndex 
+                      ? 'bg-emerald-50 text-[#0F5B38]' 
+                      : 'text-slate-600 hover:bg-slate-50'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              )
+            })
           ) : (
             <p className="text-center text-[10px] text-slate-400 py-3.5 font-semibold">No matching options</p>
           )}

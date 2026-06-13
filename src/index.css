@@ -233,3 +233,24 @@ main:has(.fixed.flex.items-center) {
   overflow: hidden !important;
 }
 
+/* Stacking context rules for topbar, popups and main content */
+header {
+  position: relative !important;
+  z-index: 5 !important;
+}
+
+main {
+  position: static !important;
+}
+
+/* When a modal is open: stack main at z-10 and lower header to z-1 so popups render on top without clipping */
+body:has(.fixed.flex.items-center) main {
+  position: relative !important;
+  z-index: 10 !important;
+}
+
+body:has(.fixed.flex.items-center) header {
+  z-index: 1 !important;
+}
+
+

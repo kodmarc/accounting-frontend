@@ -244,16 +244,25 @@ export function CreateInvoiceTab({
 
       let loadedBanks: Account[] = []
       if (isMockMode) {
-        loadedBanks = [
-          { id: 'mock-bank-090', code: '090', name: 'ANZ Business Account', class_type: 'Asset', type: 'Bank', description: 'Primary business operating checking account', is_system_account: true, created_at: '', default_tax_rate: null },
-          { id: 'mock-bank-092', code: '092', name: 'ANZ Savings Account', class_type: 'Asset', type: 'Bank', description: 'Corporate reserve savings account', is_system_account: false, created_at: '', default_tax_rate: null }
-        ]
-        const savedCustomBanks = localStorage.getItem(`kdm_mock_custom_banks_${activeOrg.id}`)
-        if (savedCustomBanks) {
-          loadedBanks = [...loadedBanks, ...JSON.parse(savedCustomBanks)]
+        const saved = localStorage.getItem(`kdm_bank_accounts_${activeOrg.id}`)
+        loadedBanks = saved ? JSON.parse(saved) : []
+        if (loadedBanks.length === 0) {
+          loadedBanks = [
+            {
+              id: 'bank-090',
+              code: '090',
+              name: 'ANZ Business Account',
+              class_type: 'Asset',
+              type: 'Bank',
+              description: 'ANZ Business Daily Transaction Account',
+              is_system_account: true,
+              created_at: new Date().toISOString()
+            }
+          ]
+          localStorage.setItem(`kdm_bank_accounts_${activeOrg.id}`, JSON.stringify(loadedBanks))
         }
       } else {
-        loadedBanks = loadedAccounts.filter(a => a.type === 'Bank' || (a.class_type === 'Asset' && a.code === '090') || a.name.toLowerCase().includes('bank'))
+        loadedBanks = loadedAccounts.filter(a => a.type === 'Bank')
       }
       setBankAccounts(loadedBanks)
       if (loadedBanks.length > 0) {
@@ -1158,13 +1167,13 @@ export function CreateInvoiceTab({
       const balanceKey = `kdm_bank_balances_${activeOrg.id}`;
       const savedBalances = localStorage.getItem(balanceKey);
       const balances = savedBalances ? JSON.parse(savedBalances) : {
-        'mock-bank-090': 5142.90,
-        'bank-090': 5142.90
+        'mock-bank-090': 0.00,
+        'bank-090': 0.00
       };
 
       payments.forEach(p => {
         if (balances[p.accountId] === undefined) {
-          balances[p.accountId] = p.accountId.includes('090') ? 5142.90 : 0.00;
+          balances[p.accountId] = p.accountId.includes('090') ? 0.00 : 0.00;
         }
         balances[p.accountId] = parseFloat((balances[p.accountId] + p.amount).toFixed(2));
       });
@@ -1313,10 +1322,45 @@ export function CreateInvoiceTab({
     }))
   ]
 
-  const accountOptions = accounts.filter(a => a.class_type === 'Revenue').map(a => ({
-    value: a.id,
-    label: `${a.code} - ${a.name}`
-  }))
+  const getCategorizedAccountOptions = (accountsList: Account[]) => {
+    const sales = accountsList.filter(a => a.type !== 'Bank' && a.class_type === 'Revenue')
+    const directCosts = accountsList.filter(a => a.type !== 'Bank' && a.type === 'Direct Costs')
+    const expenses = accountsList.filter(a => a.type !== 'Bank' && a.class_type === 'Expense' && a.type !== 'Direct Costs')
+    const assets = accountsList.filter(a => a.type !== 'Bank' && a.class_type === 'Asset')
+    const liabilities = accountsList.filter(a => a.type !== 'Bank' && a.class_type === 'Liability')
+    const equity = accountsList.filter(a => a.type !== 'Bank' && a.class_type === 'Equity')
+
+    const options: { value: string; label: string; isHeader?: boolean }[] = []
+
+    if (sales.length > 0) {
+      options.push({ value: 'header-sales', label: 'Sales / Revenue', isHeader: true })
+      sales.forEach(a => options.push({ value: a.id, label: `${a.code} - ${a.name}` }))
+    }
+    if (directCosts.length > 0) {
+      options.push({ value: 'header-dc', label: 'Direct Costs', isHeader: true })
+      directCosts.forEach(a => options.push({ value: a.id, label: `${a.code} - ${a.name}` }))
+    }
+    if (expenses.length > 0) {
+      options.push({ value: 'header-expenses', label: 'Expenses', isHeader: true })
+      expenses.forEach(a => options.push({ value: a.id, label: `${a.code} - ${a.name}` }))
+    }
+    if (assets.length > 0) {
+      options.push({ value: 'header-assets', label: 'Assets', isHeader: true })
+      assets.forEach(a => options.push({ value: a.id, label: `${a.code} - ${a.name}` }))
+    }
+    if (liabilities.length > 0) {
+      options.push({ value: 'header-liabilities', label: 'Liabilities', isHeader: true })
+      liabilities.forEach(a => options.push({ value: a.id, label: `${a.code} - ${a.name}` }))
+    }
+    if (equity.length > 0) {
+      options.push({ value: 'header-equity', label: 'Equity', isHeader: true })
+      equity.forEach(a => options.push({ value: a.id, label: `${a.code} - ${a.name}` }))
+    }
+
+    return options
+  }
+
+  const accountOptions = getCategorizedAccountOptions(accounts)
 
   const taxOptions = taxRates.map(t => ({
     value: t.id,
@@ -1476,16 +1520,6 @@ export function CreateInvoiceTab({
         </div>
 
         <div className="flex items-center space-x-2.5 flex-wrap sm:justify-end gap-2">
-          {/* Cancel / Back Button */}
-          <button
-            onClick={() => {
-              if (setEditingInvoiceId) setEditingInvoiceId(null)
-              setActiveTab('Invoices')
-            }}
-            className="bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 font-medium text-xs px-4.5 py-2 rounded-[3px] shadow-sm transition duration-200 cursor-pointer h-[38px] flex items-center justify-center"
-          >
-            Cancel
-          </button>
 
           {isNewInvoice ? (
             <>
@@ -1946,7 +1980,7 @@ export function CreateInvoiceTab({
                   <th className="p-2 border border-slate-200 text-center w-[7%]">Qty</th>
                   <th className="p-2 border border-slate-200 text-right w-[10%]">Unit Price</th>
                   <th className="p-2 border border-slate-200 text-center w-[8%]">Disc %</th>
-                  <th className="p-2 border border-slate-200 w-[15%]">Sales Account</th>
+                  <th className="p-2 border border-slate-200 w-[15%]">Account</th>
                   <th className="p-2 border border-slate-200 w-[12%]">Tax Rate</th>
                   <th className="p-2 border border-slate-200 text-right w-[10%]">Amount</th>
                   {!isReadOnly && <th className="p-2 border border-slate-200 text-center w-[3%]"></th>}

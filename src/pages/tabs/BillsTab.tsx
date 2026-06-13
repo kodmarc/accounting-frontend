@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Plus, Receipt, Search, Trash2, Eye } from 'lucide-react'
+import { apiService } from '../../services/api'
 import type { Organization, Contact, Item, Account, TaxRate } from '../../services/api'
 import { usePopup } from '../../components/PopupProvider'
 
@@ -36,9 +37,14 @@ export function BillsTab({
   const loadData = async () => {
     setLoading(true)
     try {
-      // Load offline items
-      const savedBills = localStorage.getItem(`kdm_mock_bills_${activeOrg.id}`)
-      setBills(savedBills ? JSON.parse(savedBills) : [])
+      let billsList: any[] = []
+      if (isMockMode) {
+        const savedBills = localStorage.getItem(`kdm_mock_bills_${activeOrg.id}`)
+        billsList = savedBills ? JSON.parse(savedBills) : []
+      } else {
+        billsList = await apiService.getBills(activeOrg.id)
+      }
+      setBills(billsList)
     } catch (e: any) {
       console.warn("Failed to load bills suite", e)
     } finally {
@@ -99,9 +105,20 @@ export function BillsTab({
     })
     if (!confirmed) return
 
+    if (!isMockMode) {
+      try {
+        await Promise.all(targets.map(b => apiService.deleteBill(b.id)))
+      } catch (err: any) {
+        showAlert({ title: 'Error deleting bills', message: err.message || 'API failed to delete bills.', type: 'error' })
+        return
+      }
+    } else {
+      const remaining = bills.filter(b => !selectedIds.has(b.id))
+      localStorage.setItem(`kdm_mock_bills_${activeOrg.id}`, JSON.stringify(remaining))
+    }
+
     const remaining = bills.filter(b => !selectedIds.has(b.id))
     setBills(remaining)
-    localStorage.setItem(`kdm_mock_bills_${activeOrg.id}`, JSON.stringify(remaining))
     setSelectedIds(new Set())
   }
 
@@ -113,6 +130,25 @@ export function BillsTab({
     })
     if (!confirmed) return
 
+    if (!isMockMode) {
+      try {
+        await Promise.all(
+          bills.filter(b => selectedIds.has(b.id)).map(b => apiService.updateBill(b.id, { status: 'Paid' }))
+        )
+      } catch (err: any) {
+        showAlert({ title: 'Error updating bills', message: err.message || 'API failed to update bills.', type: 'error' })
+        return
+      }
+    } else {
+      const updated = bills.map(b => {
+        if (selectedIds.has(b.id)) {
+          return { ...b, status: 'Paid' as const }
+        }
+        return b
+      })
+      localStorage.setItem(`kdm_mock_bills_${activeOrg.id}`, JSON.stringify(updated))
+    }
+
     const updated = bills.map(b => {
       if (selectedIds.has(b.id)) {
         return { ...b, status: 'Paid' as const }
@@ -120,11 +156,29 @@ export function BillsTab({
       return b
     })
     setBills(updated)
-    localStorage.setItem(`kdm_mock_bills_${activeOrg.id}`, JSON.stringify(updated))
     setSelectedIds(new Set())
   }
 
   const handleBulkMarkSent = async () => {
+    if (!isMockMode) {
+      try {
+        await Promise.all(
+          bills.filter(b => selectedIds.has(b.id) && b.status === 'Draft').map(b => apiService.updateBill(b.id, { status: 'Awaiting Payment' }))
+        )
+      } catch (err: any) {
+        showAlert({ title: 'Error updating bills', message: err.message || 'API failed to update bills.', type: 'error' })
+        return
+      }
+    } else {
+      const updated = bills.map(b => {
+        if (selectedIds.has(b.id) && b.status === 'Draft') {
+          return { ...b, status: 'Awaiting Payment' as const }
+        }
+        return b
+      })
+      localStorage.setItem(`kdm_mock_bills_${activeOrg.id}`, JSON.stringify(updated))
+    }
+
     const updated = bills.map(b => {
       if (selectedIds.has(b.id) && b.status === 'Draft') {
         return { ...b, status: 'Awaiting Payment' as const }
@@ -132,7 +186,6 @@ export function BillsTab({
       return b
     })
     setBills(updated)
-    localStorage.setItem(`kdm_mock_bills_${activeOrg.id}`, JSON.stringify(updated))
     setSelectedIds(new Set())
   }
 

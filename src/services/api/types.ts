@@ -1,11 +1,5 @@
 // src/services/api/types.ts
-
 // Centralized type definitions for the frontend API.
-// Fields that may be omitted or null from the backend are marked optional (?),
-// otherwise they remain required. This follows TypeScript best‑practice of
-// providing a single source of truth for data shapes.
-
-export const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://accounting-backend-aerq.onrender.com/api';
 
 // ---------- Core Interfaces ----------
 export interface User {
@@ -47,9 +41,10 @@ export interface Account {
   name: string;
   class_type: 'Revenue' | 'Expense' | 'Asset' | 'Liability' | 'Equity';
   type: string;
-  default_tax_rate?: string | null; // optional – backend may omit
+  default_tax_rate?: string | null;
   description: string;
   is_system_account: boolean;
+  is_active?: boolean;
   created_at: string;
 }
 
@@ -63,6 +58,7 @@ export interface Contact {
   billing_address: string;
   default_sales_account?: string | null;
   default_purchase_account?: string | null;
+  is_active?: boolean;
   created_at: string;
 }
 
@@ -80,6 +76,7 @@ export interface Item {
   purchase_account?: string | null;
   purchase_tax_rate?: string | null;
   purchase_description: string;
+  is_active?: boolean;
   created_at: string;
 }
 
@@ -109,6 +106,7 @@ export interface Project {
   id: string;
   name: string;
   code?: string;
+  is_active?: boolean;
   created_at?: string;
 }
 
@@ -162,17 +160,86 @@ export interface Quote {
   created_at?: string;
 }
 
-// ---------- UI Specific Types ----------
-// Unified tab identifiers used throughout the application.
-export type TabId =
-  | 'Home'
-  | 'reconcile'
-  | 'Contacts'
-  | 'Customers'
-  | 'Suppliers'
-  | 'Invoices'
-  | 'Quotes'
-  | 'Bills'
-  | 'PurchaseOrders'
-  | 'BankAccounts'
-  | 'Settings';
+export interface BillLine {
+  id?: string;
+  item?: string | null;
+  description: string;
+  quantity: number;
+  unit_price: number;
+  discount?: number;
+  account: string;
+  tax_rate?: string | null;
+  total: number;
+}
+
+export interface Bill {
+  id?: string;
+  contact: string;
+  contact_name?: string;
+  bill_number: string;
+  reference: string;
+  date: string;
+  due_date: string;
+  status: 'Draft' | 'Awaiting Approval' | 'Awaiting Payment' | 'Paid';
+  currency?: string;
+  tax_type?: 'Inclusive' | 'Exclusive' | 'No Tax';
+  project?: string | null;
+  subtotal: number;
+  tax_total: number;
+  total: number;
+  lines: BillLine[];
+  created_at?: string;
+}
+
+export interface PurchaseOrderLine {
+  id?: string;
+  item?: string | null;
+  description: string;
+  quantity: number;
+  unit_price: number;
+  discount?: number;
+  account: string;
+  tax_rate?: string | null;
+  total: number;
+}
+
+export interface PurchaseOrder {
+  id?: string;
+  contact: string;
+  contact_name?: string;
+  po_number: string;
+  reference: string;
+  date: string;
+  expiry_date: string;
+  status: 'Draft' | 'Awaiting Approval' | 'Approved' | 'Billed' | 'Declined';
+  currency?: string;
+  tax_type?: 'Inclusive' | 'Exclusive' | 'No Tax';
+  project?: string | null;
+  subtotal: number;
+  tax_total: number;
+  total: number;
+  lines: PurchaseOrderLine[];
+  created_at?: string;
+}
+
+// ---------- Email DTOs ----------
+export interface SendEmailPayload {
+  to: string;
+  subject?: string;
+  message?: string;
+  [key: string]: any;
+}
+
+export interface SendBillEmailPayload {
+  to: string;
+  subject?: string;
+  message?: string;
+  [key: string]: any;
+}
+
+export interface SendPurchaseOrderEmailPayload {
+  to: string;
+  subject?: string;
+  message?: string;
+  [key: string]: any;
+}

@@ -1,7 +1,6 @@
 // src/types/tabs.ts
 
 // Unified tab identifier type used across the application.
-// Keep this list in sync with the activeTab state in App.tsx.
 export type TabId =
   | 'Home'
   | 'SalesOverview'
@@ -25,7 +24,7 @@ export type TabId =
   | 'BalanceSheet'
   | 'ProfitAndLoss'
   | 'ReportingSettings'
-  | 'reconcile'
+  | 'BankAccounts'
   | 'ChartOfAccounts'
   | 'AccountingSettings'
   | 'Contacts'
@@ -44,4 +43,4 @@ export type TabId =
   | 'CreateReceiveMoney'
   | 'CreateManualJournal'
   | 'Projects'
-  | 'UserProfile';
+  | 'UserProfile'

@@ -1228,10 +1228,45 @@ export function CreateQuoteTab({
     }))
   ]
 
-  const accountOptions = accounts.filter(a => a.class_type === 'Revenue').map(a => ({
-    value: a.id,
-    label: `${a.code} - ${a.name}`
-  }))
+  const getCategorizedAccountOptions = (accountsList: Account[]) => {
+    const sales = accountsList.filter(a => a.type !== 'Bank' && a.class_type === 'Revenue')
+    const directCosts = accountsList.filter(a => a.type !== 'Bank' && a.type === 'Direct Costs')
+    const expenses = accountsList.filter(a => a.type !== 'Bank' && a.class_type === 'Expense' && a.type !== 'Direct Costs')
+    const assets = accountsList.filter(a => a.type !== 'Bank' && a.class_type === 'Asset')
+    const liabilities = accountsList.filter(a => a.type !== 'Bank' && a.class_type === 'Liability')
+    const equity = accountsList.filter(a => a.type !== 'Bank' && a.class_type === 'Equity')
+
+    const options: { value: string; label: string; isHeader?: boolean }[] = []
+
+    if (sales.length > 0) {
+      options.push({ value: 'header-sales', label: 'Sales / Revenue', isHeader: true })
+      sales.forEach(a => options.push({ value: a.id, label: `${a.code} - ${a.name}` }))
+    }
+    if (directCosts.length > 0) {
+      options.push({ value: 'header-dc', label: 'Direct Costs', isHeader: true })
+      directCosts.forEach(a => options.push({ value: a.id, label: `${a.code} - ${a.name}` }))
+    }
+    if (expenses.length > 0) {
+      options.push({ value: 'header-expenses', label: 'Expenses', isHeader: true })
+      expenses.forEach(a => options.push({ value: a.id, label: `${a.code} - ${a.name}` }))
+    }
+    if (assets.length > 0) {
+      options.push({ value: 'header-assets', label: 'Assets', isHeader: true })
+      assets.forEach(a => options.push({ value: a.id, label: `${a.code} - ${a.name}` }))
+    }
+    if (liabilities.length > 0) {
+      options.push({ value: 'header-liabilities', label: 'Liabilities', isHeader: true })
+      liabilities.forEach(a => options.push({ value: a.id, label: `${a.code} - ${a.name}` }))
+    }
+    if (equity.length > 0) {
+      options.push({ value: 'header-equity', label: 'Equity', isHeader: true })
+      equity.forEach(a => options.push({ value: a.id, label: `${a.code} - ${a.name}` }))
+    }
+
+    return options
+  }
+
+  const accountOptions = getCategorizedAccountOptions(accounts)
 
   const taxOptions = taxRates.map(t => ({
     value: t.id,
@@ -1323,17 +1358,6 @@ export function CreateQuoteTab({
         <div className="flex items-center space-x-2.5 flex-wrap sm:justify-end gap-2">
           {editingQuoteId ? (
             <>
-              {/* Cancel Button */}
-              <button
-                onClick={() => {
-                  if (setEditingQuoteId) setEditingQuoteId(null)
-                  setActiveTab('Quotes')
-                }}
-                className="bg-white hover:bg-slate-50 text-slate-550 border border-slate-200 font-medium text-xs px-4.5 py-2 rounded-[3px] shadow-sm transition duration-200 cursor-pointer h-[38px] flex items-center justify-center"
-              >
-                Cancel
-              </button>
-
               {/* Save PDF Button */}
               <button
                 onClick={handlePrintPDF}
@@ -1628,15 +1652,6 @@ export function CreateQuoteTab({
             <>
               {/* Creating new quote actions */}
               <button
-                onClick={() => {
-                  if (setEditingQuoteId) setEditingQuoteId(null)
-                  setActiveTab('Quotes')
-                }}
-                className="bg-white hover:bg-slate-50 text-slate-550 border border-slate-200 font-medium text-xs px-4.5 py-2 rounded-[3px] shadow-sm transition duration-200 cursor-pointer h-[38px] flex items-center justify-center"
-              >
-                Cancel
-              </button>
-              <button
                 onClick={() => handleSaveQuote('Draft')}
                 disabled={isSubmitting}
                 className="bg-white hover:bg-slate-50 text-slate-700 hover:text-[#0F5B38] border border-slate-200 hover:border-slate-300 font-medium text-xs px-4.5 py-2 rounded-[3px] shadow-sm transition duration-200 cursor-pointer h-[38px] flex items-center justify-center disabled:bg-slate-50 disabled:text-slate-400"
@@ -1890,7 +1905,7 @@ export function CreateQuoteTab({
                   <th className="p-2 border border-slate-200 text-center w-[7%]">Qty</th>
                   <th className="p-2 border border-slate-200 text-right w-[10%]">Unit Price</th>
                   <th className="p-2 border border-slate-200 text-center w-[8%]">Disc %</th>
-                  <th className="p-2 border border-slate-200 w-[15%]">Sales Account</th>
+                  <th className="p-2 border border-slate-200 w-[15%]">Account</th>
                   <th className="p-2 border border-slate-200 w-[12%]">Tax Rate</th>
                   <th className="p-2 border border-slate-200 text-right w-[10%]">Amount</th>
                   <th className="p-2 border border-slate-200 text-center w-[3%]"></th>

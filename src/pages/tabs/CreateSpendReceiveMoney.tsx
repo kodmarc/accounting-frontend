@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { ArrowLeft, Save, Plus, Trash2, Loader2, CheckCircle } from 'lucide-react'
 import { apiService } from '../../services/api'
-import type { Organization, Account, Contact, TaxRate } from '../../services/api'
+import type { Organization, Account, Contact, TaxRate, Item } from '../../services/api'
 import { SearchableInput } from '../../components/SearchableInput'
 import { usePopup } from '../../components/PopupProvider'
 import { XeroDatePicker } from '../../components/XeroDatePicker'
@@ -15,6 +15,7 @@ interface CreateSpendReceiveMoneyProps {
 
 interface LineFormItem {
   id: string
+  itemId: string
   description: string
   quantity: number | ''
   unitPrice: number | ''
@@ -35,6 +36,7 @@ export function CreateSpendReceiveMoney({
   const [contacts, setContacts] = useState<Contact[]>([])
   const [accounts, setAccounts] = useState<Account[]>([])
   const [taxRates, setTaxRates] = useState<TaxRate[]>([])
+  const [catalogItems, setCatalogItems] = useState<Item[]>([])
   
   const [loading, setLoading] = useState(true)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -50,7 +52,7 @@ export function CreateSpendReceiveMoney({
   const [taxType, setTaxType] = useState<'Inclusive' | 'Exclusive'>('Exclusive')
   const [currency, setCurrency] = useState(activeOrg.currency || 'USD')
   const [lines, setLines] = useState<LineFormItem[]>([
-    { id: '1', description: '', quantity: '', unitPrice: '', accountId: '', taxRateId: '' }
+    { id: '1', itemId: '', description: '', quantity: '', unitPrice: '', accountId: '', taxRateId: '' }
   ])
 
   const loadData = async () => {
@@ -60,6 +62,7 @@ export function CreateSpendReceiveMoney({
       let loadedContacts: Contact[] = []
       let loadedAccounts: Account[] = []
       let loadedTaxRates: TaxRate[] = []
+      let loadedCatalog: Item[] = []
 
       if (isMockMode) {
         // Mock banks fallback
@@ -87,22 +90,31 @@ export function CreateSpendReceiveMoney({
           { id: 'mock-t-1', name: 'SG GST 9%', rate: 9.0, is_active: true, created_at: '' },
           { id: 'mock-t-2', name: 'Tax Exempt', rate: 0.0, is_active: true, created_at: '' }
         ]
+
+        const savedCatalog = localStorage.getItem(`kdm_mock_catalog_${activeOrg.id}`)
+        const fullCatalog = savedCatalog ? JSON.parse(savedCatalog) : [
+          { id: 'mock-i-1', code: 'CLOUD-LIC', name: 'Cloud Hosting Monthly Server', is_sold: true, sales_unit_price: 150.00, sales_account: 'mock-a-3', sales_tax_rate: 'mock-t-1', sales_description: 'Monthly cloud hosting server fees', is_purchased: true, purchase_unit_cost: 150.00, purchase_account: 'mock-a-2', purchase_tax_rate: 'mock-t-1', purchase_description: 'Monthly cloud virtual machine container resource allocations', created_at: '' }
+        ]
+        loadedCatalog = fullCatalog.filter((i: any) => type === 'Spend' ? i.is_purchased : i.is_sold)
       } else {
-        const [allAccounts, allContacts, allTaxRates] = await Promise.all([
+        const [allAccounts, allContacts, allTaxRates, allItems] = await Promise.all([
           apiService.getAccounts(activeOrg.id),
           apiService.getContacts(activeOrg.id),
-          apiService.getTaxRates(activeOrg.id)
+          apiService.getTaxRates(activeOrg.id),
+          apiService.getItems(activeOrg.id)
         ])
         loadedBanks = allAccounts.filter(a => a.type === 'Bank' || a.class_type === 'Asset' && a.code === '090')
         loadedContacts = allContacts
         loadedAccounts = allAccounts
         loadedTaxRates = allTaxRates
+        loadedCatalog = allItems.filter((i: Item) => type === 'Spend' ? i.is_purchased : i.is_sold)
       }
 
       setBankAccounts(loadedBanks)
       setContacts(loadedContacts)
       setAccounts(loadedAccounts)
       setTaxRates(loadedTaxRates)
+      setCatalogItems(loadedCatalog)
 
       if (loadedBanks.length > 0) {
         setSelectedBankId(loadedBanks[0].id)
@@ -111,7 +123,7 @@ export function CreateSpendReceiveMoney({
       // Initialize default account for lines
       const defaultAcc = loadedAccounts.find(a => type === 'Spend' ? (a.class_type === 'Expense' || a.type === 'Direct Costs') : a.class_type === 'Revenue')?.id || loadedAccounts[0]?.id || ''
       const defaultTax = loadedTaxRates[0]?.id || ''
-      setLines([{ id: '1', description: '', quantity: '', unitPrice: '', accountId: defaultAcc, taxRateId: defaultTax }])
+      setLines([{ id: '1', itemId: '', description: '', quantity: '', unitPrice: '', accountId: defaultAcc, taxRateId: defaultTax }])
 
     } catch (e) {
       console.warn("Failed to load banking data", e)
@@ -133,11 +145,43 @@ export function CreateSpendReceiveMoney({
     setLines(updated)
   }
 
+  const handleCatalogSelect = (index: number, itemId: string) => {
+    const updated = [...lines]
+    if (!itemId) {
+      updated[index].itemId = ''
+      setLines(updated)
+      return
+    }
+
+    const targetItem = catalogItems.find(i => i.id === itemId)
+    if (!targetItem) return
+
+    updated[index].itemId = itemId
+    if (type === 'Spend') {
+      updated[index].description = targetItem.purchase_description || targetItem.name
+      updated[index].unitPrice = Number(targetItem.purchase_unit_cost)
+      if (targetItem.purchase_account) updated[index].accountId = targetItem.purchase_account
+      if (targetItem.purchase_tax_rate) updated[index].taxRateId = targetItem.purchase_tax_rate
+    } else {
+      updated[index].description = targetItem.sales_description || targetItem.name
+      updated[index].unitPrice = Number(targetItem.sales_unit_price)
+      if (targetItem.sales_account) updated[index].accountId = targetItem.sales_account
+      if (targetItem.sales_tax_rate) updated[index].taxRateId = targetItem.sales_tax_rate
+    }
+
+    if (!updated[index].quantity || Number(updated[index].quantity) <= 0) {
+      updated[index].quantity = 1
+    }
+
+    setLines(updated)
+  }
+
   const addLineItem = () => {
     const defaultAcc = accounts.find(a => type === 'Spend' ? a.class_type === 'Expense' : a.class_type === 'Revenue')?.id || accounts[0]?.id || ''
     const defaultTax = taxRates[0]?.id || ''
     setLines([...lines, {
       id: String(Date.now()),
+      itemId: '',
       description: '',
       quantity: '',
       unitPrice: '',
@@ -197,12 +241,12 @@ export function CreateSpendReceiveMoney({
       const balanceKey = `kdm_bank_balances_${activeOrg.id}`
       const savedBalances = localStorage.getItem(balanceKey)
       const balances = savedBalances ? JSON.parse(savedBalances) : {
-        'mock-bank-090': 5142.90,
-        'bank-090': 5142.90
+        'mock-bank-090': 0.00,
+        'bank-090': 0.00
       }
 
       if (balances[selectedBankId] === undefined) {
-        balances[selectedBankId] = selectedBankId.includes('090') ? 5142.90 : 0.00
+        balances[selectedBankId] = selectedBankId.includes('090') ? 0.00 : 0.00
       }
 
       balances[selectedBankId] = parseFloat((balances[selectedBankId] + totalDelta).toFixed(2))
@@ -249,10 +293,53 @@ export function CreateSpendReceiveMoney({
     label: `${c.name}${c.email ? ` (${c.email})` : ''}`
   }))
 
-  const accountOptions = accounts.map(a => ({
-    value: a.id,
-    label: `${a.code} - ${a.name}`
-  }))
+  const catalogOptions = [
+    { value: '', label: '' },
+    ...catalogItems.map(item => ({
+      value: item.id,
+      label: `${item.code} - ${item.name}`
+    }))
+  ]
+
+  const getCategorizedAccountOptions = (accountsList: Account[]) => {
+    const sales = accountsList.filter(a => a.type !== 'Bank' && a.class_type === 'Revenue')
+    const directCosts = accountsList.filter(a => a.type !== 'Bank' && a.type === 'Direct Costs')
+    const expenses = accountsList.filter(a => a.type !== 'Bank' && a.class_type === 'Expense' && a.type !== 'Direct Costs')
+    const assets = accountsList.filter(a => a.type !== 'Bank' && a.class_type === 'Asset')
+    const liabilities = accountsList.filter(a => a.type !== 'Bank' && a.class_type === 'Liability')
+    const equity = accountsList.filter(a => a.type !== 'Bank' && a.class_type === 'Equity')
+
+    const options: { value: string; label: string; isHeader?: boolean }[] = []
+
+    if (sales.length > 0) {
+      options.push({ value: 'header-sales', label: 'Sales / Revenue', isHeader: true })
+      sales.forEach(a => options.push({ value: a.id, label: `${a.code} - ${a.name}` }))
+    }
+    if (directCosts.length > 0) {
+      options.push({ value: 'header-dc', label: 'Direct Costs', isHeader: true })
+      directCosts.forEach(a => options.push({ value: a.id, label: `${a.code} - ${a.name}` }))
+    }
+    if (expenses.length > 0) {
+      options.push({ value: 'header-expenses', label: 'Expenses', isHeader: true })
+      expenses.forEach(a => options.push({ value: a.id, label: `${a.code} - ${a.name}` }))
+    }
+    if (assets.length > 0) {
+      options.push({ value: 'header-assets', label: 'Assets', isHeader: true })
+      assets.forEach(a => options.push({ value: a.id, label: `${a.code} - ${a.name}` }))
+    }
+    if (liabilities.length > 0) {
+      options.push({ value: 'header-liabilities', label: 'Liabilities', isHeader: true })
+      liabilities.forEach(a => options.push({ value: a.id, label: `${a.code} - ${a.name}` }))
+    }
+    if (equity.length > 0) {
+      options.push({ value: 'header-equity', label: 'Equity', isHeader: true })
+      equity.forEach(a => options.push({ value: a.id, label: `${a.code} - ${a.name}` }))
+    }
+
+    return options
+  }
+
+  const accountOptions = getCategorizedAccountOptions(accounts)
 
   const taxOptions = taxRates.map(t => ({
     value: t.id,
@@ -339,7 +426,7 @@ export function CreateSpendReceiveMoney({
                   options={contactOptions}
                   value={selectedContactId}
                   onChange={setSelectedContactId}
-                  placeholder="Select or search contact..."
+                  placeholder=""
                   className="w-full bg-white text-slate-800 border border-slate-200 rounded-[3px] px-3.5 py-2 text-[15px] font-normal focus:outline-none focus:border-[#0F5B38] transition cursor-pointer"
                 />
               </div>
@@ -403,13 +490,14 @@ export function CreateSpendReceiveMoney({
                 <table className="w-full border-collapse border border-slate-200 text-left">
                   <thead>
                     <tr className="bg-slate-50 border-b border-slate-200 select-none text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
-                      <th className="p-2 border border-slate-200">Description</th>
-                      <th className="p-2 border border-slate-200 text-center w-[10%]">Qty</th>
-                      <th className="p-2 border border-slate-200 text-right w-[15%]">Unit Price</th>
-                      <th className="p-2 border border-slate-200 w-[25%]">Ledger Account</th>
-                      <th className="p-2 border border-slate-200 w-[20%]">Tax Rate</th>
-                      <th className="p-2 border border-slate-200 text-right w-[15%]">Amount</th>
-                      <th className="p-2 border border-slate-200 text-center w-[5%]"></th>
+                      <th className="p-2 border border-slate-200 w-[20%]">Item</th>
+                      <th className="p-2 border border-slate-200 w-[25%]">Description</th>
+                      <th className="p-2 border border-slate-200 text-center w-[7%]">Qty</th>
+                      <th className="p-2 border border-slate-200 text-right w-[10%]">Unit Price</th>
+                      <th className="p-2 border border-slate-200 w-[18%]">Account</th>
+                      <th className="p-2 border border-slate-200 w-[12%]">Tax Rate</th>
+                      <th className="p-2 border border-slate-200 text-right w-[10%]">Amount</th>
+                      <th className="p-2 border border-slate-200 text-center w-[6%]"></th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200 text-xs font-normal text-slate-700">
@@ -420,6 +508,17 @@ export function CreateSpendReceiveMoney({
 
                       return (
                         <tr key={line.id} className="hover:bg-slate-50/30 transition-colors">
+                          {/* Item Searchable Select */}
+                          <td className="p-0 border border-slate-200 align-middle">
+                            <SearchableInput
+                              options={catalogOptions}
+                              value={line.itemId}
+                              onChange={(val) => handleCatalogSelect(index, val)}
+                              placeholder=""
+                              className="w-full bg-transparent text-slate-800 border-none rounded-none px-2.5 py-2.5 text-xs font-normal focus:outline-none focus:ring-0 cursor-pointer"
+                            />
+                          </td>
+
                           {/* Description */}
                           <td className="p-0 border border-slate-200 align-middle">
                             <input
@@ -485,16 +584,28 @@ export function CreateSpendReceiveMoney({
                             {currencySymbol}{computedLineTotal.toFixed(2)}
                           </td>
 
-                          {/* Delete row */}
+                          {/* Actions (Trash & Plus) */}
                           <td className="p-0 border border-slate-200 align-middle text-center">
-                            <button
-                              type="button"
-                              onClick={() => removeLineItem(index)}
-                              disabled={lines.length === 1}
-                              className="p-1 text-slate-400 hover:text-rose-600 disabled:opacity-30 transition cursor-pointer"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
+                            <div className="flex items-center justify-center space-x-1.5 px-2">
+                              <button
+                                type="button"
+                                onClick={() => removeLineItem(index)}
+                                className={`p-2 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-[3px] transition cursor-pointer inline-flex items-center justify-center ${
+                                  lines.length === 1 ? 'opacity-20 cursor-not-allowed pointer-events-none' : ''
+                                }`}
+                                title="Remove item line"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={addLineItem}
+                                className="p-2 hover:bg-emerald-50 text-[#0F5B38] rounded-[3px] transition cursor-pointer inline-flex items-center justify-center focus:ring-2 focus:ring-emerald-500/20"
+                                title="Add item line"
+                              >
+                                <Plus className="h-4 w-4" />
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       )

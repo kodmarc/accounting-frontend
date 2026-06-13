@@ -1,41 +1,26 @@
 import { useState, useEffect, useRef } from 'react'
-import { Plus, CreditCard, ArrowRight, ArrowLeft, HelpCircle, Search, Trash2 } from 'lucide-react'
+import { Plus, CreditCard, ArrowLeft, Search, Trash2, Pencil } from 'lucide-react'
 import { apiService } from '../../services/api'
-import type { Organization, Account } from '../../services/api'
-import { ReconcileTab } from './ReconcileTab'
+import type { Organization, Account, Invoice } from '../../services/api'
 import { usePopup } from '../../components/PopupProvider'
 
 interface BankAccountsTabProps {
   activeOrg: Organization
-  isMockMode?: boolean
-  reconcileItems: any[]
-  resetReconciliation: () => void
-  handleReconcile: (id: string) => void
+  onViewInvoice?: (id: string) => void
+  onViewBill?: (id: string) => void
 }
 
-export function BankAccountsTab({
-  activeOrg,
-  isMockMode = false,
-  reconcileItems,
-  resetReconciliation,
-  handleReconcile
-}: BankAccountsTabProps) {
+export function BankAccountsTab({ activeOrg, onViewInvoice, onViewBill }: BankAccountsTabProps) {
   const { showConfirm, showAlert } = usePopup()
   const [bankAccounts, setBankAccounts] = useState<Account[]>([])
+  const [invoices, setInvoices] = useState<Invoice[]>([])
+  const [bills, setBills] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
-
-  // Type B Layout Sorting State
-  const [sortOption, setSortOption] = useState<'name-asc' | 'name-desc' | 'balance-high' | 'balance-low'>('name-asc')
-
-  // Selection state
+  const [sortOption, setSortOption] = useState<'name-asc' | 'name-desc'>('name-asc')
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
-  
-  // Local state to navigate between Bank Accounts Dashboard and active Bank Reconciliation feed
-  const [selectedBankAcc, setSelectedBankAcc] = useState<Account | null>(null)
   const [editingBankAcc, setEditingBankAcc] = useState<Account | null>(null)
-
-  // Bank Creation Modal State
+  const [viewingBankAcc, setViewingBankAcc] = useState<Account | null>(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [code, setCode] = useState('')
   const [name, setName] = useState('')
@@ -45,18 +30,15 @@ export function BankAccountsTab({
   const loadData = async () => {
     setLoading(true)
     try {
-      if (isMockMode) {
-        setBankAccounts([])
-        setLoading(false)
-        return
-      }
-
-      const allAccounts = await apiService.getAccounts(activeOrg.id)
-      // Filter only accounts with type 'Bank'
-      const banks = allAccounts.filter(a => a.type === 'Bank')
-      setBankAccounts(banks)
-    } catch (e) {
-      console.warn("Failed to fetch bank accounts.", e)
+      const [allAccounts, loadedInvoices, loadedBills] = await Promise.all([
+        apiService.getAccounts(activeOrg.id),
+        apiService.getInvoices(activeOrg.id),
+        apiService.getBills(activeOrg.id),
+      ])
+      setBankAccounts(allAccounts.filter(a => a.type === 'Bank'))
+      setInvoices(loadedInvoices)
+      setBills(loadedBills)
+    } catch {
       setBankAccounts([])
     } finally {
       setLoading(false)
@@ -66,95 +48,52 @@ export function BankAccountsTab({
   useEffect(() => {
     loadData()
     setSelectedIds(new Set())
-  }, [activeOrg.id, isMockMode])
+    setViewingBankAcc(null)
+  }, [activeOrg.id])
 
   useEffect(() => {
     setSelectedIds(new Set())
   }, [sortOption])
 
-  // Ref to track last active focused element before modal launches
   const lastActiveElementRef = useRef<HTMLElement | null>(null)
-
   useEffect(() => {
-    if (!isModalOpen) {
-      if (lastActiveElementRef.current) {
-        const el = lastActiveElementRef.current
-        setTimeout(() => {
-          if (el && document.body.contains(el)) {
-            el.focus()
-          }
-        }, 50)
-        lastActiveElementRef.current = null
-      }
+    if (!isModalOpen && lastActiveElementRef.current) {
+      const el = lastActiveElementRef.current
+      setTimeout(() => {
+        if (el && document.body.contains(el)) el.focus()
+      }, 50)
+      lastActiveElementRef.current = null
     }
   }, [isModalOpen])
 
   const handleAddBankAccount = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!code || !name) {
-      alert("Account Code and Bank Name are required.")
+      alert('Account Code and Bank Name are required.')
       return
     }
-
     setIsSubmitting(true)
-    const payload: Partial<Account> = {
-      code,
-      name,
-      class_type: 'Asset',
-      type: 'Bank',
-      description
-    }
-
+    const payload: Partial<Account> = { code, name, class_type: 'Asset', type: 'Bank', description }
     try {
       if (editingBankAcc) {
-        if (isMockMode) {
-          setBankAccounts(prev => prev.map(b => b.id === editingBankAcc.id ? { ...b, ...payload } : b))
-          setIsModalOpen(false)
-          setEditingBankAcc(null)
-          resetForm()
-          return
-        }
-
         const updated = await apiService.updateAccount(editingBankAcc.id, payload)
         setBankAccounts(prev => prev.map(b => b.id === editingBankAcc.id ? updated : b))
-        setIsModalOpen(false)
+        if (viewingBankAcc?.id === editingBankAcc.id) setViewingBankAcc(updated)
         setEditingBankAcc(null)
-        resetForm()
       } else {
-        if (isMockMode) {
-          const newBank: Account = {
-            id: `mock-bank-${Date.now()}`,
-            code,
-            name,
-            class_type: 'Asset',
-            type: 'Bank',
-            description,
-            is_system_account: false,
-            created_at: new Date().toISOString()
-          }
-          setBankAccounts(prev => [...prev, newBank].sort((a, b) => a.code.localeCompare(b.code)))
-          setIsModalOpen(false)
-          resetForm()
-          return
-        }
-
         const created = await apiService.createAccount(activeOrg.id, payload)
         setBankAccounts(prev => [...prev, created].sort((a, b) => a.code.localeCompare(b.code)))
-        setIsModalOpen(false)
-        resetForm()
       }
+      setIsModalOpen(false)
+      resetForm()
     } catch (e: any) {
-      alert("Failed to register bank account: " + (e.message || "Code must be unique"))
+      alert('Failed to register bank account: ' + (e.message || 'Code must be unique'))
     } finally {
       setIsSubmitting(false)
     }
   }
 
-  const resetForm = () => {
-    setCode('')
-    setName('')
-    setDescription('')
-  }
+  const resetForm = () => { setCode(''); setName(''); setDescription('') }
 
   const handleOpenAdd = () => {
     setEditingBankAcc(null)
@@ -179,64 +118,33 @@ export function BankAccountsTab({
       target.closest('button') ||
       target.closest('a') ||
       target.closest('.no-row-click')
-    ) {
-      return
-    }
-    handleEditClick(bankAcc)
+    ) return
+    setViewingBankAcc(bankAcc)
   }
-
 
   const currencySymbol = activeOrg.currency === 'PKR' ? '₨' : '$'
 
-  // Toggle selection
   const handleToggleSelect = (id: string) => {
     const next = new Set(selectedIds)
-    if (next.has(id)) {
-      next.delete(id)
-    } else {
-      next.add(id)
-    }
+    next.has(id) ? next.delete(id) : next.add(id)
     setSelectedIds(next)
   }
 
   const handleToggleSelectAll = (visibleIds: string[]) => {
     const allSelected = visibleIds.length > 0 && visibleIds.every(id => selectedIds.has(id))
     const next = new Set(selectedIds)
-    if (allSelected) {
-      visibleIds.forEach(id => next.delete(id))
-    } else {
-      visibleIds.forEach(id => next.add(id))
-    }
+    if (allSelected) visibleIds.forEach(id => next.delete(id))
+    else visibleIds.forEach(id => next.add(id))
     setSelectedIds(next)
   }
 
-  // Bulk Delete
   const handleBulkDelete = async () => {
-    const list = Array.from(selectedIds)
-    if (list.length === 0) return
-
-    // System accounts / demo ANZ (090) should not be deleted to keep reconciliation simulations working
     const toDelete = bankAccounts.filter(b => selectedIds.has(b.id!))
-    const protectedBanks = toDelete.filter(b => b.code === '090')
-    const deletable = toDelete.filter(b => b.code !== '090')
-
-    if (deletable.length === 0) {
-      showAlert({
-        title: 'System Protection',
-        message: 'Demonstration ANZ Business Account (090) is protected for reconciliation simulations and cannot be deleted.',
-        type: 'warning'
-      })
-      return
-    }
-
-    let confirmMsg = `Are you sure you want to delete ${deletable.length} selected bank account(s)?`
-    if (protectedBanks.length > 0) {
-      confirmMsg += ` (ANZ Business Account 090 will be skipped).`
-    }
+    if (toDelete.length === 0) return
 
     const confirmed = await showConfirm({
       title: 'Delete Bank Accounts',
-      message: confirmMsg,
+      message: `Are you sure you want to delete ${toDelete.length} selected bank account(s)?`,
       confirmText: 'Delete Selected',
       isDestructive: true
     })
@@ -244,15 +152,11 @@ export function BankAccountsTab({
 
     setLoading(true)
     try {
-      if (isMockMode) {
-        setBankAccounts(prev => prev.filter(b => !selectedIds.has(b.id!) || b.code === '090'))
-      } else {
-        await Promise.all(deletable.map(b => apiService.deleteAccount(b.id!)))
-        setBankAccounts(prev => prev.filter(b => !selectedIds.has(b.id!) || b.code === '090'))
-      }
+      await Promise.all(toDelete.map(b => apiService.deleteAccount(b.id!)))
+      setBankAccounts(prev => prev.filter(b => !selectedIds.has(b.id!)))
       setSelectedIds(new Set())
     } catch (e: any) {
-      showAlert({ title: 'Deletion Failed', message: "Failed to delete bank accounts: " + e.message, type: 'error' })
+      showAlert({ title: 'Deletion Failed', message: 'Failed to delete bank accounts: ' + e.message, type: 'error' })
     } finally {
       setLoading(false)
     }
@@ -261,15 +165,6 @@ export function BankAccountsTab({
   const handleDeleteBankAccount = async (bankId: string) => {
     const bank = bankAccounts.find(b => b.id === bankId)
     if (!bank) return
-
-    if (bank.code === '090') {
-      showAlert({
-        title: 'System Protection',
-        message: 'Demonstration ANZ Business Account (090) is protected for reconciliation simulations and cannot be deleted.',
-        type: 'warning'
-      })
-      return
-    }
 
     const confirmed = await showConfirm({
       title: 'Delete Bank Account',
@@ -281,66 +176,100 @@ export function BankAccountsTab({
 
     setLoading(true)
     try {
-      if (isMockMode) {
-        setBankAccounts(prev => prev.filter(b => b.id !== bankId))
-      } else {
-        await apiService.deleteAccount(bankId)
-        setBankAccounts(prev => prev.filter(b => b.id !== bankId))
-      }
+      await apiService.deleteAccount(bankId)
+      setBankAccounts(prev => prev.filter(b => b.id !== bankId))
+      if (viewingBankAcc?.id === bankId) setViewingBankAcc(null)
     } catch (e: any) {
-      showAlert({ title: 'Deletion Failed', message: "Deletion failed: " + e.message, type: 'error' })
+      showAlert({ title: 'Deletion Failed', message: 'Deletion failed: ' + e.message, type: 'error' })
     } finally {
       setLoading(false)
     }
   }
 
-  // Filter & Sort
-  const filteredBanks = bankAccounts.filter(bank => {
-    const matchesSearch = 
-      bank.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-      bank.code.toLowerCase().includes(searchTerm.toLowerCase()) || 
+  const filteredBanks = bankAccounts
+    .filter(bank =>
+      bank.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      bank.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (bank.description || '').toLowerCase().includes(searchTerm.toLowerCase())
-    return matchesSearch
-  }).sort((a, b) => {
-    if (sortOption === 'name-asc') {
-      return a.name.localeCompare(b.name)
-    } else if (sortOption === 'name-desc') {
-      return b.name.localeCompare(a.name)
-    } else if (sortOption === 'balance-high') {
-      const balanceA = a.code === '090' ? 5142.90 : 0
-      const balanceB = b.code === '090' ? 5142.90 : 0
-      return balanceB - balanceA
-    } else if (sortOption === 'balance-low') {
-      const balanceA = a.code === '090' ? 5142.90 : 0
-      const balanceB = b.code === '090' ? 5142.90 : 0
-      return balanceA - balanceB
-    }
-    return 0
-  })
+    )
+    .sort((a, b) => sortOption === 'name-asc' ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name))
 
-  // If a specific bank account is selected for reconciliation, render the simulator directly
-  if (selectedBankAcc) {
+  // Account Details Subpage
+  if (viewingBankAcc) {
+    const totalInc = 0
+    const totalExp = 0
+    const runningBal = 0
+
     return (
-      <div className="space-y-6">
-        <div className="flex items-center space-x-3">
+      <div className="space-y-6 font-sans text-left animate-fadeIn">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div className="flex items-center space-x-3">
+            <button
+              onClick={() => setViewingBankAcc(null)}
+              className="flex items-center space-x-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200/80 text-slate-700 text-xs font-bold rounded-[3px] border border-slate-200 cursor-pointer select-none transition"
+            >
+              <ArrowLeft className="h-3.5 w-3.5" />
+              <span>Bank Dashboard</span>
+            </button>
+            <span className="text-slate-300">/</span>
+            <span className="text-[#071f13] text-xs font-bold">{viewingBankAcc.name} Details</span>
+          </div>
+
           <button
-            onClick={() => setSelectedBankAcc(null)}
-            className="flex items-center space-x-1.5 px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200/80 text-slate-700 text-xs font-bold rounded-[3px] border border-slate-200 cursor-pointer select-none transition"
+            onClick={() => handleEditClick(viewingBankAcc)}
+            className="flex items-center space-x-1.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 text-xs font-bold px-3 py-1.5 rounded-[3px] transition cursor-pointer select-none shadow-sm"
           >
-            <ArrowLeft className="h-3.5 w-3.5" />
-            <span>Bank Accounts Dashboard</span>
+            <Pencil className="h-3.5 w-3.5 text-slate-500" />
+            <span>Edit Account</span>
           </button>
-          <span className="text-slate-300">/</span>
-          <span className="text-slate-400 text-xs font-bold">{selectedBankAcc.name} ({selectedBankAcc.code})</span>
         </div>
 
-        {/* Mount actual statement matching engine */}
-        <ReconcileTab
-          activeOrg={activeOrg}
-          reconcileItems={reconcileItems}
-          resetReconciliation={resetReconciliation}
-          handleReconcile={handleReconcile}
-        />
+        <div className="bg-slate-50 border border-slate-200 rounded-[3px] p-6 space-y-4">
+          <div>
+            <h1 className="text-xl font-bold text-[#071f13]">{viewingBankAcc.name}</h1>
+            <p className="text-xs text-slate-500 font-medium mt-1">
+              Account Code: <span className="font-bold text-[#0F5B38]">{viewingBankAcc.code}</span> • Type: Bank Feed Account
+            </p>
+            {viewingBankAcc.description && (
+              <p className="text-xs text-slate-500 mt-2 italic font-medium">"{viewingBankAcc.description}"</p>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
+            <div className="bg-white p-5 rounded-[3px] border border-slate-200 shadow-sm relative overflow-hidden">
+              <div className="absolute right-0 top-0 translate-x-3 -translate-y-3 h-12 w-12 bg-emerald-50 rounded-full flex items-center justify-center border border-emerald-100/50">
+                <CreditCard className="h-4.5 w-4.5 text-[#0F5B38]" />
+              </div>
+              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Dynamic Balance</span>
+              <p className="text-xl font-black text-slate-800 mt-1">
+                {currencySymbol}{runningBal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </p>
+            </div>
+
+            <div className="bg-white p-5 rounded-[3px] border border-slate-200 shadow-sm relative overflow-hidden">
+              <span className="text-[10px] text-emerald-600/80 font-bold uppercase tracking-wider">Total Income (Inflow)</span>
+              <p className="text-xl font-black text-[#0F5B38] mt-1">
+                {currencySymbol}{totalInc.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </p>
+            </div>
+
+            <div className="bg-white p-5 rounded-[3px] border border-slate-200 shadow-sm relative overflow-hidden">
+              <span className="text-[10px] text-rose-600/80 font-bold uppercase tracking-wider">Total Expenses (Outflow)</span>
+              <p className="text-xl font-black text-rose-600 mt-1">
+                {currencySymbol}{totalExp.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          <h3 className="font-bold text-slate-800 text-sm">Account Transaction History</h3>
+          <div className="text-center py-16 bg-slate-50/50 rounded-[3px] border border-slate-200 p-8">
+            <p className="text-slate-400 text-xs font-semibold">
+              No ledger payments or bank transactions have been registered under this account yet.
+            </p>
+          </div>
+        </div>
       </div>
     )
   }
@@ -360,9 +289,9 @@ export function BankAccountsTab({
           <Plus className="h-4 w-4" />
           <span>Add Bank Account</span>
         </button>
-      </div>      {/* Type B Filter & Search Header Row */}
+      </div>
+
       <div className="flex flex-col md:flex-row md:items-end justify-between pb-0 border-b border-slate-200/60 gap-4">
-        {/* Left Side: Search Bar & Compact Bulk Actions */}
         <div className="flex items-end gap-2 flex-grow max-w-2xl pb-0 mb-[2px]">
           <div className="relative w-full sm:w-64">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
@@ -390,7 +319,6 @@ export function BankAccountsTab({
           )}
         </div>
 
-        {/* Sorting Right */}
         <div className="flex items-center space-x-1.5 pb-0 mb-[2px]">
           <span className="text-[10px] text-slate-455 uppercase font-bold tracking-wider">Sort By:</span>
           <select
@@ -400,8 +328,6 @@ export function BankAccountsTab({
           >
             <option value="name-asc">Name (A-Z)</option>
             <option value="name-desc">Name (Z-A)</option>
-            <option value="balance-high">Balance: High to Low</option>
-            <option value="balance-low">Balance: Low to High</option>
           </select>
         </div>
       </div>
@@ -415,7 +341,6 @@ export function BankAccountsTab({
           </div>
         </div>
       ) : filteredBanks.length > 0 ? (
-        /* Professional borderless table structure (No redundant outer borders) */
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs font-sans">
             <thead className="bg-slate-50/50 text-slate-500 font-bold border-b border-slate-200/60 uppercase tracking-wider text-[10px]">
@@ -432,12 +357,11 @@ export function BankAccountsTab({
                 <th className="px-6 py-2.5">Code</th>
                 <th className="px-6 py-2.5">Type</th>
                 <th className="px-6 py-2.5">Statement Balance</th>
-                <th className="px-6 py-2.5">Reconciliation</th>
                 <th className="px-6 py-2.5 text-right">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-slate-705 font-medium">
-              {filteredBanks.map((bank) => (
+              {filteredBanks.map(bank => (
                 <tr
                   key={bank.id}
                   onClick={(e) => handleRowClick(e, bank)}
@@ -452,49 +376,30 @@ export function BankAccountsTab({
                     />
                   </td>
                   <td className="px-6 py-2.5 text-[13px]">
-                    <span className="font-bold text-[#0F5B38] hover:underline">
-                      {bank.name}
-                    </span>
+                    <span className="font-bold text-[#0F5B38] hover:underline">{bank.name}</span>
                   </td>
                   <td className="px-6 py-2.5 font-bold text-[#0F5B38] text-[13px]">{bank.code}</td>
                   <td className="px-6 py-2.5 font-semibold text-slate-500">Bank Feed</td>
                   <td className="px-6 py-2.5 font-black text-slate-800">
-                    {currencySymbol}{bank.code === '090' ? '5,142.90' : '0.00'}
-                  </td>
-                  <td className="px-6 py-2.5">
-                    {bank.code === '090' ? (
-                      <div className="flex items-center justify-start space-x-2.5">
-                        {reconcileItems.length > 0 && (
-                          <span className="text-[9px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-[3px] border border-amber-100/50">
-                            {reconcileItems.length} items
-                          </span>
-                        )}
-                        <button
-                          onClick={() => setSelectedBankAcc(bank)}
-                          className="flex items-center space-x-1 py-1 px-3 bg-[#0F5B38] hover:brightness-105 text-white text-[10px] font-bold rounded-[3px] shadow-sm transition-all cursor-pointer"
-                        >
-                          <span>Reconcile</span>
-                          <ArrowRight className="h-3 w-3" />
-                        </button>
-                      </div>
-                    ) : (
-                      <button
-                        onClick={() => alert("Reconciliation simulations are currently configured for ANZ Business Account (090). Click reconcile on the primary ANZ Business card to match demo bank statements!")}
-                        className="flex items-center space-x-1 py-1 px-2.5 bg-white hover:bg-slate-50 text-slate-400 hover:text-slate-655 text-[10px] font-bold rounded-[3px] border border-slate-200 transition-all cursor-pointer"
-                      >
-                        <span>Reconcile</span>
-                        <HelpCircle className="h-3.5 w-3.5 text-slate-350" />
-                      </button>
-                    )}
+                    {currencySymbol}0.00
                   </td>
                   <td className="px-6 py-2.5 text-right no-row-click">
-                    <button
-                      onClick={() => handleDeleteBankAccount(bank.id!)}
-                      className="p-1.5 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-[3px] transition-all cursor-pointer"
-                      title="Delete Bank Account"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
+                    <div className="flex items-center justify-end space-x-1">
+                      <button
+                        onClick={() => handleEditClick(bank)}
+                        className="p-1.5 hover:bg-slate-100 text-slate-400 hover:text-[#0F5B38] rounded-[3px] transition-all cursor-pointer"
+                        title="Edit Bank Account Details"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteBankAccount(bank.id!)}
+                        className="p-1.5 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-[3px] transition-all cursor-pointer"
+                        title="Delete Bank Account"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -518,84 +423,81 @@ export function BankAccountsTab({
       {/* Bank Account Creation Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 overflow-y-auto font-sans flex items-center justify-center">
-          <div 
-            className="fixed inset-0 bg-[#071f13]/35 backdrop-blur-md transition-opacity animate-fadeIn" 
+          <div
+            className="fixed inset-0 bg-[#071f13]/35 backdrop-blur-md transition-opacity animate-fadeIn"
             onClick={() => setIsModalOpen(false)}
           ></div>
 
           <div className="relative transform overflow-hidden rounded-[28px] bg-white text-left shadow-2xl transition-all w-full max-w-md border border-slate-100 p-8 space-y-6 mx-4 animate-scaleIn">
-              
-              <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-                <div className="space-y-1">
-                  <h3 className="text-md font-bold text-slate-850">
-                    {editingBankAcc ? 'Edit Bank Account' : 'Add New Bank Account'}
-                  </h3>
-                  <p className="text-xs text-slate-400 font-semibold">Declare bank details to link to your general ledger.</p>
-                </div>
-                <button
-                  onClick={() => setIsModalOpen(false)}
-                  className="text-slate-400 hover:text-slate-650 text-xs font-bold bg-slate-50 hover:bg-slate-100 p-2 rounded-[3px]"
-                >
-                  ✕
-                </button>
+            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+              <div className="space-y-1">
+                <h3 className="text-md font-bold text-slate-850">
+                  {editingBankAcc ? 'Edit Bank Account' : 'Add New Bank Account'}
+                </h3>
+                <p className="text-xs text-slate-400 font-semibold">Declare bank details to link to your general ledger.</p>
+              </div>
+              <button
+                onClick={() => setIsModalOpen(false)}
+                className="text-slate-400 hover:text-slate-650 text-xs font-bold bg-slate-50 hover:bg-slate-100 p-2 rounded-[3px]"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleAddBankAccount} className="space-y-4 text-xs font-semibold text-slate-600">
+              <div className="space-y-1">
+                <label className="text-slate-500 uppercase tracking-wide text-[10px]">Bank / Account Name *</label>
+                <input
+                  type="text"
+                  placeholder="e.g. ANZ Savings Account"
+                  value={name}
+                  onChange={e => setName(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200/80 rounded-[3px] px-4 py-3 font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-400/20 focus:border-[#0F5B38]"
+                />
               </div>
 
-              <form onSubmit={handleAddBankAccount} className="space-y-4 text-xs font-semibold text-slate-600">
-                <div className="space-y-1">
-                  <label className="text-slate-500 uppercase tracking-wide text-[10px]">Bank / Account Name *</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. ANZ Savings Account"
-                    value={name}
-                    onChange={e => setName(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200/80 rounded-[3px] px-4 py-3 font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-400/20 focus:border-[#0F5B38]"
-                  />
-                </div>
+              <div className="space-y-1">
+                <label className="text-slate-500 uppercase tracking-wide text-[10px]">Account Code *</label>
+                <input
+                  type="text"
+                  placeholder="e.g. 092"
+                  value={code}
+                  onChange={e => setCode(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200/80 rounded-[3px] px-4 py-3 font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-400/20 focus:border-[#0F5B38]"
+                />
+              </div>
 
-                <div className="space-y-1">
-                  <label className="text-slate-500 uppercase tracking-wide text-[10px]">Account Code index *</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. 092"
-                    value={code}
-                    onChange={e => setCode(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200/80 rounded-[3px] px-4 py-3 font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-400/20 focus:border-[#0F5B38]"
-                  />
-                </div>
+              <div className="space-y-1">
+                <label className="text-slate-500 uppercase tracking-wide text-[10px]">Description</label>
+                <textarea
+                  placeholder="Provide description of banking feed..."
+                  rows={3}
+                  value={description}
+                  onChange={e => setDescription(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200/80 rounded-[3px] px-4 py-3 font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-400/20 focus:border-[#0F5B38] resize-none"
+                ></textarea>
+              </div>
 
-                <div className="space-y-1">
-                  <label className="text-slate-500 uppercase tracking-wide text-[10px]">Description</label>
-                  <textarea
-                    placeholder="Provide description of banking feed..."
-                    rows={3}
-                    value={description}
-                    onChange={e => setDescription(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200/80 rounded-[3px] px-4 py-3 font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-400/20 focus:border-[#0F5B38] resize-none"
-                  ></textarea>
-                </div>
-
-                <div className="flex space-x-3 pt-4 justify-end border-t border-slate-100">
-                  <button
-                    type="button"
-                    onClick={() => setIsModalOpen(false)}
-                    className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200/50 text-slate-650 rounded-[3px] cursor-pointer"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={isSubmitting}
-                    className="px-5 py-2.5 bg-[#0F5B38] hover:brightness-105 text-white rounded-[3px] shadow-lg shadow-emerald-950/15 cursor-pointer disabled:opacity-50 font-medium"
-                  >
-                    {isSubmitting ? 'Saving...' : 'Add Account'}
-                  </button>
-                </div>
-              </form>
-
-            </div>
+              <div className="flex space-x-3 pt-4 justify-end border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsModalOpen(false)}
+                  className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200/50 text-slate-650 rounded-[3px] cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="px-5 py-2.5 bg-[#0F5B38] hover:brightness-105 text-white rounded-[3px] shadow-lg shadow-emerald-950/15 cursor-pointer disabled:opacity-50 font-medium"
+                >
+                  {isSubmitting ? 'Saving...' : editingBankAcc ? 'Save Changes' : 'Add Account'}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
-
     </div>
   )
 }

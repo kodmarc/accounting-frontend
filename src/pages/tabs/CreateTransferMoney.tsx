@@ -101,16 +101,16 @@ export function CreateTransferMoney({
       const balanceKey = `kdm_bank_balances_${activeOrg.id}`
       const savedBalances = localStorage.getItem(balanceKey)
       const balances = savedBalances ? JSON.parse(savedBalances) : {
-        'mock-bank-090': 5142.90,
-        'bank-090': 5142.90
+        'mock-bank-090': 0.00,
+        'bank-090': 0.00
       }
 
       // Initialize balances if they don't exist
       if (balances[fromAccountId] === undefined) {
-        balances[fromAccountId] = fromAccountId.includes('090') ? 5142.90 : 0.00
+        balances[fromAccountId] = fromAccountId.includes('090') ? 0.00 : 0.00
       }
       if (balances[toAccountId] === undefined) {
-        balances[toAccountId] = toAccountId.includes('090') ? 5142.90 : 0.00
+        balances[toAccountId] = toAccountId.includes('090') ? 0.00 : 0.00
       }
 
       // Apply Transfer math

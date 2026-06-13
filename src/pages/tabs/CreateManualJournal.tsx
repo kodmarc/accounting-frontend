@@ -182,10 +182,45 @@ export function CreateManualJournal({
   }
 
   const currencySymbol = activeOrg.currency === 'PKR' ? '₨' : '$'
-  const accountOptions = accounts.map(a => ({
-    value: a.id,
-    label: `${a.code} - ${a.name}`
-  }))
+  const getCategorizedAccountOptions = (accountsList: Account[]) => {
+    const sales = accountsList.filter(a => a.type !== 'Bank' && a.class_type === 'Revenue')
+    const directCosts = accountsList.filter(a => a.type !== 'Bank' && a.type === 'Direct Costs')
+    const expenses = accountsList.filter(a => a.type !== 'Bank' && a.class_type === 'Expense' && a.type !== 'Direct Costs')
+    const assets = accountsList.filter(a => a.type !== 'Bank' && a.class_type === 'Asset')
+    const liabilities = accountsList.filter(a => a.type !== 'Bank' && a.class_type === 'Liability')
+    const equity = accountsList.filter(a => a.type !== 'Bank' && a.class_type === 'Equity')
+
+    const options: { value: string; label: string; isHeader?: boolean }[] = []
+
+    if (sales.length > 0) {
+      options.push({ value: 'header-sales', label: 'Sales / Revenue', isHeader: true })
+      sales.forEach(a => options.push({ value: a.id, label: `${a.code} - ${a.name}` }))
+    }
+    if (directCosts.length > 0) {
+      options.push({ value: 'header-dc', label: 'Direct Costs', isHeader: true })
+      directCosts.forEach(a => options.push({ value: a.id, label: `${a.code} - ${a.name}` }))
+    }
+    if (expenses.length > 0) {
+      options.push({ value: 'header-expenses', label: 'Expenses', isHeader: true })
+      expenses.forEach(a => options.push({ value: a.id, label: `${a.code} - ${a.name}` }))
+    }
+    if (assets.length > 0) {
+      options.push({ value: 'header-assets', label: 'Assets', isHeader: true })
+      assets.forEach(a => options.push({ value: a.id, label: `${a.code} - ${a.name}` }))
+    }
+    if (liabilities.length > 0) {
+      options.push({ value: 'header-liabilities', label: 'Liabilities', isHeader: true })
+      liabilities.forEach(a => options.push({ value: a.id, label: `${a.code} - ${a.name}` }))
+    }
+    if (equity.length > 0) {
+      options.push({ value: 'header-equity', label: 'Equity', isHeader: true })
+      equity.forEach(a => options.push({ value: a.id, label: `${a.code} - ${a.name}` }))
+    }
+
+    return options
+  }
+
+  const accountOptions = getCategorizedAccountOptions(accounts)
 
   if (loading) {
     return (
@@ -305,7 +340,7 @@ export function CreateManualJournal({
                 <thead>
                   <tr className="bg-slate-50 border-b border-slate-200 select-none text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
                     <th className="p-2 border border-slate-200">Description</th>
-                    <th className="p-2 border border-slate-200 w-[35%]">Ledger Account</th>
+                    <th className="p-2 border border-slate-200 w-[35%]">Account</th>
                     <th className="p-2 border border-slate-200 text-right w-[15%]">Debit</th>
                     <th className="p-2 border border-slate-200 text-right w-[15%]">Credit</th>
                     <th className="p-2 border border-slate-200 text-center w-[5%]"></th>

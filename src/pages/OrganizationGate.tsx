@@ -12,7 +12,6 @@ import {
   Globe,
   DollarSign,
   Briefcase,
-  Sparkles
 } from 'lucide-react'
 import { SearchableSelect, type SelectOption } from '../components/SearchableSelect'
 import type { User, Membership, Organization } from '../services/api'
@@ -34,7 +33,6 @@ interface OrganizationGateProps {
   setOrgTaxId: (val: string) => void
   errorMsg: string | null
   setErrorMsg: (val: string | null) => void
-  isMockMode: boolean
   handleLogout: () => void
   handleCreateOrg: (e: React.FormEvent) => void
   handleDeleteOrg: (orgId: string) => void
@@ -62,7 +60,6 @@ export function OrganizationGate({
   setOrgTaxId,
   errorMsg,
   setErrorMsg,
-  isMockMode,
   handleLogout,
   handleCreateOrg,
   handleDeleteOrg,
@@ -102,16 +99,6 @@ export function OrganizationGate({
 
       {/* Main Selection Area */}
       <main className="w-full py-12 space-y-6 flex-1 flex flex-col justify-start">
-        {isMockMode && (
-          <div className="w-full p-4 bg-emerald-50 border border-emerald-100/60 rounded-[3px] flex items-start space-x-3 text-emerald-800 text-xs shadow-inner font-semibold">
-            <Sparkles className="h-4.5 w-4.5 mt-0.5 text-emerald-600 shrink-0" />
-            <div>
-              <p className="font-bold">Developer Sandbox Preview Active</p>
-              <p className="text-slate-650 mt-0.5 font-normal">The live server is offline. We have spun up a fully functional local sandbox so you can preview the complete flow seamlessly!</p>
-            </div>
-          </div>
-        )}
-
         {errorMsg && (
           <div className="p-4 bg-rose-50 border border-rose-100 rounded-[3px] text-rose-600 text-xs font-bold flex items-start space-x-2 animate-shake">
             <AlertCircle className="h-4.5 w-4.5 shrink-0 mt-0.5" />
@@ -132,7 +119,6 @@ export function OrganizationGate({
               setErrorMsg(null)
               setEditingOrg(null)
               setOrgName('')
-              // Fallback default values if dynamic list is still loading
               setOrgCountry(countriesList[0]?.value || 'Singapore')
               setOrgCurrency(currenciesList[0]?.value || 'SGD')
               setOrgTaxId('')
@@ -240,7 +226,7 @@ export function OrganizationGate({
       {/* Add/Edit Organization popup */}
       {isCreateModalOpen && (
         <div className="fixed inset-0 bg-[#071f13]/55 backdrop-blur-sm flex items-center justify-center p-6 z-50 animate-fadeIn">
-          
+
           <div className="w-full max-w-2xl bg-white rounded-[3px] shadow-2xl p-10 relative border border-emerald-100">
             <button
               type="button"

@@ -210,9 +210,18 @@ export function CreatePurchaseOrderTab({
       }
 
       if (editingPoId) {
-        const savedPOs = localStorage.getItem(`kdm_mock_purchase_orders_${activeOrg.id}`)
-        const list = savedPOs ? JSON.parse(savedPOs) : []
-        const po = list.find((p: any) => p.po_number === editingPoId || p.id === editingPoId)
+        let po: any = null
+        if (isMockMode) {
+          const savedPOs = localStorage.getItem(`kdm_mock_purchase_orders_${activeOrg.id}`)
+          const list = savedPOs ? JSON.parse(savedPOs) : []
+          po = list.find((p: any) => p.po_number === editingPoId || p.id === editingPoId)
+        } else {
+          try {
+            po = await apiService.getPurchaseOrder(editingPoId)
+          } catch (err) {
+            console.error("Failed to load PO via API:", err)
+          }
+        }
         if (po) {
           setSelectedContactId(po.contact)
           setPoNumber(po.po_number)
@@ -670,7 +679,7 @@ export function CreatePurchaseOrderTab({
     return true
   }
 
-  // Save / Approve PO
+  // Save / Approve PO (Saves via backend API or mock LocalStorage)
   const handleSavePO = async (
     targetStatus?: 'Draft' | 'Awaiting Approval' | 'Approved' | 'Billed' | 'Declined',
     isEmailing: boolean = false,
@@ -682,9 +691,6 @@ export function CreatePurchaseOrderTab({
     setIsSubmitting(true)
 
     try {
-      const savedPOs = localStorage.getItem(`kdm_mock_purchase_orders_${activeOrg.id}`)
-      let list = savedPOs ? JSON.parse(savedPOs) : []
-
       const contactObj = contacts.find(c => c.id === selectedContactId)
       const postLines = lines.map(l => {
         const q = Number(l.quantity) || 0
@@ -710,10 +716,9 @@ export function CreatePurchaseOrderTab({
       })
 
       const finalStatus = targetStatus || status
+      const isEdit = editingPoId ? true : false
       const payload = {
-        id: editingPoId || `mock-po-${Date.now()}`,
         contact: selectedContactId,
-        contact_name: contactObj ? contactObj.name : 'Vendor Supplier',
         po_number: poNumber,
         reference,
         date,
@@ -725,29 +730,47 @@ export function CreatePurchaseOrderTab({
         subtotal: getSubtotal(),
         tax_total: getTaxTotal(),
         total: getGrandTotal(),
-        lines: postLines,
-        notes,
-        created_at: new Date().toISOString()
+        lines: postLines
       }
 
-      if (editingPoId) {
-        list = list.map((p: any) => p.id === editingPoId || p.po_number === editingPoId ? payload : p)
-      } else {
-        list = [payload, ...list]
-        // Auto-increment sequence number in localStorage Purchases Settings upon successful save!
-        const savedPurchases = localStorage.getItem(`kdm_purchase_settings_${activeOrg.id}`) ||
-          localStorage.getItem(`kdm_mock_purchase_settings_${activeOrg.id}`)
-        if (savedPurchases) {
-          const parsed = JSON.parse(savedPurchases)
-          parsed.next_po_number = (Number(parsed.next_po_number) || 1001) + 1
-          localStorage.setItem(`kdm_purchase_settings_${activeOrg.id}`, JSON.stringify(parsed))
-          localStorage.setItem(`kdm_mock_purchase_settings_${activeOrg.id}`, JSON.stringify(parsed))
+      let resolvedPoId = editingPoId || `mock-po-${Date.now()}`
+      if (!isMockMode) {
+        if (isEdit) {
+          const res = await apiService.updatePurchaseOrder(editingPoId!, payload)
+          resolvedPoId = res.id || editingPoId!
+        } else {
+          const res = await apiService.createPurchaseOrder(activeOrg.id, payload)
+          resolvedPoId = res.id || ''
         }
+      } else {
+        const savedPOs = localStorage.getItem(`kdm_mock_purchase_orders_${activeOrg.id}`)
+        let list = savedPOs ? JSON.parse(savedPOs) : []
+        const mockPayload = {
+          ...payload,
+          id: resolvedPoId,
+          contact_name: contactObj ? contactObj.name : 'Vendor Supplier',
+          notes,
+          created_at: new Date().toISOString()
+        }
+        if (isEdit) {
+          list = list.map((p: any) => p.id === editingPoId || p.po_number === editingPoId ? mockPayload : p)
+        } else {
+          list = [mockPayload, ...list]
+          // Auto-increment sequence number in localStorage Purchases Settings upon successful save!
+          const savedPurchases = localStorage.getItem(`kdm_purchase_settings_${activeOrg.id}`) ||
+            localStorage.getItem(`kdm_mock_purchase_settings_${activeOrg.id}`)
+          if (savedPurchases) {
+            const parsed = JSON.parse(savedPurchases)
+            parsed.next_po_number = (Number(parsed.next_po_number) || 1001) + 1
+            localStorage.setItem(`kdm_purchase_settings_${activeOrg.id}`, JSON.stringify(parsed))
+            localStorage.setItem(`kdm_mock_purchase_settings_${activeOrg.id}`, JSON.stringify(parsed))
+          }
+        }
+        localStorage.setItem(`kdm_mock_purchase_orders_${activeOrg.id}`, JSON.stringify(list))
       }
 
-      localStorage.setItem(`kdm_mock_purchase_orders_${activeOrg.id}`, JSON.stringify(list))
-      localStorage.setItem(`kdm_po_notes_${payload.id}`, notes)
-      localStorage.setItem(`kdm_po_attachment_${payload.id}`, attachmentName)
+      localStorage.setItem(`kdm_po_notes_${resolvedPoId}`, notes)
+      localStorage.setItem(`kdm_po_attachment_${resolvedPoId}`, attachmentName)
 
       if (!silent) {
         showAlert({ title: 'Success', message: 'Purchase Order successfully stored in the acquisitions ledger.', type: 'success' })
@@ -759,7 +782,7 @@ export function CreatePurchaseOrderTab({
           setActiveTab('PurchaseOrders')
         }
       }
-      return payload.id
+      return resolvedPoId
     } catch (err: any) {
       showAlert({ title: 'Error', message: 'Failed to save purchase order: ' + err.message, type: 'error' })
       return null
@@ -773,52 +796,97 @@ export function CreatePurchaseOrderTab({
     if (!editingPoId) return
     setIsSubmitting(true)
     try {
-      const savedPOs = localStorage.getItem(`kdm_mock_purchase_orders_${activeOrg.id}`)
-      let poList = savedPOs ? JSON.parse(savedPOs) : []
+      if (!isMockMode) {
+        // Update PO status to Billed
+        await apiService.updatePurchaseOrder(editingPoId, { status: 'Billed' })
 
-      // Update PO status to Billed
-      poList = poList.map((p: any) => {
-        if (p.id === editingPoId || p.po_number === editingPoId) {
-          return { ...p, status: 'Billed' }
-        }
-        return p
-      })
-      localStorage.setItem(`kdm_mock_purchase_orders_${activeOrg.id}`, JSON.stringify(poList))
+        // Prepopulate vendor bill from states
+        const postLines = lines.map(l => {
+          const fallbackAcc = accounts.find(a => a.code === '300' || a.name.toLowerCase().includes('purchases') || a.class_type === 'Expense')?.id || accounts[0]?.id || ''
+          const fallbackTax = taxType === 'No Tax'
+            ? (taxRates.find(t => t.name.toLowerCase().includes('exempt') || Number(t.rate) === 0)?.id || null)
+            : (taxRates.find(t => t.name.toLowerCase().includes('purchases'))?.id || taxRates[0]?.id || null)
 
-      // Generate a draft Bill pre-populated with all details
-      const activePO = poList.find((p: any) => p.id === editingPoId || p.po_number === editingPoId)
-      if (activePO) {
-        const savedBills = localStorage.getItem(`kdm_mock_bills_${activeOrg.id}`)
-        let billList = savedBills ? JSON.parse(savedBills) : []
+          return {
+            item: l.itemId || null,
+            description: l.description,
+            quantity: Number(l.quantity) || 0,
+            unit_price: Number(l.unitPrice) || 0,
+            discount: Number(l.discount) || 0,
+            account: l.accountId || fallbackAcc,
+            tax_rate: l.taxRateId || fallbackTax,
+            total: (Number(l.quantity) || 0) * (Number(l.unitPrice) || 0) * (1 - (Number(l.discount) || 0) / 100)
+          }
+        })
 
-        const newBillId = `mock-bill-${Date.now()}`
-        const nextNum = billList.length + 1001
-
-        const newBill = {
-          id: newBillId,
-          contact: activePO.contact,
-          contact_name: activePO.contact_name,
-          bill_number: `BIL-${nextNum}`,
-          reference: `PO Reference: ${activePO.po_number}`,
+        const billPayload = {
+          contact: selectedContactId,
+          bill_number: `BIL-TEMP-${Date.now().toString().slice(-6)}`,
+          reference: `PO Reference: ${poNumber}`,
           date: new Date().toISOString().split('T')[0],
           due_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-          status: 'Draft',
-          currency: activePO.currency,
-          tax_type: activePO.tax_type,
-          project: activePO.project,
-          subtotal: activePO.subtotal,
-          tax_total: activePO.tax_total,
-          total: activePO.total,
-          lines: activePO.lines,
-          notes: `Created from Purchase Order ${activePO.po_number}. ${activePO.notes || ''}`,
-          created_at: new Date().toISOString()
+          status: 'Draft' as const,
+          currency: currency,
+          tax_type: taxType,
+          project: selectedProjectId || null,
+          subtotal: getSubtotal(),
+          tax_total: getTaxTotal(),
+          total: getGrandTotal(),
+          lines: postLines
         }
-
-        billList = [newBill, ...billList]
-        localStorage.setItem(`kdm_mock_bills_${activeOrg.id}`, JSON.stringify(billList))
-
+        
+        const createdBill = await apiService.createBill(activeOrg.id, billPayload)
         if (setEditingBillId) {
-          setEditingBillId(newBillId)
+          setEditingBillId(createdBill.id || null)
+        }
+      } else {
+        const savedPOs = localStorage.getItem(`kdm_mock_purchase_orders_${activeOrg.id}`)
+        let poList = savedPOs ? JSON.parse(savedPOs) : []
+
+        // Update PO status to Billed
+        poList = poList.map((p: any) => {
+          if (p.id === editingPoId || p.po_number === editingPoId) {
+            return { ...p, status: 'Billed' }
+          }
+          return p
+        })
+        localStorage.setItem(`kdm_mock_purchase_orders_${activeOrg.id}`, JSON.stringify(poList))
+
+        // Generate a draft Bill pre-populated with all details
+        const activePO = poList.find((p: any) => p.id === editingPoId || p.po_number === editingPoId)
+        if (activePO) {
+          const savedBills = localStorage.getItem(`kdm_mock_bills_${activeOrg.id}`)
+          let billList = savedBills ? JSON.parse(savedBills) : []
+
+          const newBillId = `mock-bill-${Date.now()}`
+          const nextNum = billList.length + 1001
+
+          const newBill = {
+            id: newBillId,
+            contact: activePO.contact,
+            contact_name: activePO.contact_name,
+            bill_number: `BIL-${nextNum}`,
+            reference: `PO Reference: ${activePO.po_number}`,
+            date: new Date().toISOString().split('T')[0],
+            due_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+            status: 'Draft',
+            currency: activePO.currency,
+            tax_type: activePO.tax_type,
+            project: activePO.project,
+            subtotal: activePO.subtotal,
+            tax_total: activePO.tax_total,
+            total: activePO.total,
+            lines: activePO.lines,
+            notes: `Created from Purchase Order ${activePO.po_number}. ${activePO.notes || ''}`,
+            created_at: new Date().toISOString()
+          }
+
+          billList = [newBill, ...billList]
+          localStorage.setItem(`kdm_mock_bills_${activeOrg.id}`, JSON.stringify(billList))
+
+          if (setEditingBillId) {
+            setEditingBillId(newBillId)
+          }
         }
       }
 
@@ -844,10 +912,14 @@ export function CreatePurchaseOrderTab({
 
     setIsSubmitting(true)
     try {
-      const savedPOs = localStorage.getItem(`kdm_mock_purchase_orders_${activeOrg.id}`)
-      let list = savedPOs ? JSON.parse(savedPOs) : []
-      list = list.filter((p: any) => p.id !== editingPoId && p.po_number !== editingPoId)
-      localStorage.setItem(`kdm_mock_purchase_orders_${activeOrg.id}`, JSON.stringify(list))
+      if (!isMockMode) {
+        await apiService.deletePurchaseOrder(editingPoId!)
+      } else {
+        const savedPOs = localStorage.getItem(`kdm_mock_purchase_orders_${activeOrg.id}`)
+        let list = savedPOs ? JSON.parse(savedPOs) : []
+        list = list.filter((p: any) => p.id !== editingPoId && p.po_number !== editingPoId)
+        localStorage.setItem(`kdm_mock_purchase_orders_${activeOrg.id}`, JSON.stringify(list))
+      }
 
       if (setEditingPoId) setEditingPoId(null)
       setActiveTab('PurchaseOrders')
@@ -863,15 +935,19 @@ export function CreatePurchaseOrderTab({
     if (!editingPoId) return
     setIsSubmitting(true)
     try {
-      const savedPOs = localStorage.getItem(`kdm_mock_purchase_orders_${activeOrg.id}`)
-      const list = savedPOs ? JSON.parse(savedPOs) : []
-      const updatedList = list.map((p: any) => {
-        if (p.id === editingPoId || p.po_number === editingPoId) {
-          return { ...p, status: newStatus }
-        }
-        return p
-      })
-      localStorage.setItem(`kdm_mock_purchase_orders_${activeOrg.id}`, JSON.stringify(updatedList))
+      if (!isMockMode) {
+        await apiService.updatePurchaseOrder(editingPoId, { status: newStatus })
+      } else {
+        const savedPOs = localStorage.getItem(`kdm_mock_purchase_orders_${activeOrg.id}`)
+        const list = savedPOs ? JSON.parse(savedPOs) : []
+        const updatedList = list.map((p: any) => {
+          if (p.id === editingPoId || p.po_number === editingPoId) {
+            return { ...p, status: newStatus }
+          }
+          return p
+        })
+        localStorage.setItem(`kdm_mock_purchase_orders_${activeOrg.id}`, JSON.stringify(updatedList))
+      }
       setStatus(newStatus)
       setIsMoreDropdownOpen(false)
       showAlert({ title: 'Success', message: `Purchase order status updated to ${newStatus}.`, type: 'success' })
@@ -1018,10 +1094,45 @@ export function CreatePurchaseOrderTab({
     }))
   ]
 
-  const accountOptions = accounts.filter(a => a.class_type === 'Expense' || a.class_type === 'Asset' || a.type === 'Direct Costs').map(a => ({
-    value: a.id,
-    label: `${a.code} - ${a.name}`
-  }))
+  const getCategorizedAccountOptions = (accountsList: Account[]) => {
+    const sales = accountsList.filter(a => a.type !== 'Bank' && a.class_type === 'Revenue')
+    const directCosts = accountsList.filter(a => a.type !== 'Bank' && a.type === 'Direct Costs')
+    const expenses = accountsList.filter(a => a.type !== 'Bank' && a.class_type === 'Expense' && a.type !== 'Direct Costs')
+    const assets = accountsList.filter(a => a.type !== 'Bank' && a.class_type === 'Asset')
+    const liabilities = accountsList.filter(a => a.type !== 'Bank' && a.class_type === 'Liability')
+    const equity = accountsList.filter(a => a.type !== 'Bank' && a.class_type === 'Equity')
+
+    const options: { value: string; label: string; isHeader?: boolean }[] = []
+
+    if (sales.length > 0) {
+      options.push({ value: 'header-sales', label: 'Sales / Revenue', isHeader: true })
+      sales.forEach(a => options.push({ value: a.id, label: `${a.code} - ${a.name}` }))
+    }
+    if (directCosts.length > 0) {
+      options.push({ value: 'header-dc', label: 'Direct Costs', isHeader: true })
+      directCosts.forEach(a => options.push({ value: a.id, label: `${a.code} - ${a.name}` }))
+    }
+    if (expenses.length > 0) {
+      options.push({ value: 'header-expenses', label: 'Expenses', isHeader: true })
+      expenses.forEach(a => options.push({ value: a.id, label: `${a.code} - ${a.name}` }))
+    }
+    if (assets.length > 0) {
+      options.push({ value: 'header-assets', label: 'Assets', isHeader: true })
+      assets.forEach(a => options.push({ value: a.id, label: `${a.code} - ${a.name}` }))
+    }
+    if (liabilities.length > 0) {
+      options.push({ value: 'header-liabilities', label: 'Liabilities', isHeader: true })
+      liabilities.forEach(a => options.push({ value: a.id, label: `${a.code} - ${a.name}` }))
+    }
+    if (equity.length > 0) {
+      options.push({ value: 'header-equity', label: 'Equity', isHeader: true })
+      equity.forEach(a => options.push({ value: a.id, label: `${a.code} - ${a.name}` }))
+    }
+
+    return options
+  }
+
+  const accountOptions = getCategorizedAccountOptions(accounts)
 
   const taxOptions = taxRates.map(t => ({
     value: t.id,
@@ -1169,16 +1280,6 @@ export function CreatePurchaseOrderTab({
           </div>
         </div>
         <div className="flex items-center space-x-2.5 flex-wrap sm:justify-end gap-2">
-          {/* Always display Cancel button */}
-          <button
-            onClick={() => {
-              if (setEditingPoId) setEditingPoId(null)
-              setActiveTab('PurchaseOrders')
-            }}
-            className="bg-white hover:bg-slate-50 text-slate-555 border border-slate-200 font-medium text-xs px-4.5 py-2 rounded-[3px] shadow-sm transition duration-200 cursor-pointer h-[38px] flex items-center justify-center"
-          >
-            Cancel
-          </button>
 
           {!editingPoId ? (
             /* NEW PO MODE */
@@ -1737,7 +1838,7 @@ export function CreatePurchaseOrderTab({
                   <th className="p-2 border border-slate-200 text-center w-[7%]">Qty</th>
                   <th className="p-2 border border-slate-200 text-right w-[10%]">Unit Price</th>
                   <th className="p-2 border border-slate-200 text-center w-[8%]">Disc %</th>
-                  <th className="p-2 border border-slate-200 w-[15%]">Expense Account</th>
+                  <th className="p-2 border border-slate-200 w-[15%]">Account</th>
                   <th className="p-2 border border-slate-200 w-[12%]">Tax Rate</th>
                   <th className="p-2 border border-slate-200 text-right w-[10%]">Amount</th>
                   {!isReadOnly && <th className="p-2 border border-slate-200 text-center w-[3%]"></th>}
