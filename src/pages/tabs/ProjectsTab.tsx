@@ -6,14 +6,12 @@ import { usePopup } from '../../components/PopupProvider'
 
 interface ProjectsTabProps {
   activeOrg: Organization
-  isMockMode?: boolean
   onViewInvoice?: (id: string) => void
   onViewBill?: (id: string) => void
 }
 
-export function ProjectsTab({ 
-  activeOrg, 
-  isMockMode = false,
+export function ProjectsTab({
+  activeOrg,
   onViewInvoice,
   onViewBill
 }: ProjectsTabProps) {
@@ -49,48 +47,19 @@ export function ProjectsTab({
       let loadedContacts: Contact[] = []
 
       // 1. Fetch Projects
-      if (isMockMode) {
-        const savedProjects = localStorage.getItem(`kdm_mock_projects_${activeOrg.id}`)
-        if (savedProjects) {
-          loadedProjects = JSON.parse(savedProjects)
-        } else {
-          loadedProjects = [
-            { id: 'mock-p-1', name: 'Internal Operations', code: 'INT-OPS' },
-            { id: 'mock-p-2', name: 'Corporate Expansion', code: 'CORP-EXP' },
-            { id: 'mock-p-3', name: 'Client Consultation', code: 'CLIENT-CONS' }
-          ]
-          localStorage.setItem(`kdm_mock_projects_${activeOrg.id}`, JSON.stringify(loadedProjects))
-        }
-      } else {
-        loadedProjects = await apiService.getProjects(activeOrg.id)
-      }
+      loadedProjects = await apiService.getProjects(activeOrg.id)
 
       // 2. Fetch Invoices (Revenue)
-      if (isMockMode) {
-        const savedInvoices = localStorage.getItem(`kdm_mock_invoices_${activeOrg.id}`)
-        loadedInvoices = savedInvoices ? JSON.parse(savedInvoices) : []
-      } else {
-        loadedInvoices = await apiService.getInvoices(activeOrg.id)
-      }
+      loadedInvoices = await apiService.getInvoices(activeOrg.id)
 
-      // 3. Fetch Bills (Spending) - always mock/localStorage
-      const savedBills = localStorage.getItem(`kdm_mock_bills_${activeOrg.id}`)
-      loadedBills = savedBills ? JSON.parse(savedBills) : []
-
-      // 4. Fetch Contacts
-      if (isMockMode) {
-        const savedContacts = localStorage.getItem(`kdm_mock_contacts_${activeOrg.id}`)
-        loadedContacts = savedContacts ? JSON.parse(savedContacts) : []
-      } else {
-        loadedContacts = await apiService.getContacts(activeOrg.id)
-      }
+      // 3. Fetch Contacts
+      loadedContacts = await apiService.getContacts(activeOrg.id)
 
       setProjects(loadedProjects)
       setInvoices(loadedInvoices)
       setBills(loadedBills)
       setContacts(loadedContacts)
     } catch (err: any) {
-      console.warn("Failed to load projects costing data", err)
       showAlert({ title: 'Error Loading Data', message: err.message || 'Failed to sync project ledger.', type: 'error' })
     } finally {
       setLoading(false)
@@ -100,7 +69,7 @@ export function ProjectsTab({
   useEffect(() => {
     loadData()
     setViewingProject(null)
-  }, [activeOrg.id, isMockMode])
+  }, [activeOrg.id])
 
   // Restore focus after modal closes
   useEffect(() => {
@@ -129,48 +98,22 @@ export function ProjectsTab({
     try {
       if (editingProject) {
         // Edit flow
-        if (isMockMode) {
-          const updated = projects.map(p => 
-            p.id === editingProject.id 
-              ? { ...p, name: name.trim(), code: code.trim() }
-              : p
-          )
-          localStorage.setItem(`kdm_mock_projects_${activeOrg.id}`, JSON.stringify(updated))
-          setProjects(updated)
-          if (viewingProject && viewingProject.id === editingProject.id) {
-            setViewingProject({ ...viewingProject, name: name.trim(), code: code.trim() })
-          }
-        } else {
-          const updatedProj = await apiService.updateProject(editingProject.id, {
-            name: name.trim(),
-            code: code.trim() || undefined
-          })
-          setProjects(projects.map(p => p.id === editingProject.id ? updatedProj : p))
-          if (viewingProject && viewingProject.id === editingProject.id) {
-            setViewingProject(updatedProj)
-          }
+        const updatedProj = await apiService.updateProject(editingProject.id, {
+          name: name.trim(),
+          code: code.trim() || undefined
+        })
+        setProjects(projects.map(p => p.id === editingProject.id ? updatedProj : p))
+        if (viewingProject && viewingProject.id === editingProject.id) {
+          setViewingProject(updatedProj)
         }
         showAlert({ title: 'Project Updated', message: `Successfully saved changes for project "${name}".`, type: 'success' })
       } else {
         // Create flow
-        let created: Project
-        if (isMockMode) {
-          created = {
-            id: `mock-p-${Date.now()}`,
-            name: name.trim(),
-            code: code.trim() || undefined,
-            created_at: new Date().toISOString()
-          }
-          const updated = [...projects, created]
-          localStorage.setItem(`kdm_mock_projects_${activeOrg.id}`, JSON.stringify(updated))
-          setProjects(updated)
-        } else {
-          created = await apiService.createProject(activeOrg.id, {
-            name: name.trim(),
-            code: code.trim() || undefined
-          })
-          setProjects([...projects, created])
-        }
+        const created = await apiService.createProject(activeOrg.id, {
+          name: name.trim(),
+          code: code.trim() || undefined
+        })
+        setProjects([...projects, created])
         showAlert({ title: 'Project Created', message: `Successfully created new project "${name}".`, type: 'success' })
       }
       setIsModalOpen(false)
@@ -194,14 +137,8 @@ export function ProjectsTab({
 
     setLoading(true)
     try {
-      if (isMockMode) {
-        const updated = projects.filter(p => p.id !== projectId)
-        localStorage.setItem(`kdm_mock_projects_${activeOrg.id}`, JSON.stringify(updated))
-        setProjects(updated)
-      } else {
-        await apiService.deleteProject(projectId)
-        setProjects(projects.filter(p => p.id !== projectId))
-      }
+      await apiService.deleteProject(projectId)
+      setProjects(projects.filter(p => p.id !== projectId))
       if (viewingProject && viewingProject.id === projectId) {
         setViewingProject(null)
       }

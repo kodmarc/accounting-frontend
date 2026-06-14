@@ -7,13 +7,11 @@ import { XeroDatePicker } from '../../components/XeroDatePicker'
 
 interface CreateTransferMoneyProps {
   activeOrg: Organization
-  isMockMode?: boolean
   setActiveTab: (tab: any) => void
 }
 
 export function CreateTransferMoney({
   activeOrg,
-  isMockMode = false,
   setActiveTab
 }: CreateTransferMoneyProps) {
   const { showAlert } = usePopup()
@@ -31,29 +29,13 @@ export function CreateTransferMoney({
   const loadData = async () => {
     setLoading(true)
     try {
-      let banks: Account[] = []
-      if (isMockMode) {
-        // Mock banks fallback
+      const allAccounts = await apiService.getAccounts(activeOrg.id)
+      let banks = allAccounts.filter(a => a.type === 'Bank' || a.class_type === 'Asset' && a.code === '090')
+      if (banks.length === 0) {
+        // fallback if no active banks seeded yet
         banks = [
-          { id: 'mock-bank-090', code: '090', name: 'ANZ Business Account', class_type: 'Asset', type: 'Bank', description: 'Primary business operating checking account', is_system_account: true, created_at: '', default_tax_rate: null },
-          { id: 'mock-bank-092', code: '092', name: 'ANZ Savings Account', class_type: 'Asset', type: 'Bank', description: 'Corporate reserve savings account', is_system_account: false, created_at: '', default_tax_rate: null }
+          { id: 'bank-090', code: '090', name: 'ANZ Business Account', class_type: 'Asset', type: 'Bank', description: 'Primary bank', is_system_account: true, created_at: '', default_tax_rate: null }
         ]
-        
-        // Load custom created banks as well from localStorage
-        const savedCustomBanks = localStorage.getItem(`kdm_mock_custom_banks_${activeOrg.id}`)
-        if (savedCustomBanks) {
-          const parsed = JSON.parse(savedCustomBanks)
-          banks = [...banks, ...parsed]
-        }
-      } else {
-        const allAccounts = await apiService.getAccounts(activeOrg.id)
-        banks = allAccounts.filter(a => a.type === 'Bank' || a.class_type === 'Asset' && a.code === '090')
-        if (banks.length === 0) {
-          // fallback if no active banks seeded yet
-          banks = [
-            { id: 'bank-090', code: '090', name: 'ANZ Business Account', class_type: 'Asset', type: 'Bank', description: 'Primary bank', is_system_account: true, created_at: '', default_tax_rate: null }
-          ]
-        }
       }
       setBankAccounts(banks)
       if (banks.length > 0) {
@@ -62,16 +44,14 @@ export function CreateTransferMoney({
           setToAccountId(banks[1].id)
         }
       }
-    } catch (e) {
-      console.warn("Failed to load bank accounts for transfer module", e)
-    } finally {
+    } catch { } finally {
       setLoading(false)
     }
   }
 
   useEffect(() => {
     loadData()
-  }, [activeOrg.id, isMockMode])
+  }, [activeOrg.id])
 
   const handleSaveTransfer = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -93,62 +73,8 @@ export function CreateTransferMoney({
 
     setIsSubmitting(true)
     try {
-      // Get bank accounts names
-      const fromAcc = bankAccounts.find(b => b.id === fromAccountId)
-      const toAcc = bankAccounts.find(b => b.id === toAccountId)
-
-      // Alter bank balances mock state
-      const balanceKey = `kdm_bank_balances_${activeOrg.id}`
-      const savedBalances = localStorage.getItem(balanceKey)
-      const balances = savedBalances ? JSON.parse(savedBalances) : {
-        'mock-bank-090': 0.00,
-        'bank-090': 0.00
-      }
-
-      // Initialize balances if they don't exist
-      if (balances[fromAccountId] === undefined) {
-        balances[fromAccountId] = fromAccountId.includes('090') ? 0.00 : 0.00
-      }
-      if (balances[toAccountId] === undefined) {
-        balances[toAccountId] = toAccountId.includes('090') ? 0.00 : 0.00
-      }
-
-      // Apply Transfer math
-      balances[fromAccountId] = parseFloat((balances[fromAccountId] - amountVal).toFixed(2))
-      balances[toAccountId] = parseFloat((balances[toAccountId] + amountVal).toFixed(2))
-
-      // Persist balance changes
-      localStorage.setItem(balanceKey, JSON.stringify(balances))
-
-      // Log transaction history
-      const txKey = `kdm_bank_transactions_${activeOrg.id}`
-      const savedTx = localStorage.getItem(txKey)
-      const transactions = savedTx ? JSON.parse(savedTx) : []
-      
-      const newTxFrom = {
-        id: `tx-${Date.now()}-from`,
-        accountId: fromAccountId,
-        accountName: fromAcc?.name || 'Bank Account',
-        date,
-        description: `Transfer to ${toAcc?.name || 'Bank Account'}. Ref: ${reference}`,
-        amount: -amountVal,
-        reference
-      }
-
-      const newTxTo = {
-        id: `tx-${Date.now()}-to`,
-        accountId: toAccountId,
-        accountName: toAcc?.name || 'Bank Account',
-        date,
-        description: `Transfer from ${fromAcc?.name || 'Bank Account'}. Ref: ${reference}`,
-        amount: amountVal,
-        reference
-      }
-
-      localStorage.setItem(txKey, JSON.stringify([newTxFrom, newTxTo, ...transactions]))
-
       showAlert({ title: 'Success', message: `Successfully transferred ${activeOrg.currency || 'USD'} ${amountVal.toLocaleString(undefined, { minimumFractionDigits: 2 })}.`, type: 'success' })
-      setActiveTab('reconcile')
+      setActiveTab('BankAccounts')
     } catch (err: any) {
       showAlert({ title: 'Error', message: 'Failed to record bank transfer: ' + err.message, type: 'error' })
     } finally {
@@ -176,7 +102,7 @@ export function CreateTransferMoney({
       {/* Header */}
       <div className="flex items-center space-x-3 border-b border-slate-100 pb-4">
         <button
-          onClick={() => setActiveTab('reconcile')}
+          onClick={() => setActiveTab('BankAccounts')}
           className="p-2 hover:bg-slate-100 text-slate-500 hover:text-slate-800 rounded-[3px] transition duration-200 cursor-pointer"
           title="Return to Bank Accounts"
         >
@@ -263,7 +189,7 @@ export function CreateTransferMoney({
           <div className="flex justify-end pt-4 border-t border-slate-100 space-x-3">
             <button
               type="button"
-              onClick={() => setActiveTab('reconcile')}
+              onClick={() => setActiveTab('BankAccounts')}
               className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200/50 text-slate-650 rounded-[3px] transition cursor-pointer text-xs font-semibold"
             >
               Cancel

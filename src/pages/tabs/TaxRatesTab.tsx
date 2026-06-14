@@ -6,10 +6,9 @@ import { usePopup } from '../../components/PopupProvider'
 
 interface TaxRatesTabProps {
   activeOrg: Organization
-  isMockMode?: boolean
 }
 
-export function TaxRatesTab({ activeOrg, isMockMode = false }: TaxRatesTabProps) {
+export function TaxRatesTab({ activeOrg }: TaxRatesTabProps) {
   const { showConfirm, showAlert } = usePopup()
   const [taxRates, setTaxRates] = useState<TaxRate[]>([])
   const [loading, setLoading] = useState(true)
@@ -35,26 +34,9 @@ export function TaxRatesTab({ activeOrg, isMockMode = false }: TaxRatesTabProps)
     setLoading(true)
     setErrorMsg(null)
     try {
-      if (isMockMode) {
-        let saved = localStorage.getItem(`kdm_mock_taxrates_${activeOrg.id}`)
-        if (!saved) {
-          const defaultMockRates: TaxRate[] = [
-            { id: 'mock-tax-exempt', name: 'Tax Exempt (0%)', rate: '0.000' as any, is_active: true, created_at: new Date().toISOString() },
-            { id: 'mock-tax-consulting', name: 'Tax on Consulting (8.25%)', rate: '8.250' as any, is_active: true, created_at: new Date().toISOString() },
-            { id: 'mock-tax-purchases', name: 'Tax on Purchases (8.25%)', rate: '8.250' as any, is_active: true, created_at: new Date().toISOString() }
-          ]
-          localStorage.setItem(`kdm_mock_taxrates_${activeOrg.id}`, JSON.stringify(defaultMockRates))
-          saved = JSON.stringify(defaultMockRates)
-        }
-        setTaxRates(JSON.parse(saved))
-        setLoading(false)
-        return
-      }
-
       const res = await apiService.getTaxRates(activeOrg.id)
       setTaxRates(res)
     } catch (e: any) {
-      console.warn("Failed to load tax rates.", e)
       setErrorMsg(e.message || "Failed to load tax rates.")
       setTaxRates([])
     } finally {
@@ -62,17 +44,10 @@ export function TaxRatesTab({ activeOrg, isMockMode = false }: TaxRatesTabProps)
     }
   }
 
-  // Auto-persist mock state changes to localStorage
-  useEffect(() => {
-    if (isMockMode && !loading) {
-      localStorage.setItem(`kdm_mock_taxrates_${activeOrg.id}`, JSON.stringify(taxRates))
-    }
-  }, [taxRates, isMockMode, loading, activeOrg.id])
-
   useEffect(() => {
     loadData()
     setSelectedIds(new Set())
-  }, [activeOrg.id, isMockMode])
+  }, [activeOrg.id])
 
   useEffect(() => {
     setSelectedIds(new Set())
@@ -118,34 +93,12 @@ export function TaxRatesTab({ activeOrg, isMockMode = false }: TaxRatesTabProps)
 
     try {
       if (editingTaxRate) {
-        if (isMockMode) {
-          setTaxRates(prev => prev.map(t => t.id === editingTaxRate.id ? { ...t, ...payload } : t))
-          setIsModalOpen(false)
-          setEditingTaxRate(null)
-          resetForm()
-          return
-        }
-
         const updated = await apiService.updateTaxRate(editingTaxRate.id, payload)
         setTaxRates(prev => prev.map(t => t.id === editingTaxRate.id ? updated : t))
         setIsModalOpen(false)
         setEditingTaxRate(null)
         resetForm()
       } else {
-        if (isMockMode) {
-          const newRate: TaxRate = {
-            id: `mock-tax-${Date.now()}`,
-            name,
-            rate: parseFloat(rateVal.toFixed(3)),
-            is_active: isActive,
-            created_at: new Date().toISOString()
-          }
-          setTaxRates(prev => [...prev, newRate])
-          setIsModalOpen(false)
-          resetForm()
-          return
-        }
-
         const created = await apiService.createTaxRate(activeOrg.id, payload)
         setTaxRates(prev => [...prev, created])
         setIsModalOpen(false)
@@ -168,11 +121,6 @@ export function TaxRatesTab({ activeOrg, isMockMode = false }: TaxRatesTabProps)
     if (!confirmed) return
 
     try {
-      if (isMockMode) {
-        setTaxRates(prev => prev.filter(t => t.id !== rateId))
-        return
-      }
-
       await apiService.deleteTaxRate(rateId)
       setTaxRates(prev => prev.filter(t => t.id !== rateId))
     } catch (e: any) {
@@ -253,12 +201,8 @@ export function TaxRatesTab({ activeOrg, isMockMode = false }: TaxRatesTabProps)
 
     setLoading(true)
     try {
-      if (isMockMode) {
-        setTaxRates(prev => prev.filter(t => !selectedIds.has(t.id!)))
-      } else {
-        await Promise.all(list.map(id => apiService.deleteTaxRate(id)))
-        setTaxRates(prev => prev.filter(t => !selectedIds.has(t.id!)))
-      }
+      await Promise.all(list.map(id => apiService.deleteTaxRate(id)))
+      setTaxRates(prev => prev.filter(t => !selectedIds.has(t.id!)))
       setSelectedIds(new Set())
     } catch (e: any) {
       showAlert({ title: 'Bulk Deletion Failed', message: "Failed to delete tax rates: " + e.message, type: 'error' })
@@ -273,23 +217,14 @@ export function TaxRatesTab({ activeOrg, isMockMode = false }: TaxRatesTabProps)
  
     setLoading(true)
     try {
-      if (isMockMode) {
-        setTaxRates(prev => prev.map(t => {
-          if (selectedIds.has(t.id!)) {
-            return { ...t, is_active: targetActive }
-          }
-          return t
-        }))
-      } else {
-        await Promise.all(selectedRates.map(t => {
-          if (t.is_active !== targetActive) {
-            return apiService.updateTaxRate(t.id!, { is_active: targetActive })
-          }
-          return Promise.resolve(t)
-        }))
-        const res = await apiService.getTaxRates(activeOrg.id)
-        setTaxRates(res)
-      }
+      await Promise.all(selectedRates.map(t => {
+        if (t.is_active !== targetActive) {
+          return apiService.updateTaxRate(t.id!, { is_active: targetActive })
+        }
+        return Promise.resolve(t)
+      }))
+      const res = await apiService.getTaxRates(activeOrg.id)
+      setTaxRates(res)
       showAlert({ title: 'Status Updated', message: `Updated selected tax rate(s) to be ${targetActive ? 'active' : 'inactive'}.`, type: 'success' })
       setSelectedIds(new Set())
     } catch (e: any) {

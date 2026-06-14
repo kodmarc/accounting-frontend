@@ -6,7 +6,6 @@ import { usePopup } from '../../components/PopupProvider'
 
 interface PurchaseOrdersTabProps {
   activeOrg: Organization
-  isMockMode?: boolean
   setActiveTab: (tab: any) => void
   onEditPO: (id: string) => void
   onCreateNewPO: () => void
@@ -15,7 +14,6 @@ interface PurchaseOrdersTabProps {
 
 export function PurchaseOrdersTab({
   activeOrg,
-  isMockMode = false,
   setActiveTab,
   onEditPO,
   onCreateNewPO,
@@ -38,17 +36,9 @@ export function PurchaseOrdersTab({
   const loadData = async () => {
     setLoading(true)
     try {
-      let poList: any[] = []
-      if (isMockMode) {
-        const savedPOs = localStorage.getItem(`kdm_mock_purchase_orders_${activeOrg.id}`)
-        poList = savedPOs ? JSON.parse(savedPOs) : []
-      } else {
-        poList = await apiService.getPurchaseOrders(activeOrg.id)
-      }
+      const poList = await apiService.getPurchaseOrders(activeOrg.id)
       setPurchaseOrders(poList)
-    } catch (e: any) {
-      console.warn("Failed to load PO suite", e)
-    } finally {
+    } catch { } finally {
       setLoading(false)
     }
   }
@@ -56,7 +46,7 @@ export function PurchaseOrdersTab({
   useEffect(() => {
     loadData()
     setSelectedIds(new Set())
-  }, [activeOrg.id, isMockMode])
+  }, [activeOrg.id])
 
   // Reset checkboxes on filter transition
   useEffect(() => {
@@ -106,16 +96,11 @@ export function PurchaseOrdersTab({
     })
     if (!confirmed) return
 
-    if (!isMockMode) {
-      try {
-        await Promise.all(targets.map(po => apiService.deletePurchaseOrder(po.id)))
-      } catch (err: any) {
-        showAlert({ title: 'Error deleting purchase orders', message: err.message || 'API failed to delete purchase orders.', type: 'error' })
-        return
-      }
-    } else {
-      const remaining = purchaseOrders.filter(po => !selectedIds.has(po.id))
-      localStorage.setItem(`kdm_mock_purchase_orders_${activeOrg.id}`, JSON.stringify(remaining))
+    try {
+      await Promise.all(targets.map(po => apiService.deletePurchaseOrder(po.id)))
+    } catch (err: any) {
+      showAlert({ title: 'Error deleting purchase orders', message: err.message || 'API failed to delete purchase orders.', type: 'error' })
+      return
     }
 
     const remaining = purchaseOrders.filter(po => !selectedIds.has(po.id))
@@ -124,23 +109,13 @@ export function PurchaseOrdersTab({
   }
 
   const handleBulkChangeStatus = async (status: 'Draft' | 'Awaiting Approval' | 'Approved' | 'Billed' | 'Declined') => {
-    if (!isMockMode) {
-      try {
-        await Promise.all(
-          purchaseOrders.filter(po => selectedIds.has(po.id)).map(po => apiService.updatePurchaseOrder(po.id, { status }))
-        )
-      } catch (err: any) {
-        showAlert({ title: 'Error updating purchase orders', message: err.message || 'API failed to update purchase orders.', type: 'error' })
-        return
-      }
-    } else {
-      const updated = purchaseOrders.map(po => {
-        if (selectedIds.has(po.id)) {
-          return { ...po, status }
-        }
-        return po
-      })
-      localStorage.setItem(`kdm_mock_purchase_orders_${activeOrg.id}`, JSON.stringify(updated))
+    try {
+      await Promise.all(
+        purchaseOrders.filter(po => selectedIds.has(po.id)).map(po => apiService.updatePurchaseOrder(po.id, { status }))
+      )
+    } catch (err: any) {
+      showAlert({ title: 'Error updating purchase orders', message: err.message || 'API failed to update purchase orders.', type: 'error' })
+      return
     }
 
     const updated = purchaseOrders.map(po => {

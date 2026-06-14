@@ -7,14 +7,12 @@ import { usePopup } from '../../components/PopupProvider'
 interface UserProfileTabProps {
   currentUser: ApiUser | null
   setCurrentUser: (user: ApiUser) => void
-  isMockMode: boolean
   setActiveTab: (tab: any) => void
 }
 
 export function UserProfileTab({
   currentUser,
   setCurrentUser,
-  isMockMode,
   setActiveTab
 }: UserProfileTabProps) {
   const { showAlert } = usePopup()
@@ -55,34 +53,6 @@ export function UserProfileTab({
     }
 
     setIsSubmitting(true)
-
-    if (isMockMode) {
-      // Mock mode update simulation
-      setTimeout(() => {
-        const updatedUser: ApiUser = {
-          ...currentUser!,
-          first_name: firstName,
-          last_name: lastName
-        }
-        setCurrentUser(updatedUser)
-        
-        // Persist sandbox session info in localStorage
-        localStorage.setItem('kdm_mock_auth_first', firstName)
-        localStorage.setItem('kdm_mock_auth_last', lastName)
-
-        setIsSubmitting(false)
-        setSuccessMessage('Profile details updated successfully (Mock Mode).')
-        showAlert({
-          title: 'Profile Updated',
-          message: 'Your profile changes have been applied successfully in this sandbox session.',
-          buttonText: 'Done',
-          type: 'success'
-        })
-        setPassword('')
-        setConfirmPassword('')
-      }, 800)
-      return
-    }
 
     try {
       const res = await apiService.updateMe(firstName, lastName, password || undefined)

@@ -9,7 +9,6 @@ import { XeroDatePicker } from '../../components/XeroDatePicker'
 
 interface CreateBillTabProps {
   activeOrg: Organization
-  isMockMode?: boolean
   setActiveTab: (tab: any) => void
   editingBillId?: string | null
   setEditingBillId?: (id: string | null) => void
@@ -17,7 +16,6 @@ interface CreateBillTabProps {
 
 export function CreateBillTab({
   activeOrg,
-  isMockMode = false,
   setActiveTab,
   editingBillId = null,
   setEditingBillId
@@ -151,70 +149,20 @@ export function CreateBillTab({
       let loadedCatalog: Item[] = []
       let loadedProjects: Project[] = []
 
-      if (isMockMode) {
-        // Load mock contacts/accounts/taxRates/catalog if offline
-        const mockContacts: Contact[] = [
-          { id: 'mock-s-1', name: 'Alibaba Cloud SG', email: 'billing@alibaba.com', phone: '+65 6729 0122', tax_number: 'VAT-9021', billing_address: '8 Shenton Way, Singapore 068811', default_sales_account: null, default_purchase_account: null, contact_type: 'Supplier', created_at: '' },
-          { id: 'mock-s-2', name: 'Saad Software Designs', email: 'saad@softwaredesigns.com', phone: '+92 300 1234567', tax_number: 'NTN-49102', billing_address: 'DHA Phase 6, Lahore, Pakistan', default_sales_account: null, default_purchase_account: null, contact_type: 'Supplier', created_at: '' }
-        ]
-        const mockAccounts: Account[] = [
-          { id: 'mock-a-1', code: '300', name: 'Cost of Goods Sold', class_type: 'Expense', type: 'Direct Costs', default_tax_rate: null, description: 'Inventory cost allocations', is_system_account: false, created_at: '' },
-          { id: 'mock-a-2', code: '400', name: 'Software Licensing', class_type: 'Expense', type: 'Expense', default_tax_rate: null, description: 'SaaS subscriptions', is_system_account: false, created_at: '' }
-        ]
-        const mockTaxRates: TaxRate[] = [
-          { id: 'mock-t-1', name: 'SG GST 9%', rate: 9.0, is_active: true, created_at: '' },
-          { id: 'mock-t-2', name: 'Tax Exempt', rate: 0.0, is_active: true, created_at: '' }
-        ]
-        const mockCatalog: Item[] = [
-          { id: 'mock-i-1', code: 'CLOUD-LIC', name: 'Cloud Hosting Monthly Server', is_sold: false, sales_unit_price: 0, sales_account: null, sales_tax_rate: null, sales_description: '', is_purchased: true, purchase_unit_cost: 150.00, purchase_account: 'mock-a-2', purchase_tax_rate: 'mock-t-1', purchase_description: 'Monthly cloud virtual machine container resource allocations', created_at: '' }
-        ]
+      // API Database fetches
+      const [contactList, itemList, accList, taxList, projList] = await Promise.all([
+        apiService.getContacts(activeOrg.id),
+        apiService.getItems(activeOrg.id),
+        apiService.getAccounts(activeOrg.id),
+        apiService.getTaxRates(activeOrg.id),
+        apiService.getProjects(activeOrg.id)
+      ])
 
-        const savedContacts = localStorage.getItem(`kdm_mock_contacts_${activeOrg.id}`)
-        if (savedContacts) {
-          loadedContacts = JSON.parse(savedContacts)
-        } else {
-          loadedContacts = mockContacts
-          localStorage.setItem(`kdm_mock_contacts_${activeOrg.id}`, JSON.stringify(mockContacts))
-        }
-
-        const savedCatalog = localStorage.getItem(`kdm_mock_catalog_${activeOrg.id}`)
-        if (savedCatalog) {
-          loadedCatalog = JSON.parse(savedCatalog)
-        } else {
-          loadedCatalog = mockCatalog
-          localStorage.setItem(`kdm_mock_catalog_${activeOrg.id}`, JSON.stringify(mockCatalog))
-        }
-
-        loadedAccounts = mockAccounts
-        loadedTaxRates = mockTaxRates
-
-        const savedProjects = localStorage.getItem(`kdm_mock_projects_${activeOrg.id}`)
-        if (savedProjects) {
-          loadedProjects = JSON.parse(savedProjects)
-        } else {
-          loadedProjects = [
-            { id: 'mock-p-1', name: 'Internal Operations', code: 'INT-OPS' },
-            { id: 'mock-p-2', name: 'Corporate Expansion', code: 'CORP-EXP' },
-            { id: 'mock-p-3', name: 'Client Consultation', code: 'CLIENT-CONS' }
-          ]
-          localStorage.setItem(`kdm_mock_projects_${activeOrg.id}`, JSON.stringify(loadedProjects))
-        }
-      } else {
-        // API Database fetches
-        const [contactList, itemList, accList, taxList, projList] = await Promise.all([
-          apiService.getContacts(activeOrg.id),
-          apiService.getItems(activeOrg.id),
-          apiService.getAccounts(activeOrg.id),
-          apiService.getTaxRates(activeOrg.id),
-          apiService.getProjects(activeOrg.id)
-        ])
-
-        loadedContacts = contactList.filter(c => c.contact_type === 'Supplier' || c.contact_type === 'Both')
-        loadedCatalog = itemList.filter(i => i.is_purchased)
-        loadedAccounts = accList
-        loadedTaxRates = taxList
-        loadedProjects = projList
-      }
+      loadedContacts = contactList.filter(c => c.contact_type === 'Supplier' || c.contact_type === 'Both')
+      loadedCatalog = itemList.filter(i => i.is_purchased)
+      loadedAccounts = accList
+      loadedTaxRates = taxList
+      loadedProjects = projList
 
       setContacts(loadedContacts)
       setCatalogItems(loadedCatalog)
@@ -222,28 +170,7 @@ export function CreateBillTab({
       setTaxRates(loadedTaxRates)
       setProjects(loadedProjects)
 
-      let loadedBanks: Account[] = []
-      if (isMockMode) {
-        const saved = localStorage.getItem(`kdm_bank_accounts_${activeOrg.id}`)
-        loadedBanks = saved ? JSON.parse(saved) : []
-        if (loadedBanks.length === 0) {
-          loadedBanks = [
-            {
-              id: 'bank-090',
-              code: '090',
-              name: 'ANZ Business Account',
-              class_type: 'Asset',
-              type: 'Bank',
-              description: 'ANZ Business Daily Transaction Account',
-              is_system_account: true,
-              created_at: new Date().toISOString()
-            }
-          ]
-          localStorage.setItem(`kdm_bank_accounts_${activeOrg.id}`, JSON.stringify(loadedBanks))
-        }
-      } else {
-        loadedBanks = loadedAccounts.filter(a => a.type === 'Bank')
-      }
+      const loadedBanks = loadedAccounts.filter(a => a.type === 'Bank')
       setBankAccounts(loadedBanks)
       if (loadedBanks.length > 0) {
         setSinglePaymentAccountId(loadedBanks[0].id)
@@ -253,8 +180,7 @@ export function CreateBillTab({
       const firstTax = loadedTaxRates[0]?.id || ''
 
       // Load Purchases Settings dynamically from LocalStorage
-      const savedPurchases = localStorage.getItem(`kdm_purchase_settings_${activeOrg.id}`) || 
-                             localStorage.getItem(`kdm_mock_purchase_settings_${activeOrg.id}`)
+      const savedPurchases = localStorage.getItem(`kdm_purchase_settings_${activeOrg.id}`)
       let loadedPurchaseSetting = {
         bill_prefix: 'BIL-',
         next_bill_number: 1001,
@@ -273,17 +199,9 @@ export function CreateBillTab({
 
       if (editingBillId) {
         let targetBill: any = null
-        if (isMockMode) {
-          const savedBills = localStorage.getItem(`kdm_mock_bills_${activeOrg.id}`)
-          const list = savedBills ? JSON.parse(savedBills) : []
-          targetBill = list.find((b: any) => b.bill_number === editingBillId || b.id === editingBillId) || null
-        } else {
-          try {
-            targetBill = await apiService.getBill(editingBillId)
-          } catch (err) {
-            console.error("Failed to load bill via API:", err)
-          }
-        }
+        try {
+          targetBill = await apiService.getBill(editingBillId)
+        } catch { }
 
         if (targetBill) {
           setSelectedContactId(targetBill.contact)
@@ -343,7 +261,6 @@ export function CreateBillTab({
         setAttachmentFile(null)
       }
     } catch (e: any) {
-      console.warn("Failed to load dependencies or bill", e)
       setErrorMsg(e.message || "Failed to load active ledger catalogs.")
     } finally {
       setLoading(false)
@@ -352,7 +269,7 @@ export function CreateBillTab({
 
   useEffect(() => {
     loadData()
-  }, [activeOrg.id, isMockMode, editingBillId])
+  }, [activeOrg.id, editingBillId])
 
   // Catalog item select autopopulates properties
   const handleCatalogSelect = (index: number, itemId: string) => {
@@ -414,36 +331,16 @@ export function CreateBillTab({
 
     setIsSubmitting(true)
     try {
-      let createdContact: Contact
-
-      if (isMockMode) {
-        createdContact = {
-          id: `mock-s-${Date.now()}`,
-          name: quickContactName.trim(),
-          email: quickContactEmail.trim() || '',
-          phone: quickContactPhone.trim() || '',
-          tax_number: quickContactTaxNumber.trim() || '',
-          billing_address: quickContactAddress.trim() || '',
-          default_sales_account: null,
-          default_purchase_account: null,
-          contact_type: 'Supplier',
-          created_at: new Date().toISOString()
-        }
-        const updatedContacts = [...contacts, createdContact]
-        setContacts(updatedContacts)
-        localStorage.setItem(`kdm_mock_contacts_${activeOrg.id}`, JSON.stringify(updatedContacts))
-      } else {
-        const payload: Partial<Contact> = {
-          name: quickContactName.trim(),
-          email: quickContactEmail.trim() || undefined,
-          phone: quickContactPhone.trim() || undefined,
-          tax_number: quickContactTaxNumber.trim() || undefined,
-          billing_address: quickContactAddress.trim() || undefined,
-          contact_type: 'Supplier'
-        }
-        createdContact = await apiService.createContact(activeOrg.id, payload)
-        setContacts(prev => [...prev, createdContact])
+      const payload: Partial<Contact> = {
+        name: quickContactName.trim(),
+        email: quickContactEmail.trim() || undefined,
+        phone: quickContactPhone.trim() || undefined,
+        tax_number: quickContactTaxNumber.trim() || undefined,
+        billing_address: quickContactAddress.trim() || undefined,
+        contact_type: 'Supplier'
       }
+      const createdContact = await apiService.createContact(activeOrg.id, payload)
+      setContacts(prev => [...prev, createdContact])
 
       setSelectedContactId(createdContact.id)
       setShowQuickContactModal(false)
@@ -470,42 +367,18 @@ export function CreateBillTab({
 
     setIsSubmitting(true)
     try {
-      let createdItem: Item
-
-      if (isMockMode) {
-        createdItem = {
-          id: `mock-i-${Date.now()}`,
-          code: quickItemCode.trim().toUpperCase(),
-          name: quickItemName.trim(),
-          is_sold: false,
-          sales_unit_price: 0,
-          sales_account: null,
-          sales_tax_rate: null,
-          sales_description: '',
-          is_purchased: true,
-          purchase_unit_cost: parseFloat(quickItemPrice) || 0,
-          purchase_account: quickItemAccountId || null,
-          purchase_tax_rate: quickItemTaxRateId || null,
-          purchase_description: quickItemDescription.trim() || quickItemName.trim(),
-          created_at: new Date().toISOString()
-        }
-        const updatedCatalog = [...catalogItems, createdItem]
-        setCatalogItems(updatedCatalog)
-        localStorage.setItem(`kdm_mock_catalog_${activeOrg.id}`, JSON.stringify(updatedCatalog))
-      } else {
-        const payload: Partial<Item> = {
-          code: quickItemCode.trim().toUpperCase(),
-          name: quickItemName.trim(),
-          is_purchased: true,
-          purchase_unit_cost: parseFloat(quickItemPrice) || 0,
-          purchase_account: quickItemAccountId || undefined,
-          purchase_tax_rate: quickItemTaxRateId || undefined,
-          purchase_description: quickItemDescription.trim() || quickItemName.trim(),
-          is_sold: false
-        }
-        createdItem = await apiService.createItem(activeOrg.id, payload)
-        setCatalogItems(prev => [...prev, createdItem])
+      const payload: Partial<Item> = {
+        code: quickItemCode.trim().toUpperCase(),
+        name: quickItemName.trim(),
+        is_purchased: true,
+        purchase_unit_cost: parseFloat(quickItemPrice) || 0,
+        purchase_account: quickItemAccountId || undefined,
+        purchase_tax_rate: quickItemTaxRateId || undefined,
+        purchase_description: quickItemDescription.trim() || quickItemName.trim(),
+        is_sold: false
       }
+      const createdItem = await apiService.createItem(activeOrg.id, payload)
+      setCatalogItems(prev => [...prev, createdItem])
 
       if (quickItemLineIndex !== null) {
         const updated = [...lines]
@@ -776,55 +649,13 @@ export function CreateBillTab({
     }
 
     try {
-      let resolvedBillId = editingBillId || `mock-bill-${Date.now()}`
-      if (!isMockMode) {
-        if (isEdit) {
-          const res = await apiService.updateBill(editingBillId!, payload)
-          resolvedBillId = res.id || editingBillId!
-        } else {
-          const res = await apiService.createBill(activeOrg.id, payload)
-          resolvedBillId = res.id || ''
-        }
+      let resolvedBillId = editingBillId || ''
+      if (isEdit) {
+        const res = await apiService.updateBill(editingBillId!, payload)
+        resolvedBillId = res.id || editingBillId!
       } else {
-        const contactObj = contacts.find(c => c.id === selectedContactId)
-        const savedBills = localStorage.getItem(`kdm_mock_bills_${activeOrg.id}`)
-        const list = savedBills ? JSON.parse(savedBills) : []
-        
-        let updatedList: any[] = []
-        if (isEdit) {
-          updatedList = list.map((b: any) => {
-            if (b.id === editingBillId || b.bill_number === editingBillId) {
-              return {
-                ...b,
-                ...payload,
-                contact_name: contactObj ? contactObj.name : b.contact_name,
-                lines: postLines.map((pl, idx) => ({ ...pl, id: `mock-bill-l-${idx}-${Date.now()}` }))
-              }
-            }
-            return b
-          })
-        } else {
-          const mockCreated = {
-            ...payload,
-            id: resolvedBillId,
-            contact_name: contactObj ? contactObj.name : "Mock Supplier",
-            lines: postLines.map((pl, idx) => ({ ...pl, id: `mock-bill-l-${idx}-${Date.now()}` })),
-            created_at: new Date().toISOString()
-          }
-          updatedList = [mockCreated, ...list]
-
-          // Auto-increment sequence number in localStorage Purchases Settings upon successful save!
-          const savedPurchases = localStorage.getItem(`kdm_purchase_settings_${activeOrg.id}`) || 
-                                 localStorage.getItem(`kdm_mock_purchase_settings_${activeOrg.id}`)
-          if (savedPurchases) {
-            const parsed = JSON.parse(savedPurchases)
-            parsed.next_bill_number = (Number(parsed.next_bill_number) || 1001) + 1
-            localStorage.setItem(`kdm_purchase_settings_${activeOrg.id}`, JSON.stringify(parsed))
-            localStorage.setItem(`kdm_mock_purchase_settings_${activeOrg.id}`, JSON.stringify(parsed))
-          }
-        }
-        
-        localStorage.setItem(`kdm_mock_bills_${activeOrg.id}`, JSON.stringify(updatedList))
+        const res = await apiService.createBill(activeOrg.id, payload)
+        resolvedBillId = res.id || ''
       }
 
       localStorage.setItem(`kdm_bill_notes_${resolvedBillId}`, notes)
@@ -873,8 +704,7 @@ export function CreateBillTab({
       const projectObj = projects.find(p => p.id === selectedProjectId)
       
       // Load purchases settings to send standard terms fallback
-      const savedPurchases = localStorage.getItem(`kdm_purchase_settings_${activeOrg.id}`) || 
-                             localStorage.getItem(`kdm_mock_purchase_settings_${activeOrg.id}`)
+      const savedPurchases = localStorage.getItem(`kdm_purchase_settings_${activeOrg.id}`)
       let supplierTerms = '30 days'
       if (savedPurchases) {
         const parsed = JSON.parse(savedPurchases)
@@ -947,9 +777,8 @@ export function CreateBillTab({
       a.click()
       document.body.removeChild(a)
       window.URL.revokeObjectURL(downloadUrl)
-    } catch (err: any) {
-      // Sandbox fallback: print screen cleanly
-      console.warn("Backend PDF generation failed, falling back to print dialog:", err.message)
+    } catch {
+      // Fallback: print screen cleanly
       document.body.classList.add('pdf-mode')
       window.print()
       document.body.classList.remove('pdf-mode')
@@ -971,16 +800,8 @@ export function CreateBillTab({
     
     setIsSubmitting(true)
     try {
-      if (!isMockMode) {
-        await apiService.deleteBill(editingBillId!)
-      } else {
-        const resolvedId = editingBillId
-        const savedBills = localStorage.getItem(`kdm_mock_bills_${activeOrg.id}`)
-        const list = savedBills ? JSON.parse(savedBills) : []
-        const updatedList = list.filter((b: any) => b.id !== resolvedId && b.bill_number !== editingBillId)
-        localStorage.setItem(`kdm_mock_bills_${activeOrg.id}`, JSON.stringify(updatedList))
-      }
-      
+      await apiService.deleteBill(editingBillId!)
+
       if (setEditingBillId) setEditingBillId(null)
       setActiveTab('Bills')
     } catch (err: any) {
@@ -995,20 +816,7 @@ export function CreateBillTab({
     if (!editingBillId) return
     setIsSubmitting(true)
     try {
-      if (!isMockMode) {
-        await apiService.updateBill(editingBillId, { status: newStatus })
-      } else {
-        const resolvedId = editingBillId
-        const savedBills = localStorage.getItem(`kdm_mock_bills_${activeOrg.id}`)
-        const list = savedBills ? JSON.parse(savedBills) : []
-        const updatedList = list.map((b: any) => {
-          if (b.id === resolvedId || b.bill_number === editingBillId) {
-            return { ...b, status: newStatus }
-          }
-          return b
-        })
-        localStorage.setItem(`kdm_mock_bills_${activeOrg.id}`, JSON.stringify(updatedList))
-      }
+      await apiService.updateBill(editingBillId, { status: newStatus })
       setStatus(newStatus)
       setIsMoreDropdownOpen(false)
     } catch (err: any) {
@@ -1050,62 +858,7 @@ export function CreateBillTab({
 
     setIsSubmitting(true);
     try {
-      const balanceKey = `kdm_bank_balances_${activeOrg.id}`;
-      const savedBalances = localStorage.getItem(balanceKey);
-      const balances = savedBalances ? JSON.parse(savedBalances) : {
-        'mock-bank-090': 0.00,
-        'bank-090': 0.00
-      };
-
-      payments.forEach(p => {
-        if (balances[p.accountId] === undefined) {
-          balances[p.accountId] = p.accountId.includes('090') ? 0.00 : 0.00;
-        }
-        // Cost outflow deducts bank balance
-        balances[p.accountId] = parseFloat((balances[p.accountId] - p.amount).toFixed(2));
-      });
-      localStorage.setItem(balanceKey, JSON.stringify(balances));
-
-      const txKey = `kdm_bank_transactions_${activeOrg.id}`;
-      const savedTx = localStorage.getItem(txKey);
-      const transactions = savedTx ? JSON.parse(savedTx) : [];
-
-      const supplierObj = contacts.find(c => c.id === selectedContactId);
-      const contactName = supplierObj ? supplierObj.name : "Supplier";
-
-      payments.forEach(p => {
-        const bankAcc = bankAccounts.find(b => b.id === p.accountId);
-        const newTx = {
-          id: `tx-${Date.now()}-${Math.random()}`,
-          accountId: p.accountId,
-          accountName: bankAcc?.name || 'Bank Account',
-          date: paymentDate,
-          description: `Payment sent for Bill ${billNumber}. Contact: ${contactName}`,
-          // Cost outflow represented as negative amount
-          amount: -p.amount,
-          reference: reference || billNumber
-        };
-        transactions.unshift(newTx);
-      });
-      localStorage.setItem(txKey, JSON.stringify(transactions));
-
-      if (!isMockMode) {
-        await apiService.updateBill(editingBillId!, { status: 'Paid' })
-      } else {
-        const resolvedId = editingBillId || `mock-bill-${Date.now()}`;
-        const savedBills = localStorage.getItem(`kdm_mock_bills_${activeOrg.id}`);
-        const list = savedBills ? JSON.parse(savedBills) : [];
-        const updatedList = list.map((b: any) => {
-          if (b.id === resolvedId || b.bill_number === editingBillId) {
-            return {
-              ...b,
-              status: 'Paid' as const
-            };
-          }
-          return b;
-        });
-        localStorage.setItem(`kdm_mock_bills_${activeOrg.id}`, JSON.stringify(updatedList));
-      }
+      await apiService.updateBill(editingBillId!, { status: 'Paid' });
 
       setStatus('Paid');
       setIsPaymentModalOpen(false);
@@ -1214,24 +967,11 @@ export function CreateBillTab({
   const handleCreateProject = async () => {
     if (!newProjectName.trim()) return
     try {
-      let created: Project
-      if (isMockMode) {
-        created = {
-          id: `mock-p-${Date.now()}`,
-          name: newProjectName.trim(),
-          code: newProjectCode.trim() || undefined,
-          created_at: new Date().toISOString()
-        }
-        const updated = [...projects, created]
-        localStorage.setItem(`kdm_mock_projects_${activeOrg.id}`, JSON.stringify(updated))
-        setProjects(updated)
-      } else {
-        created = await apiService.createProject(activeOrg.id, {
-          name: newProjectName.trim(),
-          code: newProjectCode.trim() || undefined
-        })
-        setProjects([...projects, created])
-      }
+      const created = await apiService.createProject(activeOrg.id, {
+        name: newProjectName.trim(),
+        code: newProjectCode.trim() || undefined
+      })
+      setProjects([...projects, created])
       setSelectedProjectId(created.id)
       setNewProjectName('')
       setNewProjectCode('')
@@ -2646,8 +2386,7 @@ export function CreateBillTab({
           const supplierObj = contacts.find(c => c.id === selectedContactId)
           const projectObj = projects.find(p => p.id === selectedProjectId)
           
-          const savedPurchases = localStorage.getItem(`kdm_purchase_settings_${activeOrg.id}`) || 
-                                 localStorage.getItem(`kdm_mock_purchase_settings_${activeOrg.id}`)
+          const savedPurchases = localStorage.getItem(`kdm_purchase_settings_${activeOrg.id}`)
           let supplierTerms = '30 days'
           if (savedPurchases) {
             const parsed = JSON.parse(savedPurchases)

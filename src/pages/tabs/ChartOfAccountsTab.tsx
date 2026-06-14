@@ -6,10 +6,9 @@ import { usePopup } from '../../components/PopupProvider'
 
 interface ChartOfAccountsTabProps {
   activeOrg: Organization
-  isMockMode?: boolean
 }
 
-export function ChartOfAccountsTab({ activeOrg, isMockMode = false }: ChartOfAccountsTabProps) {
+export function ChartOfAccountsTab({ activeOrg }: ChartOfAccountsTabProps) {
   const { showConfirm, showAlert } = usePopup()
   const [accounts, setAccounts] = useState<Account[]>([])
   const [taxRates, setTaxRates] = useState<TaxRate[]>([])
@@ -50,15 +49,6 @@ export function ChartOfAccountsTab({ activeOrg, isMockMode = false }: ChartOfAcc
     setLoading(true)
     setErrorMsg(null)
     try {
-      if (isMockMode) {
-        const saved = localStorage.getItem(`kdm_mock_accounts_${activeOrg.id}`)
-        const savedTaxes = localStorage.getItem(`kdm_mock_taxrates_${activeOrg.id}`)
-        setAccounts(saved ? JSON.parse(saved) : [])
-        setTaxRates(savedTaxes ? JSON.parse(savedTaxes) : [])
-        setLoading(false)
-        return
-      }
-
       const [accountsData, taxRatesData] = await Promise.all([
         apiService.getAccounts(activeOrg.id),
         apiService.getTaxRates(activeOrg.id)
@@ -66,7 +56,6 @@ export function ChartOfAccountsTab({ activeOrg, isMockMode = false }: ChartOfAcc
       setAccounts(accountsData)
       setTaxRates(taxRatesData)
     } catch (e: any) {
-      console.warn("Failed to load accounts.", e)
       setErrorMsg(e.message || "Failed to load accounts.")
       setAccounts([])
     } finally {
@@ -74,23 +63,10 @@ export function ChartOfAccountsTab({ activeOrg, isMockMode = false }: ChartOfAcc
     }
   }
 
-  // Auto-persist mock state changes to localStorage
-  useEffect(() => {
-    if (isMockMode && !loading) {
-      localStorage.setItem(`kdm_mock_accounts_${activeOrg.id}`, JSON.stringify(accounts))
-    }
-  }, [accounts, isMockMode, loading, activeOrg.id])
-
-  useEffect(() => {
-    if (isMockMode && !loading) {
-      localStorage.setItem(`kdm_mock_taxrates_${activeOrg.id}`, JSON.stringify(taxRates))
-    }
-  }, [taxRates, isMockMode, loading, activeOrg.id])
-
   useEffect(() => {
     loadData()
     setSelectedIds(new Set())
-  }, [activeOrg.id, isMockMode])
+  }, [activeOrg.id])
 
   useEffect(() => {
     setSelectedIds(new Set())
@@ -155,112 +131,6 @@ export function ChartOfAccountsTab({ activeOrg, isMockMode = false }: ChartOfAcc
       onConfirm: async () => {
         setIsImporting(true)
         try {
-          if (isMockMode) {
-            // 1. Seed standard mock tax rates
-            const mockTaxRates: TaxRate[] = [
-              { id: `mock-tax-exempt`, name: "Tax Exempt (0%)", rate: 0.0, is_active: true, created_at: new Date().toISOString() },
-              { id: `mock-tax-consulting`, name: "Tax on Consulting (8.25%)", rate: 8.25, is_active: true, created_at: new Date().toISOString() },
-              { id: `mock-tax-purchases`, name: "Tax on Purchases (8.25%)", rate: 8.25, is_active: true, created_at: new Date().toISOString() }
-            ]
-            
-            const nextTaxRates = [...taxRates]
-            mockTaxRates.forEach(tr => {
-              if (!nextTaxRates.some(t => t.name === tr.name)) {
-                nextTaxRates.push(tr)
-              }
-            })
-            setTaxRates(nextTaxRates)
-            localStorage.setItem(`kdm_mock_taxrates_${activeOrg.id}`, JSON.stringify(nextTaxRates))
-
-            // 2. Map default standard accounts
-            const getTaxRateId = (name: string) => {
-              const found = nextTaxRates.find(t => t.name === name)
-              return found ? found.id : null
-            }
-
-            const defaultAccounts = [
-              { code: "200", name: "Sales", class_type: "Revenue" as const, type: "Sales", default_tax_rate: getTaxRateId("Tax on Consulting (8.25%)"), description: "Income from any normal business activity", is_system_account: false },
-              { code: "260", name: "Other Revenue", class_type: "Revenue" as const, type: "Other Income", default_tax_rate: getTaxRateId("Tax on Consulting (8.25%)"), description: "Any other income that does not relate to normal business activities and is not recurring", is_system_account: false },
-              { code: "270", name: "Interest Income", class_type: "Revenue" as const, type: "Other Income", default_tax_rate: getTaxRateId("Tax Exempt (0%)"), description: "Interest income", is_system_account: false },
-              { code: "300", name: "Purchases", class_type: "Expense" as const, type: "Direct Costs", default_tax_rate: getTaxRateId("Tax on Purchases (8.25%)"), description: "Goods purchased with the intention of selling these to customers", is_system_account: false },
-              { code: "310", name: "Cost of Goods Sold", class_type: "Expense" as const, type: "Direct Costs", default_tax_rate: getTaxRateId("Tax on Purchases (8.25%)"), description: "Cost of goods sold by the business.", is_system_account: false },
-              { code: "400", name: "Advertising", class_type: "Expense" as const, type: "Expense", default_tax_rate: getTaxRateId("Tax on Purchases (8.25%)"), description: "Expenses incurred for advertising while trying to increase sales", is_system_account: false },
-              { code: "404", name: "Bank Fees", class_type: "Expense" as const, type: "Expense", default_tax_rate: getTaxRateId("Tax Exempt (0%)"), description: "Fees charged by your bank for transactions regarding your bank account(s).", is_system_account: false },
-              { code: "408", name: "Cleaning", class_type: "Expense" as const, type: "Expense", default_tax_rate: getTaxRateId("Tax on Purchases (8.25%)"), description: "Expenses incurred for cleaning business property.", is_system_account: false },
-              { code: "412", name: "Consulting & Accounting", class_type: "Expense" as const, type: "Expense", default_tax_rate: getTaxRateId("Tax on Purchases (8.25%)"), description: "Expenses related to paying consultants", is_system_account: false },
-              { code: "416", name: "Depreciation", class_type: "Expense" as const, type: "Depreciation", default_tax_rate: getTaxRateId("Tax Exempt (0%)"), description: "The amount of the asset's cost (based on the useful life) that was consumed during the period", is_system_account: false },
-              { code: "420", name: "Entertainment", class_type: "Expense" as const, type: "Expense", default_tax_rate: getTaxRateId("Tax Exempt (0%)"), description: "Expenses paid by company for the business but are not deductable for income tax purposes.", is_system_account: false },
-              { code: "425", name: "Freight & Courier", class_type: "Expense" as const, type: "Expense", default_tax_rate: getTaxRateId("Tax on Purchases (8.25%)"), description: "Expenses incurred on courier & freight costs", is_system_account: false },
-              { code: "429", name: "General Expenses", class_type: "Expense" as const, type: "Expense", default_tax_rate: getTaxRateId("Tax on Purchases (8.25%)"), description: "General expenses related to the running of the business.", is_system_account: false },
-              { code: "433", name: "Insurance", class_type: "Expense" as const, type: "Expense", default_tax_rate: getTaxRateId("Tax on Purchases (8.25%)"), description: "Expenses incurred for insuring the business' assets", is_system_account: false },
-              { code: "437", name: "Interest Expense", class_type: "Expense" as const, type: "Expense", default_tax_rate: getTaxRateId("Tax Exempt (0%)"), description: "Any interest expenses paid to your tax authority, business bank accounts or credit card accounts.", is_system_account: false },
-              { code: "441", name: "Legal expenses", class_type: "Expense" as const, type: "Expense", default_tax_rate: getTaxRateId("Tax on Purchases (8.25%)"), description: "Expenses incurred on any legal matters", is_system_account: false },
-              { code: "445", name: "Light, Power, Heating", class_type: "Expense" as const, type: "Expense", default_tax_rate: getTaxRateId("Tax on Purchases (8.25%)"), description: "Expenses incurred for lighting, powering or heating the premises", is_system_account: false },
-              { code: "449", name: "Motor Vehicle Expenses", class_type: "Expense" as const, type: "Expense", default_tax_rate: getTaxRateId("Tax on Purchases (8.25%)"), description: "Expenses incurred on the running of company motor vehicles", is_system_account: false },
-              { code: "453", name: "Office Expenses", class_type: "Expense" as const, type: "Expense", default_tax_rate: getTaxRateId("Tax on Purchases (8.25%)"), description: "General expenses related to the running of the business office.", is_system_account: false },
-              { code: "461", name: "Printing & Stationery", class_type: "Expense" as const, type: "Expense", default_tax_rate: getTaxRateId("Tax on Purchases (8.25%)"), description: "Expenses incurred by the entity as a result of printing and stationery", is_system_account: false },
-              { code: "469", name: "Rent", class_type: "Expense" as const, type: "Expense", default_tax_rate: getTaxRateId("Tax on Purchases (8.25%)"), description: "The payment to lease a building or area.", is_system_account: false },
-              { code: "473", name: "Repairs and Maintenance", class_type: "Expense" as const, type: "Expense", default_tax_rate: getTaxRateId("Tax on Purchases (8.25%)"), description: "Expenses incurred on a damaged or run down asset that will bring the asset back to its original condition.", is_system_account: false },
-              { code: "477", name: "Wages and Salaries", class_type: "Expense" as const, type: "Expense", default_tax_rate: getTaxRateId("Tax Exempt (0%)"), description: "Payment to employees in exchange for their resources", is_system_account: false },
-              { code: "478", name: "Superannuation", class_type: "Expense" as const, type: "Expense", default_tax_rate: getTaxRateId("Tax Exempt (0%)"), description: "Superannuation contributions", is_system_account: false },
-              { code: "485", name: "Subscriptions", class_type: "Expense" as const, type: "Expense", default_tax_rate: getTaxRateId("Tax on Purchases (8.25%)"), description: "E.g. Magazines, professional bodies", "is_system_account": false },
-              { code: "489", name: "Telephone & Internet", class_type: "Expense" as const, type: "Expense", default_tax_rate: getTaxRateId("Tax on Purchases (8.25%)"), description: "Expenditure incurred from any business-related phone calls, phone lines, or internet connections", is_system_account: false },
-              { code: "493", name: "Travel - National", class_type: "Expense" as const, type: "Expense", default_tax_rate: getTaxRateId("Tax on Purchases (8.25%)"), description: "Expenses incurred from domestic travel which has a business purpose", is_system_account: false },
-              { code: "494", name: "Travel - International", class_type: "Expense" as const, type: "Expense", default_tax_rate: getTaxRateId("Tax Exempt (0%)"), description: "Expenses incurred from international travel which has a business purpose", is_system_account: false },
-              { code: "497", name: "Bank Revaluations", class_type: "Expense" as const, type: "Expense", default_tax_rate: getTaxRateId("Tax Exempt (0%)"), description: "Bank account revaluations due for foreign exchange rate changes", is_system_account: true },
-              { code: "498", name: "Unrealised Currency Gains", class_type: "Expense" as const, type: "Expense", default_tax_rate: getTaxRateId("Tax Exempt (0%)"), description: "Unrealised currency gains on outstanding items", is_system_account: true },
-              { code: "499", name: "Realised Currency Gains", class_type: "Expense" as const, type: "Expense", default_tax_rate: getTaxRateId("Tax Exempt (0%)"), description: "Gains or losses made due to currency exchange rate changes", is_system_account: true },
-              { code: "505", name: "Income Tax Expense", class_type: "Expense" as const, type: "Expense", default_tax_rate: getTaxRateId("Tax Exempt (0%)"), description: "A percentage of total earnings paid to the government.", is_system_account: true },
-              { code: "610", name: "Accounts Receivable", class_type: "Asset" as const, type: "Current Asset", default_tax_rate: getTaxRateId("Tax Exempt (0%)"), description: "Outstanding invoices the company has issued out to the client but has not yet received in cash at balance date.", is_system_account: true },
-              { code: "620", name: "Prepayments", class_type: "Asset" as const, type: "Current Asset", default_tax_rate: getTaxRateId("Tax Exempt (0%)"), description: "An expenditure that has been paid for in advance.", is_system_account: false },
-              { code: "630", name: "Inventory", class_type: "Asset" as const, type: "Inventory", default_tax_rate: getTaxRateId("Tax Exempt (0%)"), description: "Value of tracked inventory items for resale.", is_system_account: false },
-              { code: "710", name: "Office Equipment", class_type: "Asset" as const, type: "Fixed Asset", default_tax_rate: getTaxRateId("Tax on Purchases (8.25%)"), description: "Office equipment that is owned and controlled by the business", is_system_account: false },
-              { code: "711", name: "Less Accumulated Depreciation on Office Equipment", class_type: "Asset" as const, type: "Fixed Asset", default_tax_rate: getTaxRateId("Tax Exempt (0%)"), description: "The total amount of office equipment cost that has been consumed by the entity (based on the useful life)", is_system_account: false },
-              { code: "720", name: "Computer Equipment", class_type: "Asset" as const, type: "Fixed Asset", default_tax_rate: getTaxRateId("Tax on Purchases (8.25%)"), description: "Computer equipment that is owned and controlled by the business", is_system_account: false },
-              { code: "721", name: "Less Accumulated Depreciation on Computer Equipment", class_type: "Asset" as const, type: "Fixed Asset", default_tax_rate: getTaxRateId("Tax Exempt (0%)"), description: "The total amount of computer equipment cost that has been consumed by the business (based on the useful life)", is_system_account: false },
-              { code: "800", name: "Accounts Payable", class_type: "Liability" as const, type: "Current Liability", default_tax_rate: getTaxRateId("Tax Exempt (0%)"), description: "Outstanding invoices the company has received from suppliers but has not yet paid at balance date", is_system_account: true },
-              { code: "801", name: "Unpaid Expense Claims", class_type: "Liability" as const, type: "Current Liability", default_tax_rate: getTaxRateId("Tax Exempt (0%)"), description: "Expense claims typically made by employees/shareholder employees still outstanding.", is_system_account: true },
-              { code: "820", name: "Sales Tax", class_type: "Liability" as const, type: "Current Liability", default_tax_rate: getTaxRateId("Tax Exempt (0%)"), description: "The balance in this account represents Sales Tax owing to or from your tax authority.", is_system_account: true },
-              { code: "825", name: "Employee Tax Payable", class_type: "Liability" as const, type: "Current Liability", default_tax_rate: getTaxRateId("Tax Exempt (0%)"), description: "The amount of tax that has been deducted from wages or salaries paid to employes and is due to be paid", is_system_account: false },
-              { code: "826", name: "Superannuation Payable", "class_type": "Liability" as const, type: "Current Liability", default_tax_rate: getTaxRateId("Tax Exempt (0%)"), description: "The amount of superannuation that is due to be paid", is_system_account: false },
-              { code: "830", name: "Income Tax Payable", class_type: "Liability" as const, type: "Current Liability", default_tax_rate: getTaxRateId("Tax Exempt (0%)"), description: "The amount of income tax that is due to be paid, also resident withholding tax paid on interest received.", is_system_account: false },
-              { code: "835", name: "Revenue Received in Advance", class_type: "Liability" as const, type: "Current Liability", default_tax_rate: getTaxRateId("Tax Exempt (0%)"), description: "When customers pay in advance of work/services.", is_system_account: false },
-              { code: "840", name: "Historical Adjustment", class_type: "Liability" as const, type: "Current Liability", default_tax_rate: getTaxRateId("Tax Exempt (0%)"), description: "For accountant adjustments", is_system_account: true },
-              { code: "850", name: "Suspense", class_type: "Liability" as const, type: "Current Liability", default_tax_rate: getTaxRateId("Tax Exempt (0%)"), description: "An entry that allows an unknown transaction to be entered, so the accounts can still be worked on in balance and the entry can be dealt with later.", is_system_account: false },
-              { code: "855", name: "Clearing Account", class_type: "Liability" as const, type: "Current Liability", default_tax_rate: getTaxRateId("Tax Exempt (0%)"), description: "Clearing Account", is_system_account: false },
-              { code: "860", name: "Rounding", class_type: "Liability" as const, type: "Current Liability", default_tax_rate: getTaxRateId("Tax Exempt (0%)"), description: "An adjustment entry to allow for rounding", is_system_account: true },
-              { code: "877", name: "Tracking Transfers", class_type: "Liability" as const, type: "Current Liability", default_tax_rate: getTaxRateId("Tax Exempt (0%)"), description: "Transfers between tracking categories", is_system_account: true },
-              { code: "880", name: "Owner A Drawings", class_type: "Liability" as const, type: "Current Liability", default_tax_rate: getTaxRateId("Tax Exempt (0%)"), description: "Withdrawals by the owners", is_system_account: false },
-              { code: "881", name: "Owner A Funds Introduced", class_type: "Liability" as const, type: "Current Liability", default_tax_rate: getTaxRateId("Tax Exempt (0%)"), description: "Funds contributed by the owner", is_system_account: false },
-              { code: "900", name: "Loan", class_type: "Liability" as const, type: "Non-Current Liability", default_tax_rate: getTaxRateId("Tax Exempt (0%)"), description: "Money that has been borrowed from a creditor", is_system_account: false },
-              { code: "960", name: "Retained Earnings", class_type: "Equity" as const, type: "Equity", default_tax_rate: getTaxRateId("Tax Exempt (0%)"), description: "Do not Use", is_system_account: true },
-              { code: "970", name: "Owner A Share Capital", class_type: "Equity" as const, type: "Equity", default_tax_rate: getTaxRateId("Tax Exempt (0%)"), description: "The value of shares purchased by the shareholders", is_system_account: false }
-            ]
-
-            const nextAccounts = [...accounts]
-            defaultAccounts.forEach(da => {
-              if (!nextAccounts.some(a => a.code === da.code)) {
-                nextAccounts.push({
-                  id: `mock-acc-${da.code}`,
-                  code: da.code,
-                  name: da.name,
-                  class_type: da.class_type,
-                  type: da.type,
-                  default_tax_rate: da.default_tax_rate,
-                  description: da.description,
-                  is_system_account: da.is_system_account,
-                  created_at: new Date().toISOString()
-                })
-              }
-            })
-            nextAccounts.sort((a, b) => a.code.localeCompare(b.code))
-            setAccounts(nextAccounts)
-            localStorage.setItem(`kdm_mock_accounts_${activeOrg.id}`, JSON.stringify(nextAccounts))
-            // Simulate realistic 800ms import loader
-            await new Promise(resolve => setTimeout(resolve, 800))
-            return
-          }
-
           const res = await apiService.importDefaultAccounts(activeOrg.id)
           setAccounts(res)
           
@@ -307,37 +177,12 @@ export function ChartOfAccountsTab({ activeOrg, isMockMode = false }: ChartOfAcc
 
     try {
       if (editingAccount) {
-        if (isMockMode) {
-          setAccounts(prev => prev.map(a => a.id === editingAccount.id ? { ...a, ...payload } : a))
-          setIsModalOpen(false)
-          setEditingAccount(null)
-          resetForm()
-          return
-        }
-
         const updated = await apiService.updateAccount(editingAccount.id, payload)
         setAccounts(prev => prev.map(a => a.id === editingAccount.id ? updated : a))
         setIsModalOpen(false)
         setEditingAccount(null)
         resetForm()
       } else {
-        if (isMockMode) {
-          const newAcc: Account = {
-            id: `mock-acc-${Date.now()}`,
-            code,
-            name,
-            class_type: classType,
-            type: accountType,
-            description,
-            is_system_account: false,
-            created_at: new Date().toISOString()
-          }
-          setAccounts(prev => [...prev, newAcc].sort((a, b) => a.code.localeCompare(b.code)))
-          setIsModalOpen(false)
-          resetForm()
-          return
-        }
-
         const created = await apiService.createAccount(activeOrg.id, payload)
         setAccounts(prev => [...prev, created].sort((a, b) => a.code.localeCompare(b.code)))
         setIsModalOpen(false)
@@ -361,11 +206,6 @@ export function ChartOfAccountsTab({ activeOrg, isMockMode = false }: ChartOfAcc
     if (!confirmed) return
 
     try {
-      if (isMockMode) {
-        setAccounts(prev => prev.filter(a => a.id !== accId))
-        return
-      }
-
       await apiService.deleteAccount(accId)
       setAccounts(prev => prev.filter(a => a.id !== accId))
     } catch (e: any) {
@@ -429,12 +269,8 @@ export function ChartOfAccountsTab({ activeOrg, isMockMode = false }: ChartOfAcc
 
     setLoading(true)
     try {
-      if (isMockMode) {
-        setAccounts(prev => prev.filter(a => !selectedIds.has(a.id)))
-      } else {
-        await apiService.deleteAccountsBulk(activeOrg.id, toDelete.map(a => a.id))
-        setAccounts(prev => prev.filter(a => !selectedIds.has(a.id)))
-      }
+      await apiService.deleteAccountsBulk(activeOrg.id, toDelete.map(a => a.id))
+      setAccounts(prev => prev.filter(a => !selectedIds.has(a.id)))
       setSelectedIds(new Set())
     } catch (e: any) {
       showAlert({ title: 'Bulk Deletion Failed', message: "Some accounts could not be deleted: " + e.message, type: 'error' })

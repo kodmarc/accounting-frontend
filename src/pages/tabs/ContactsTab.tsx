@@ -6,15 +6,13 @@ import { usePopup } from '../../components/PopupProvider'
 
 interface ContactsTabProps {
   activeOrg: Organization
-  isMockMode?: boolean
   initialFilter?: 'All' | 'Customer' | 'Supplier' | 'Archive'
   onViewInvoice?: (id: string) => void
   onViewBill?: (id: string) => void
 }
 
-export function ContactsTab({ 
-  activeOrg, 
-  isMockMode = false, 
+export function ContactsTab({
+  activeOrg,
   initialFilter = 'All',
   onViewInvoice,
   onViewBill
@@ -100,38 +98,15 @@ export function ContactsTab({
       let loadedBills: any[] = []
 
       // 1. Load Contacts
-      if (isMockMode) {
-        const savedContacts = localStorage.getItem(`kdm_mock_contacts_${activeOrg.id}`)
-        if (savedContacts) {
-          loadedContacts = JSON.parse(savedContacts)
-        } else {
-          loadedContacts = [
-            { id: 'mock-cont-1', name: 'Alibaba Cloud SG', email: 'billing@alibaba.com', phone: '+65 6729 0122', tax_number: 'Alice Smith', billing_address: '8 Shenton Way, Singapore 068811', contact_type: 'Supplier', created_at: '' },
-            { id: 'mock-cont-2', name: 'Saad Software Designs', email: 'saad@softwaredesigns.com', phone: '+92 300 1234567', tax_number: 'Saad Hasan', billing_address: 'DHA Phase 6, Lahore, Pakistan', contact_type: 'Both', created_at: '' }
-          ]
-          localStorage.setItem(`kdm_mock_contacts_${activeOrg.id}`, JSON.stringify(loadedContacts))
-        }
-      } else {
-        loadedContacts = await apiService.getContacts(activeOrg.id)
-      }
+      loadedContacts = await apiService.getContacts(activeOrg.id)
 
       // 2. Load Invoices
-      if (isMockMode) {
-        const savedInvoices = localStorage.getItem(`kdm_mock_invoices_${activeOrg.id}`)
-        loadedInvoices = savedInvoices ? JSON.parse(savedInvoices) : []
-      } else {
-        loadedInvoices = await apiService.getInvoices(activeOrg.id)
-      }
-
-      // 3. Load Bills (always mock)
-      const savedBills = localStorage.getItem(`kdm_mock_bills_${activeOrg.id}`)
-      loadedBills = savedBills ? JSON.parse(savedBills) : []
+      loadedInvoices = await apiService.getInvoices(activeOrg.id)
 
       setContacts(loadedContacts)
       setInvoices(loadedInvoices)
       setBills(loadedBills)
     } catch (e) {
-      console.warn("Failed to load contacts ledger data.", e)
     } finally {
       setLoading(false)
     }
@@ -140,7 +115,7 @@ export function ContactsTab({
   useEffect(() => {
     loadData()
     setSelectedIds(new Set())
-  }, [activeOrg.id, isMockMode])
+  }, [activeOrg.id])
 
   useEffect(() => {
     setSelectedIds(new Set())
@@ -244,46 +219,21 @@ export function ContactsTab({
 
     try {
       if (editingContact) {
-        let updated: Contact
-        if (isMockMode) {
-          updated = { ...editingContact, ...payload }
-          const updatedList = contacts.map(c => c.id === editingContact.id ? updated : c)
-          localStorage.setItem(`kdm_mock_contacts_${activeOrg.id}`, JSON.stringify(updatedList))
-          setContacts(updatedList)
-        } else {
-          updated = await apiService.updateContact(editingContact.id!, payload)
-          setContacts(prev => prev.map(c => c.id === editingContact.id ? updated : c))
-        }
+        const updated = await apiService.updateContact(editingContact.id!, payload)
+        setContacts(prev => prev.map(c => c.id === editingContact.id ? updated : c))
 
         // Keep details view updated in real-time
         if (viewingContact && viewingContact.id === editingContact.id) {
           setViewingContact(updated)
         }
-        
+
         setIsModalOpen(false)
         setEditingContact(null)
         resetForm()
         showAlert({ title: 'Contact Updated', message: 'Contact details saved successfully.', type: 'success' })
       } else {
-        let created: Contact
-        if (isMockMode) {
-          created = {
-            id: `mock-cont-${Date.now()}`,
-            name: businessName,
-            tax_number: contactPerson,
-            email,
-            phone,
-            billing_address: address,
-            contact_type,
-            created_at: new Date().toISOString()
-          }
-          const updated = [...contacts, created].sort((a, b) => a.name.localeCompare(b.name))
-          localStorage.setItem(`kdm_mock_contacts_${activeOrg.id}`, JSON.stringify(updated))
-          setContacts(updated)
-        } else {
-          created = await apiService.createContact(activeOrg.id, payload)
-          setContacts(prev => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)))
-        }
+        const created = await apiService.createContact(activeOrg.id, payload)
+        setContacts(prev => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)))
         setIsModalOpen(false)
         resetForm()
         showAlert({ title: 'Contact Added', message: 'New contact added successfully.', type: 'success' })
@@ -306,14 +256,8 @@ export function ContactsTab({
 
     setLoading(true)
     try {
-      if (isMockMode) {
-        const updated = contacts.filter(c => c.id !== contId)
-        localStorage.setItem(`kdm_mock_contacts_${activeOrg.id}`, JSON.stringify(updated))
-        setContacts(updated)
-      } else {
-        await apiService.deleteContact(contId)
-        setContacts(prev => prev.filter(c => c.id !== contId))
-      }
+      await apiService.deleteContact(contId)
+      setContacts(prev => prev.filter(c => c.id !== contId))
       if (viewingContact && viewingContact.id === contId) {
         setViewingContact(null)
       }
@@ -363,14 +307,8 @@ export function ContactsTab({
 
     setLoading(true)
     try {
-      if (isMockMode) {
-        const updated = contacts.filter(c => !selectedIds.has(c.id!))
-        localStorage.setItem(`kdm_mock_contacts_${activeOrg.id}`, JSON.stringify(updated))
-        setContacts(updated)
-      } else {
-        await Promise.all(list.map(id => apiService.deleteContact(id)))
-        setContacts(prev => prev.filter(c => !selectedIds.has(c.id!)))
-      }
+      await Promise.all(list.map(id => apiService.deleteContact(id)))
+      setContacts(prev => prev.filter(c => !selectedIds.has(c.id!)))
       setSelectedIds(new Set())
       showAlert({ title: 'Success', message: 'Selected contacts deleted.', type: 'success' })
     } catch (e: any) {

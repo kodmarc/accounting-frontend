@@ -5,15 +5,13 @@ import type { Organization, Invoice, Quote } from '../../services/api'
 
 interface SalesOverviewTabProps {
   activeOrg: Organization
-  isMockMode?: boolean
   setActiveTab: (tab: any) => void
   onCreateInvoiceClick: () => void
   onCreateQuoteClick: () => void
 }
 
-export function SalesOverviewTab({ 
-  activeOrg, 
-  isMockMode = false, 
+export function SalesOverviewTab({
+  activeOrg,
   setActiveTab,
   onCreateInvoiceClick,
   onCreateQuoteClick
@@ -28,20 +26,6 @@ export function SalesOverviewTab({
       setLoading(true)
       setErrorMsg(null)
       try {
-        if (isMockMode) {
-          // Load invoices from mock storage
-          const savedInvoices = localStorage.getItem(`kdm_mock_invoices_${activeOrg.id}`)
-          const savedQuotes = localStorage.getItem(`kdm_mock_quotes_${activeOrg.id}`)
-          
-          let parsedInvoices = savedInvoices ? JSON.parse(savedInvoices) : []
-          let parsedQuotes = savedQuotes ? JSON.parse(savedQuotes) : []
-          
-          setInvoices(parsedInvoices)
-          setQuotes(parsedQuotes)
-          setLoading(false)
-          return
-        }
-
         const [invoicesRes, quotesRes] = await Promise.all([
           apiService.getInvoices(activeOrg.id),
           apiService.getQuotes(activeOrg.id)
@@ -49,7 +33,6 @@ export function SalesOverviewTab({
         setInvoices(invoicesRes)
         setQuotes(quotesRes)
       } catch (err: any) {
-        console.warn("Failed to load overview transactions", err)
         setErrorMsg("Failed to load active invoice and quote records.")
       } finally {
         setLoading(false)
@@ -57,7 +40,7 @@ export function SalesOverviewTab({
     }
 
     loadOverviewData()
-  }, [activeOrg.id, isMockMode])
+  }, [activeOrg.id])
 
   const currencySymbol = activeOrg.currency === 'PKR' ? '₨' : '$'
 

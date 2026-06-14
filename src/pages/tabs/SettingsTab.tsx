@@ -21,15 +21,13 @@ import { TaxRatesTab } from './TaxRatesTab'
 
 interface SettingsTabProps {
   activeOrg: Organization
-  isMockMode?: boolean
   onOrgUpdate?: (updated: Organization) => void
   activeTab: 'SalesSettings' | 'PurchasesSettings' | 'AccountingSettings' | 'ContactsSettings'
   setActiveTab: (tab: 'SalesSettings' | 'PurchasesSettings' | 'AccountingSettings' | 'ContactsSettings') => void
 }
 
-export function SettingsTab({ 
-  activeOrg, 
-  isMockMode = false, 
+export function SettingsTab({
+  activeOrg,
   onOrgUpdate,
   activeTab,
   setActiveTab
@@ -143,42 +141,21 @@ export function SettingsTab({
         }
 
         // B. Load Sales Settings
-        if (isMockMode) {
-          const savedSales = localStorage.getItem(`kdm_mock_settings_${activeOrg.id}`)
-          if (savedSales) {
-            const parsed = JSON.parse(savedSales)
-            setInvoicePrefix(parsed.invoice_prefix || 'INV-')
-            setNextInvoiceNumber(parsed.next_invoice_number || 1)
-            setQuotePrefix(parsed.quote_prefix || 'QT-')
-            setNextQuoteNumber(parsed.next_quote_number || 1)
-            setPaymentTerms(parsed.standard_payment_terms || '15 days')
-            setDefaultFooter(parsed.default_footer || 'Thank you for your business!')
-          } else {
-            setInvoicePrefix('INV-')
-            setNextInvoiceNumber(1)
-            setQuotePrefix('QT-')
-            setNextQuoteNumber(1)
-            setPaymentTerms('15 days')
-            setDefaultFooter('Thank you for your business!')
-          }
-        } else {
-          try {
-            const settings = await apiService.getSalesSettings(activeOrg.id)
-            setInvoicePrefix(settings.invoice_prefix)
-            setNextInvoiceNumber(settings.next_invoice_number)
-            setQuotePrefix(settings.quote_prefix)
-            setNextQuoteNumber(settings.next_quote_number)
-            setPaymentTerms(settings.standard_payment_terms)
-            setDefaultFooter(settings.default_footer)
-          } catch (err) {
-            console.warn("Failed to fetch Postgres sales settings, loading fallbacks", err)
-            setInvoicePrefix('INV-')
-            setNextInvoiceNumber(1)
-            setQuotePrefix('QT-')
-            setNextQuoteNumber(1)
-            setPaymentTerms('15 days')
-            setDefaultFooter('Thank you for your business!')
-          }
+        try {
+          const settings = await apiService.getSalesSettings(activeOrg.id)
+          setInvoicePrefix(settings.invoice_prefix)
+          setNextInvoiceNumber(settings.next_invoice_number)
+          setQuotePrefix(settings.quote_prefix)
+          setNextQuoteNumber(settings.next_quote_number)
+          setPaymentTerms(settings.standard_payment_terms)
+          setDefaultFooter(settings.default_footer)
+        } catch (err) {
+          setInvoicePrefix('INV-')
+          setNextInvoiceNumber(1)
+          setQuotePrefix('QT-')
+          setNextQuoteNumber(1)
+          setPaymentTerms('15 days')
+          setDefaultFooter('Thank you for your business!')
         }
 
         // C. Load Invoice Template Customizations
@@ -197,8 +174,7 @@ export function SettingsTab({
         }
 
         // D. Load Purchases Settings
-        const savedPurchases = localStorage.getItem(`kdm_purchase_settings_${activeOrg.id}`) || 
-                               localStorage.getItem(`kdm_mock_purchase_settings_${activeOrg.id}`)
+        const savedPurchases = localStorage.getItem(`kdm_purchase_settings_${activeOrg.id}`)
         if (savedPurchases) {
           const parsed = JSON.parse(savedPurchases)
           setPoPrefix(parsed.po_prefix || 'PO-')
@@ -243,19 +219,9 @@ export function SettingsTab({
 
         // F. Fetch Tax Rates from DB
         try {
-          if (!isMockMode) {
-            const ratesList = await apiService.getTaxRates(activeOrg.id)
-            setTaxRates(ratesList)
-          } else {
-            // Mock sandbox tax rates
-            setTaxRates([
-              { id: 'tax-1', name: 'Standard GST (8%)', rate: 8.0, organization: activeOrg.id, code: 'SR-8%' },
-              { id: 'tax-2', name: 'Zero-Rated GST (0%)', rate: 0.0, organization: activeOrg.id, code: 'ZR-0%' },
-              { id: 'tax-3', name: 'Tax Exempt Ledger', rate: 0.0, organization: activeOrg.id, code: 'EX-0%' }
-            ] as any[])
-          }
+          const ratesList = await apiService.getTaxRates(activeOrg.id)
+          setTaxRates(ratesList)
         } catch (err) {
-          console.warn("Failed to load tax rates from DB", err)
           setTaxRates([
             { id: 'tax-1', name: 'Standard GST (8%)', rate: 8.0, organization: activeOrg.id, code: 'SR-8%' },
             { id: 'tax-2', name: 'Zero-Rated GST (0%)', rate: 0.0, organization: activeOrg.id, code: 'ZR-0%' }
@@ -284,7 +250,6 @@ export function SettingsTab({
         }
 
       } catch (err: any) {
-        console.error("General configurations load failure:", err)
         setErrorMsg("Failed to synchronize all settings parameters. Please reload the console.")
       } finally {
         setLoading(false)
@@ -292,7 +257,7 @@ export function SettingsTab({
     }
 
     fetchAllSettings()
-  }, [activeOrg.id, isMockMode])
+  }, [activeOrg.id])
 
   // ----------------------------------------------------
   // 3. ACTIONS & SAVE HANDLERS
@@ -316,28 +281,16 @@ export function SettingsTab({
       const extensions = { email: orgEmail, phone: orgPhone, website: orgWebsite, address: orgAddress }
       localStorage.setItem(`kdm_org_extensions_${activeOrg.id}`, JSON.stringify(extensions))
 
-      // 2. Perform DB Updates if needed
-      if (isMockMode) {
-        const updatedOrg: Organization = {
-          ...activeOrg,
-          name: orgName,
-          country: orgCountry,
-          currency: orgCurrency,
-          tax_id: orgTaxId,
-        }
-        if (onOrgUpdate) onOrgUpdate(updatedOrg)
-        setSuccessMsg("Organization details updated successfully (Offline sandbox).")
-      } else {
-        const updated = await apiService.updateOrganization(
-          activeOrg.id,
-          orgName,
-          orgCountry,
-          orgCurrency,
-          orgTaxId
-        )
-        if (onOrgUpdate) onOrgUpdate(updated)
-        setSuccessMsg("Organization details saved successfully!")
-      }
+      // 2. Perform DB Updates
+      const updated = await apiService.updateOrganization(
+        activeOrg.id,
+        orgName,
+        orgCountry,
+        orgCurrency,
+        orgTaxId
+      )
+      if (onOrgUpdate) onOrgUpdate(updated)
+      setSuccessMsg("Organization details saved successfully!")
     } catch (err: any) {
       setErrorMsg(err.message || "Failed to update organization profile.")
     } finally {
@@ -373,13 +326,8 @@ export function SettingsTab({
       localStorage.setItem(`kdm_sales_template_settings_${activeOrg.id}`, JSON.stringify(templatePayload))
 
       // 2. Save core Sales setting payload
-      if (isMockMode) {
-        localStorage.setItem(`kdm_mock_settings_${activeOrg.id}`, JSON.stringify(salesPayload))
-        setSuccessMsg("Sales and transaction settings saved successfully (Offline sandbox).")
-      } else {
-        await apiService.updateSalesSettings(activeOrg.id, salesPayload)
-        setSuccessMsg("Sales and prefix numbering parameters updated successfully!")
-      }
+      await apiService.updateSalesSettings(activeOrg.id, salesPayload)
+      setSuccessMsg("Sales and prefix numbering parameters updated successfully!")
     } catch (err: any) {
       setErrorMsg(err.message || "Failed to update sales settings.")
     } finally {
@@ -412,7 +360,6 @@ export function SettingsTab({
 
     try {
       localStorage.setItem(`kdm_purchase_settings_${activeOrg.id}`, JSON.stringify(purchasePayload))
-      localStorage.setItem(`kdm_mock_purchase_settings_${activeOrg.id}`, JSON.stringify(purchasePayload))
       localStorage.setItem(`kdm_purchase_template_settings_${activeOrg.id}`, JSON.stringify(templatePayload))
       setSuccessMsg("Purchases, numbering sequences, and dynamic template styling parameters updated successfully!")
     } catch (err: any) {
@@ -451,14 +398,8 @@ export function SettingsTab({
     setSuccessMsg(null)
 
     try {
-      if (isMockMode) {
-        // Simulate seeding delay
-        await new Promise(resolve => setTimeout(resolve, 800))
-        setSuccessMsg("Standard chart of accounts successfully seeded in mock memory! (Revenue, Assets, Equities).")
-      } else {
-        await apiService.importDefaultAccounts(activeOrg.id)
-        setSuccessMsg("Standard ledger accounts successfully seeded!")
-      }
+      await apiService.importDefaultAccounts(activeOrg.id)
+      setSuccessMsg("Standard ledger accounts successfully seeded!")
     } catch (err: any) {
       setErrorMsg(err.message || "Failed to import default double-entry accounts.")
     } finally {
@@ -545,13 +486,9 @@ export function SettingsTab({
           </p>
         </div>
         <div className="flex items-center">
-          <span className={`text-[10px] font-bold uppercase tracking-wider px-3.5 py-2 rounded-full flex items-center space-x-1.5 shadow-sm ${
-            isMockMode 
-              ? 'bg-amber-50 text-amber-600 border border-amber-100'
-              : 'bg-emerald-50 text-[#0F5B38] border border-emerald-100'
-          }`}>
+          <span className="text-[10px] font-bold uppercase tracking-wider px-3.5 py-2 rounded-full flex items-center space-x-1.5 shadow-sm bg-emerald-50 text-[#0F5B38] border border-emerald-100">
             <Shield className="h-3.5 w-3.5 shrink-0" />
-            <span>{isMockMode ? "Offline Sandbox" : "Live Server Connected"}</span>
+            <span>Live Server Connected</span>
           </span>
         </div>
       </div>
@@ -1730,7 +1667,6 @@ export function SettingsTab({
               <div className="space-y-3 pt-6 border-t border-slate-100">
                 <TaxRatesTab
                   activeOrg={activeOrg}
-                  isMockMode={isMockMode}
                 />
               </div>
 

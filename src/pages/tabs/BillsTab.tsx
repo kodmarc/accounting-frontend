@@ -6,15 +6,13 @@ import { usePopup } from '../../components/PopupProvider'
 
 interface BillsTabProps {
   activeOrg: Organization
-  isMockMode?: boolean
   setActiveTab: (tab: any) => void
   onEditBill: (id: string) => void
   onCreateNewBill: () => void
 }
 
-export function BillsTab({ 
-  activeOrg, 
-  isMockMode = false, 
+export function BillsTab({
+  activeOrg,
   setActiveTab,
   onEditBill,
   onCreateNewBill
@@ -37,17 +35,9 @@ export function BillsTab({
   const loadData = async () => {
     setLoading(true)
     try {
-      let billsList: any[] = []
-      if (isMockMode) {
-        const savedBills = localStorage.getItem(`kdm_mock_bills_${activeOrg.id}`)
-        billsList = savedBills ? JSON.parse(savedBills) : []
-      } else {
-        billsList = await apiService.getBills(activeOrg.id)
-      }
+      const billsList = await apiService.getBills(activeOrg.id)
       setBills(billsList)
-    } catch (e: any) {
-      console.warn("Failed to load bills suite", e)
-    } finally {
+    } catch { } finally {
       setLoading(false)
     }
   }
@@ -55,7 +45,7 @@ export function BillsTab({
   useEffect(() => {
     loadData()
     setSelectedIds(new Set())
-  }, [activeOrg.id, isMockMode])
+  }, [activeOrg.id])
 
   // Reset checkboxes on filter transition
   useEffect(() => {
@@ -105,16 +95,11 @@ export function BillsTab({
     })
     if (!confirmed) return
 
-    if (!isMockMode) {
-      try {
-        await Promise.all(targets.map(b => apiService.deleteBill(b.id)))
-      } catch (err: any) {
-        showAlert({ title: 'Error deleting bills', message: err.message || 'API failed to delete bills.', type: 'error' })
-        return
-      }
-    } else {
-      const remaining = bills.filter(b => !selectedIds.has(b.id))
-      localStorage.setItem(`kdm_mock_bills_${activeOrg.id}`, JSON.stringify(remaining))
+    try {
+      await Promise.all(targets.map(b => apiService.deleteBill(b.id)))
+    } catch (err: any) {
+      showAlert({ title: 'Error deleting bills', message: err.message || 'API failed to delete bills.', type: 'error' })
+      return
     }
 
     const remaining = bills.filter(b => !selectedIds.has(b.id))
@@ -130,23 +115,13 @@ export function BillsTab({
     })
     if (!confirmed) return
 
-    if (!isMockMode) {
-      try {
-        await Promise.all(
-          bills.filter(b => selectedIds.has(b.id)).map(b => apiService.updateBill(b.id, { status: 'Paid' }))
-        )
-      } catch (err: any) {
-        showAlert({ title: 'Error updating bills', message: err.message || 'API failed to update bills.', type: 'error' })
-        return
-      }
-    } else {
-      const updated = bills.map(b => {
-        if (selectedIds.has(b.id)) {
-          return { ...b, status: 'Paid' as const }
-        }
-        return b
-      })
-      localStorage.setItem(`kdm_mock_bills_${activeOrg.id}`, JSON.stringify(updated))
+    try {
+      await Promise.all(
+        bills.filter(b => selectedIds.has(b.id)).map(b => apiService.updateBill(b.id, { status: 'Paid' }))
+      )
+    } catch (err: any) {
+      showAlert({ title: 'Error updating bills', message: err.message || 'API failed to update bills.', type: 'error' })
+      return
     }
 
     const updated = bills.map(b => {
@@ -160,23 +135,13 @@ export function BillsTab({
   }
 
   const handleBulkMarkSent = async () => {
-    if (!isMockMode) {
-      try {
-        await Promise.all(
-          bills.filter(b => selectedIds.has(b.id) && b.status === 'Draft').map(b => apiService.updateBill(b.id, { status: 'Awaiting Payment' }))
-        )
-      } catch (err: any) {
-        showAlert({ title: 'Error updating bills', message: err.message || 'API failed to update bills.', type: 'error' })
-        return
-      }
-    } else {
-      const updated = bills.map(b => {
-        if (selectedIds.has(b.id) && b.status === 'Draft') {
-          return { ...b, status: 'Awaiting Payment' as const }
-        }
-        return b
-      })
-      localStorage.setItem(`kdm_mock_bills_${activeOrg.id}`, JSON.stringify(updated))
+    try {
+      await Promise.all(
+        bills.filter(b => selectedIds.has(b.id) && b.status === 'Draft').map(b => apiService.updateBill(b.id, { status: 'Awaiting Payment' }))
+      )
+    } catch (err: any) {
+      showAlert({ title: 'Error updating bills', message: err.message || 'API failed to update bills.', type: 'error' })
+      return
     }
 
     const updated = bills.map(b => {

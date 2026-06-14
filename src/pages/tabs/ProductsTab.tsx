@@ -6,10 +6,9 @@ import { usePopup } from '../../components/PopupProvider'
 
 interface ProductsTabProps {
   activeOrg: Organization
-  isMockMode?: boolean
 }
 
-export function ProductsTab({ activeOrg, isMockMode = false }: ProductsTabProps) {
+export function ProductsTab({ activeOrg }: ProductsTabProps) {
   const { showConfirm, showAlert } = usePopup()
   const [items, setItems] = useState<Item[]>([])
   const [accounts, setAccounts] = useState<Account[]>([])
@@ -52,12 +51,6 @@ export function ProductsTab({ activeOrg, isMockMode = false }: ProductsTabProps)
     setLoading(true)
     setErrorMsg(null)
     try {
-      if (isMockMode) {
-        setItems([])
-        setLoading(false)
-        return
-      }
-
       const [itemsData, accountsData, taxRatesData] = await Promise.all([
         apiService.getItems(activeOrg.id),
         apiService.getAccounts(activeOrg.id),
@@ -73,7 +66,6 @@ export function ProductsTab({ activeOrg, isMockMode = false }: ProductsTabProps)
       if (revAcc) setSalesAccountId(revAcc.id)
       if (expAcc) setPurchaseAccountId(expAcc.id)
     } catch (e: any) {
-      console.warn("Failed to load products.", e)
       setErrorMsg(e.message || "Failed to load products.")
       setItems([])
     } finally {
@@ -84,7 +76,7 @@ export function ProductsTab({ activeOrg, isMockMode = false }: ProductsTabProps)
   useEffect(() => {
     loadData()
     setSelectedIds(new Set())
-  }, [activeOrg.id, isMockMode])
+  }, [activeOrg.id])
 
   useEffect(() => {
     setSelectedIds(new Set())
@@ -133,39 +125,12 @@ export function ProductsTab({ activeOrg, isMockMode = false }: ProductsTabProps)
 
     try {
       if (editingItem) {
-        if (isMockMode) {
-          setItems(prev => prev.map(i => i.id === editingItem.id ? { ...i, ...payload } : i))
-          setIsModalOpen(false)
-          setEditingItem(null)
-          resetForm()
-          return
-        }
-
         const updated = await apiService.updateItem(editingItem.id, payload)
         setItems(prev => prev.map(i => i.id === editingItem.id ? updated : i))
         setIsModalOpen(false)
         setEditingItem(null)
         resetForm()
       } else {
-        if (isMockMode) {
-          const newItem: Item = {
-            id: `mock-item-${Date.now()}`,
-            code,
-            name,
-            is_sold: isSold,
-            sales_unit_price: parseFloat(salesUnitPrice),
-            sales_description: salesDescription,
-            is_purchased: isPurchased,
-            purchase_unit_cost: parseFloat(purchaseUnitCost),
-            purchase_description: purchaseDescription,
-            created_at: new Date().toISOString()
-          }
-          setItems(prev => [...prev, newItem])
-          setIsModalOpen(false)
-          resetForm()
-          return
-        }
-
         const created = await apiService.createItem(activeOrg.id, payload)
         setItems(prev => [...prev, created])
         setIsModalOpen(false)
@@ -188,11 +153,6 @@ export function ProductsTab({ activeOrg, isMockMode = false }: ProductsTabProps)
     if (!confirmed) return
  
     try {
-      if (isMockMode) {
-        setItems(prev => prev.filter(i => i.id !== itemId))
-        return
-      }
- 
       await apiService.deleteItem(itemId)
       setItems(prev => prev.filter(i => i.id !== itemId))
     } catch (e: any) {
@@ -315,12 +275,8 @@ export function ProductsTab({ activeOrg, isMockMode = false }: ProductsTabProps)
  
     setLoading(true)
     try {
-      if (isMockMode) {
-        setItems(prev => prev.filter(i => !selectedIds.has(i.id!)))
-      } else {
-        await Promise.all(list.map(id => apiService.deleteItem(id)))
-        setItems(prev => prev.filter(i => !selectedIds.has(i.id!)))
-      }
+      await Promise.all(list.map(id => apiService.deleteItem(id)))
+      setItems(prev => prev.filter(i => !selectedIds.has(i.id!)))
       setSelectedIds(new Set())
     } catch (e: any) {
       showAlert({ title: 'Bulk Deletion Failed', message: "Failed to delete items: " + e.message, type: 'error' })
@@ -356,23 +312,14 @@ export function ProductsTab({ activeOrg, isMockMode = false }: ProductsTabProps)
 
     setLoading(true)
     try {
-      if (isMockMode) {
-        setItems(prev => prev.map(i => {
-          if (selectedIds.has(i.id!)) {
-            return { ...i, [property]: true }
-          }
-          return i
-        }))
-      } else {
-        await Promise.all(selectedItems.map(i => {
-          if (!i[property]) {
-            return apiService.updateItem(i.id!, { [property]: true })
-          }
-          return Promise.resolve(i)
-        }))
-        const itemsData = await apiService.getItems(activeOrg.id)
-        setItems(itemsData)
-      }
+      await Promise.all(selectedItems.map(i => {
+        if (!i[property]) {
+          return apiService.updateItem(i.id!, { [property]: true })
+        }
+        return Promise.resolve(i)
+      }))
+      const itemsData = await apiService.getItems(activeOrg.id)
+      setItems(itemsData)
       showAlert({ title: 'Properties Updated', message: `Updated selected item(s) to be ${property === 'is_sold' ? 'sellable' : 'purchasable'}.`, type: 'success' })
       setSelectedIds(new Set())
     } catch (e: any) {

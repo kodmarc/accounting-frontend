@@ -11,7 +11,6 @@ import { XeroDatePicker } from '../../components/XeroDatePicker'
 
 interface CreateInvoiceTabProps {
   activeOrg: Organization
-  isMockMode?: boolean
   setActiveTab: (tab: any) => void
   editingInvoiceId?: string | null
   setEditingInvoiceId?: (id: string | null) => void
@@ -19,7 +18,6 @@ interface CreateInvoiceTabProps {
 
 export function CreateInvoiceTab({
   activeOrg,
-  isMockMode = false,
   setActiveTab,
   editingInvoiceId = null,
   setEditingInvoiceId
@@ -157,83 +155,22 @@ export function CreateInvoiceTab({
       let loadedSettings: SalesSetting | null = null
       let loadedProjects: Project[] = []
 
-      if (isMockMode) {
-        // Load mock contacts/accounts/taxRates/catalog if offline
-        const mockContacts: Contact[] = [
-          { id: 'mock-c-1', name: 'Alibaba Cloud SG', email: 'billing@alibaba.com', phone: '+65 6729 0122', tax_number: 'VAT-9021', billing_address: '8 Shenton Way, Singapore 068811', default_sales_account: null, default_purchase_account: null, contact_type: 'Customer', created_at: '' },
-          { id: 'mock-c-2', name: 'Saad Software Designs', email: 'saad@softwaredesigns.com', phone: '+92 300 1234567', tax_number: 'NTN-49102', billing_address: 'DHA Phase 6, Lahore, Pakistan', default_sales_account: null, default_purchase_account: null, contact_type: 'Customer', created_at: '' }
-        ]
-        const mockAccounts: Account[] = [
-          { id: 'mock-a-1', code: '200', name: 'Sales Revenue', class_type: 'Revenue', type: 'Sales', default_tax_rate: null, description: 'Direct sales revenue ledger', is_system_account: false, created_at: '' },
-          { id: 'mock-a-2', code: '210', name: 'Consulting Income', class_type: 'Revenue', type: 'Sales', default_tax_rate: null, description: 'Consulting hours fees', is_system_account: false, created_at: '' }
-        ]
-        const mockTaxRates: TaxRate[] = [
-          { id: 'mock-t-1', name: 'SG GST 9%', rate: 9.0, is_active: true, created_at: '' },
-          { id: 'mock-t-2', name: 'Tax Exempt', rate: 0.0, is_active: true, created_at: '' }
-        ]
-        const mockCatalog: Item[] = [
-          { id: 'mock-i-1', code: 'PROD-DEV', name: 'Custom Software Development', is_sold: true, sales_unit_price: 150.00, sales_account: 'mock-a-1', sales_tax_rate: 'mock-t-1', sales_description: 'Full-stack software engineering consultation hourly rate', is_purchased: false, purchase_unit_cost: 0, purchase_account: null, purchase_tax_rate: null, purchase_description: '', created_at: '' },
-          { id: 'mock-i-2', code: 'HOST-CLOUD', name: 'Cloud Hosting Subscription', is_sold: true, sales_unit_price: 49.00, sales_account: 'mock-a-1', sales_tax_rate: 'mock-t-1', sales_description: 'Monthly cloud virtual machine container resource allocations', is_purchased: false, purchase_unit_cost: 0, purchase_account: null, purchase_tax_rate: null, purchase_description: '', created_at: '' }
-        ]
+      // API Database fetches
+      const [contactList, itemList, accList, taxList, settingData, projList] = await Promise.all([
+        apiService.getContacts(activeOrg.id),
+        apiService.getItems(activeOrg.id),
+        apiService.getAccounts(activeOrg.id),
+        apiService.getTaxRates(activeOrg.id),
+        apiService.getSalesSettings(activeOrg.id),
+        apiService.getProjects(activeOrg.id)
+      ])
 
-        const savedContacts = localStorage.getItem(`kdm_mock_contacts_${activeOrg.id}`)
-        if (savedContacts) {
-          loadedContacts = JSON.parse(savedContacts)
-        } else {
-          loadedContacts = mockContacts
-          localStorage.setItem(`kdm_mock_contacts_${activeOrg.id}`, JSON.stringify(mockContacts))
-        }
-
-        const savedCatalog = localStorage.getItem(`kdm_mock_catalog_${activeOrg.id}`)
-        if (savedCatalog) {
-          loadedCatalog = JSON.parse(savedCatalog)
-        } else {
-          loadedCatalog = mockCatalog
-          localStorage.setItem(`kdm_mock_catalog_${activeOrg.id}`, JSON.stringify(mockCatalog))
-        }
-
-        loadedAccounts = mockAccounts
-        loadedTaxRates = mockTaxRates
-
-        const savedSettings = localStorage.getItem(`kdm_mock_settings_${activeOrg.id}`)
-        loadedSettings = savedSettings ? JSON.parse(savedSettings) : {
-          invoice_prefix: 'INV-',
-          next_invoice_number: 1001,
-          quote_prefix: 'QT-',
-          next_quote_number: 1001,
-          standard_payment_terms: '15 days',
-          default_footer: 'Thank you for your business!'
-        }
-
-        const savedProjects = localStorage.getItem(`kdm_mock_projects_${activeOrg.id}`)
-        if (savedProjects) {
-          loadedProjects = JSON.parse(savedProjects)
-        } else {
-          loadedProjects = [
-            { id: 'mock-p-1', name: 'Internal Operations', code: 'INT-OPS' },
-            { id: 'mock-p-2', name: 'Corporate Expansion', code: 'CORP-EXP' },
-            { id: 'mock-p-3', name: 'Client Consultation', code: 'CLIENT-CONS' }
-          ]
-          localStorage.setItem(`kdm_mock_projects_${activeOrg.id}`, JSON.stringify(loadedProjects))
-        }
-      } else {
-        // API Database fetches
-        const [contactList, itemList, accList, taxList, settingData, projList] = await Promise.all([
-          apiService.getContacts(activeOrg.id),
-          apiService.getItems(activeOrg.id),
-          apiService.getAccounts(activeOrg.id),
-          apiService.getTaxRates(activeOrg.id),
-          apiService.getSalesSettings(activeOrg.id),
-          apiService.getProjects(activeOrg.id)
-        ])
-
-        loadedContacts = contactList.filter(c => c.contact_type === 'Customer' || c.contact_type === 'Both')
-        loadedCatalog = itemList.filter(i => i.is_sold)
-        loadedAccounts = accList
-        loadedTaxRates = taxList
-        loadedSettings = settingData
-        loadedProjects = projList
-      }
+      loadedContacts = contactList.filter(c => c.contact_type === 'Customer' || c.contact_type === 'Both')
+      loadedCatalog = itemList.filter(i => i.is_sold)
+      loadedAccounts = accList
+      loadedTaxRates = taxList
+      loadedSettings = settingData
+      loadedProjects = projList
 
       setContacts(loadedContacts)
       setCatalogItems(loadedCatalog)
@@ -242,28 +179,7 @@ export function CreateInvoiceTab({
       setSalesSetting(loadedSettings)
       setProjects(loadedProjects)
 
-      let loadedBanks: Account[] = []
-      if (isMockMode) {
-        const saved = localStorage.getItem(`kdm_bank_accounts_${activeOrg.id}`)
-        loadedBanks = saved ? JSON.parse(saved) : []
-        if (loadedBanks.length === 0) {
-          loadedBanks = [
-            {
-              id: 'bank-090',
-              code: '090',
-              name: 'ANZ Business Account',
-              class_type: 'Asset',
-              type: 'Bank',
-              description: 'ANZ Business Daily Transaction Account',
-              is_system_account: true,
-              created_at: new Date().toISOString()
-            }
-          ]
-          localStorage.setItem(`kdm_bank_accounts_${activeOrg.id}`, JSON.stringify(loadedBanks))
-        }
-      } else {
-        loadedBanks = loadedAccounts.filter(a => a.type === 'Bank')
-      }
+      const loadedBanks: Account[] = loadedAccounts.filter(a => a.type === 'Bank')
       setBankAccounts(loadedBanks)
       if (loadedBanks.length > 0) {
         setSinglePaymentAccountId(loadedBanks[0].id)
@@ -275,22 +191,16 @@ export function CreateInvoiceTab({
           setInvoiceDbId(null)
           const quoteId = editingInvoiceId.replace('convert-quote-', '')
           let sourceQuote: Quote | null = null
-          if (isMockMode) {
-            const savedQuotes = localStorage.getItem(`kdm_mock_quotes_${activeOrg.id}`)
-            const list = savedQuotes ? JSON.parse(savedQuotes) : []
-            sourceQuote = list.find((q: Quote) => q.quote_number === quoteId || q.id === quoteId) || null
-          } else {
-            try {
-              const allQuotes = await apiService.getQuotes(activeOrg.id)
-              const matched = allQuotes.find(q => q.quote_number === quoteId || q.id === quoteId)
-              if (matched && matched.id) {
-                sourceQuote = await apiService.getQuote(matched.id)
-              } else {
-                sourceQuote = await apiService.getQuote(quoteId)
-              }
-            } catch {
+          try {
+            const allQuotes = await apiService.getQuotes(activeOrg.id)
+            const matched = allQuotes.find(q => q.quote_number === quoteId || q.id === quoteId)
+            if (matched && matched.id) {
+              sourceQuote = await apiService.getQuote(matched.id)
+            } else {
               sourceQuote = await apiService.getQuote(quoteId)
             }
+          } catch {
+            sourceQuote = await apiService.getQuote(quoteId)
           }
 
           if (sourceQuote) {
@@ -339,22 +249,16 @@ export function CreateInvoiceTab({
         } else {
           // STANDARD EDIT MODE: Load existing invoice details
           let targetInvoice: Invoice | null = null
-          if (isMockMode) {
-            const savedInvs = localStorage.getItem(`kdm_mock_invoices_${activeOrg.id}`)
-            const list = savedInvs ? JSON.parse(savedInvs) : []
-            targetInvoice = list.find((i: Invoice) => i.invoice_number === editingInvoiceId || i.id === editingInvoiceId) || null
-          } else {
-            try {
-              const allInvoices = await apiService.getInvoices(activeOrg.id)
-              const matched = allInvoices.find(i => i.invoice_number === editingInvoiceId || i.id === editingInvoiceId)
-              if (matched && matched.id) {
-                targetInvoice = await apiService.getInvoice(matched.id)
-              } else {
-                targetInvoice = await apiService.getInvoice(editingInvoiceId)
-              }
-            } catch {
+          try {
+            const allInvoices = await apiService.getInvoices(activeOrg.id)
+            const matched = allInvoices.find(i => i.invoice_number === editingInvoiceId || i.id === editingInvoiceId)
+            if (matched && matched.id) {
+              targetInvoice = await apiService.getInvoice(matched.id)
+            } else {
               targetInvoice = await apiService.getInvoice(editingInvoiceId)
             }
+          } catch {
+            targetInvoice = await apiService.getInvoice(editingInvoiceId)
           }
 
           if (targetInvoice) {
@@ -399,7 +303,6 @@ export function CreateInvoiceTab({
         setAttachmentFile(null)
       }
     } catch (e: any) {
-      console.warn("Failed to load dependencies or invoice", e)
       setErrorMsg(e.message || "Failed to load active ledger catalogs.")
     } finally {
       setLoading(false)
@@ -408,7 +311,7 @@ export function CreateInvoiceTab({
 
   useEffect(() => {
     loadData()
-  }, [activeOrg.id, isMockMode, editingInvoiceId])
+  }, [activeOrg.id, editingInvoiceId])
 
   // Generator for Invoice Numbers for new invoices only
   useEffect(() => {
@@ -503,36 +406,16 @@ export function CreateInvoiceTab({
 
     setIsSubmitting(true)
     try {
-      let createdContact: Contact
-
-      if (isMockMode) {
-        createdContact = {
-          id: `mock-c-${Date.now()}`,
-          name: quickContactName.trim(),
-          email: quickContactEmail.trim() || '',
-          phone: quickContactPhone.trim() || '',
-          tax_number: quickContactTaxNumber.trim() || '',
-          billing_address: quickContactAddress.trim() || '',
-          default_sales_account: null,
-          default_purchase_account: null,
-          contact_type: 'Customer',
-          created_at: new Date().toISOString()
-        }
-        const updatedContacts = [...contacts, createdContact]
-        setContacts(updatedContacts)
-        localStorage.setItem(`kdm_mock_contacts_${activeOrg.id}`, JSON.stringify(updatedContacts))
-      } else {
-        const payload: Partial<Contact> = {
-          name: quickContactName.trim(),
-          email: quickContactEmail.trim() || undefined,
-          phone: quickContactPhone.trim() || undefined,
-          tax_number: quickContactTaxNumber.trim() || undefined,
-          billing_address: quickContactAddress.trim() || undefined,
-          contact_type: 'Customer'
-        }
-        createdContact = await apiService.createContact(activeOrg.id, payload)
-        setContacts(prev => [...prev, createdContact])
+      const payload: Partial<Contact> = {
+        name: quickContactName.trim(),
+        email: quickContactEmail.trim() || undefined,
+        phone: quickContactPhone.trim() || undefined,
+        tax_number: quickContactTaxNumber.trim() || undefined,
+        billing_address: quickContactAddress.trim() || undefined,
+        contact_type: 'Customer'
       }
+      const createdContact = await apiService.createContact(activeOrg.id, payload)
+      setContacts(prev => [...prev, createdContact])
 
       setSelectedContactId(createdContact.id)
       setShowQuickContactModal(false)
@@ -559,42 +442,18 @@ export function CreateInvoiceTab({
 
     setIsSubmitting(true)
     try {
-      let createdItem: Item
-
-      if (isMockMode) {
-        createdItem = {
-          id: `mock-i-${Date.now()}`,
-          code: quickItemCode.trim().toUpperCase(),
-          name: quickItemName.trim(),
-          is_sold: true,
-          sales_unit_price: parseFloat(quickItemPrice) || 0,
-          sales_account: quickItemAccountId || null,
-          sales_tax_rate: quickItemTaxRateId || null,
-          sales_description: quickItemDescription.trim() || quickItemName.trim(),
-          is_purchased: false,
-          purchase_unit_cost: 0,
-          purchase_account: null,
-          purchase_tax_rate: null,
-          purchase_description: '',
-          created_at: new Date().toISOString()
-        }
-        const updatedCatalog = [...catalogItems, createdItem]
-        setCatalogItems(updatedCatalog)
-        localStorage.setItem(`kdm_mock_catalog_${activeOrg.id}`, JSON.stringify(updatedCatalog))
-      } else {
-        const payload: Partial<Item> = {
-          code: quickItemCode.trim().toUpperCase(),
-          name: quickItemName.trim(),
-          is_sold: true,
-          sales_unit_price: parseFloat(quickItemPrice) || 0,
-          sales_account: quickItemAccountId || undefined,
-          sales_tax_rate: quickItemTaxRateId || undefined,
-          sales_description: quickItemDescription.trim() || quickItemName.trim(),
-          is_purchased: false
-        }
-        createdItem = await apiService.createItem(activeOrg.id, payload)
-        setCatalogItems(prev => [...prev, createdItem])
+      const payload: Partial<Item> = {
+        code: quickItemCode.trim().toUpperCase(),
+        name: quickItemName.trim(),
+        is_sold: true,
+        sales_unit_price: parseFloat(quickItemPrice) || 0,
+        sales_account: quickItemAccountId || undefined,
+        sales_tax_rate: quickItemTaxRateId || undefined,
+        sales_description: quickItemDescription.trim() || quickItemName.trim(),
+        is_purchased: false
       }
+      const createdItem = await apiService.createItem(activeOrg.id, payload)
+      setCatalogItems(prev => [...prev, createdItem])
 
       if (quickItemLineIndex !== null) {
         const updated = [...lines]
@@ -864,39 +723,6 @@ export function CreateInvoiceTab({
 
       if (isEdit) {
         const resolvedId = invoiceDbId || editingInvoiceId
-        if (isMockMode) {
-          const contactObj = contacts.find(c => c.id === selectedContactId)
-          const savedInvs = localStorage.getItem(`kdm_mock_invoices_${activeOrg.id}`)
-          const list = savedInvs ? JSON.parse(savedInvs) : []
-
-          const updatedList = list.map((inv: Invoice) => {
-            if (inv.id === resolvedId || inv.invoice_number === editingInvoiceId) {
-              return {
-                ...inv,
-                ...payload,
-                contact_name: contactObj ? contactObj.name : inv.contact_name,
-                lines: postLines.map((pl, idx) => ({ ...pl, id: `mock-inv-l-${idx}-${Date.now()}` }))
-              }
-            }
-            return inv
-          })
-
-          localStorage.setItem(`kdm_mock_invoices_${activeOrg.id}`, JSON.stringify(updatedList))
-          localStorage.setItem(`kdm_invoice_notes_${editingInvoiceId}`, notes)
-          localStorage.setItem(`kdm_invoice_attachment_${editingInvoiceId}`, attachmentName)
-          if (!silent) {
-            showAlert({ title: 'Invoice Updated', message: 'The invoice has been updated successfully.', type: 'success' })
-            if (isEmailing) {
-              setInvoiceDbId(resolvedId || null)
-              setIsEmailModalOpen(true)
-            } else {
-              if (setEditingInvoiceId) setEditingInvoiceId(null)
-              setActiveTab('Invoices')
-            }
-          }
-          return resolvedId
-        }
-
         await apiService.updateInvoice(resolvedId!, payload)
         localStorage.setItem(`kdm_invoice_notes_${editingInvoiceId}`, notes)
         localStorage.setItem(`kdm_invoice_attachment_${editingInvoiceId}`, attachmentName)
@@ -915,60 +741,6 @@ export function CreateInvoiceTab({
       }
 
       // Create new invoice (either blank or quote converted)
-      if (isMockMode) {
-        const contactObj = contacts.find(c => c.id === selectedContactId)
-        const mockCreated: Invoice = {
-          id: `mock-inv-${Date.now()}`,
-          contact: selectedContactId,
-          contact_name: contactObj ? contactObj.name : "Mock Customer",
-          invoice_number: invoiceNumber,
-          reference,
-          date,
-          due_date: dueDate,
-          status: finalStatus,
-          currency,
-          tax_type: taxType,
-          project: selectedProjectId || null,
-          subtotal: getSubtotal(),
-          tax_total: getTaxTotal(),
-          total: getGrandTotal(),
-          lines: postLines.map((pl, idx) => ({
-            ...pl,
-            id: `mock-inv-l-${idx}-${Date.now()}`
-          })) as any,
-          created_at: new Date().toISOString()
-        }
-
-        const savedInvs = localStorage.getItem(`kdm_mock_invoices_${activeOrg.id}`)
-        const invoicesList = savedInvs ? JSON.parse(savedInvs) : []
-        const newInvs = [mockCreated, ...invoicesList]
-        localStorage.setItem(`kdm_mock_invoices_${activeOrg.id}`, JSON.stringify(newInvs))
-        localStorage.setItem(`kdm_invoice_notes_${mockCreated.id}`, notes)
-        localStorage.setItem(`kdm_invoice_attachment_${mockCreated.id}`, attachmentName)
-
-        if (salesSetting) {
-          const updatedSetting = {
-            ...salesSetting,
-            next_invoice_number: salesSetting.next_invoice_number + 1
-          }
-          localStorage.setItem(`kdm_mock_settings_${activeOrg.id}`, JSON.stringify(updatedSetting))
-        }
-
-        if (!silent) {
-          showAlert({ title: 'Invoice Created', message: `Invoice ${invoiceNumber} has been created successfully.`, type: 'success' })
-          if (isEmailing) {
-            setInvoiceDbId(mockCreated.id || null)
-            setIsEmailModalOpen(true)
-          } else {
-            if (setEditingInvoiceId) setEditingInvoiceId(null)
-            setActiveTab('Invoices')
-          }
-        } else {
-          setInvoiceDbId(mockCreated.id || null)
-        }
-        return mockCreated.id || null
-      }
-
       const created = await apiService.createInvoice(activeOrg.id, payload)
       if (created && created.id) {
         localStorage.setItem(`kdm_invoice_notes_${created.id}`, notes)
@@ -1000,14 +772,6 @@ export function CreateInvoiceTab({
 
   // Download invoice as a premium PDF file
   const handlePrintPDF = async () => {
-    if (isMockMode) {
-      // Sandbox fallback: print screen cleanly
-      document.body.classList.add('pdf-mode')
-      window.print()
-      document.body.classList.remove('pdf-mode')
-      return
-    }
-
     const resolvedId = invoiceDbId || editingInvoiceId
     if (!resolvedId) {
       showAlert({ title: 'Download Error', message: 'Please save the invoice first before downloading.', type: 'error' })
@@ -1083,14 +847,7 @@ export function CreateInvoiceTab({
     setIsSubmitting(true)
     try {
       const resolvedId = invoiceDbId || editingInvoiceId
-      if (isMockMode) {
-        const savedInvs = localStorage.getItem(`kdm_mock_invoices_${activeOrg.id}`)
-        const list = savedInvs ? JSON.parse(savedInvs) : []
-        const updatedList = list.filter((i: Invoice) => i.id !== resolvedId && i.invoice_number !== editingInvoiceId)
-        localStorage.setItem(`kdm_mock_invoices_${activeOrg.id}`, JSON.stringify(updatedList))
-      } else {
-        await apiService.deleteInvoice(resolvedId!)
-      }
+      await apiService.deleteInvoice(resolvedId!)
 
       if (setEditingInvoiceId) setEditingInvoiceId(null)
       setActiveTab('Invoices')
@@ -1107,21 +864,6 @@ export function CreateInvoiceTab({
     setIsSubmitting(true)
     try {
       const resolvedId = invoiceDbId || editingInvoiceId
-      if (isMockMode) {
-        const savedInvs = localStorage.getItem(`kdm_mock_invoices_${activeOrg.id}`)
-        const list = savedInvs ? JSON.parse(savedInvs) : []
-        const updatedList = list.map((i: Invoice) => {
-          if (i.id === resolvedId || i.invoice_number === editingInvoiceId) {
-            return { ...i, status: newStatus }
-          }
-          return i
-        })
-        localStorage.setItem(`kdm_mock_invoices_${activeOrg.id}`, JSON.stringify(updatedList))
-        setStatus(newStatus)
-        setIsMoreDropdownOpen(false)
-        return
-      }
-
       await apiService.updateInvoice(resolvedId, { status: newStatus })
       setStatus(newStatus)
       setIsMoreDropdownOpen(false)
@@ -1164,60 +906,8 @@ export function CreateInvoiceTab({
 
     setIsSubmitting(true);
     try {
-      const balanceKey = `kdm_bank_balances_${activeOrg.id}`;
-      const savedBalances = localStorage.getItem(balanceKey);
-      const balances = savedBalances ? JSON.parse(savedBalances) : {
-        'mock-bank-090': 0.00,
-        'bank-090': 0.00
-      };
-
-      payments.forEach(p => {
-        if (balances[p.accountId] === undefined) {
-          balances[p.accountId] = p.accountId.includes('090') ? 0.00 : 0.00;
-        }
-        balances[p.accountId] = parseFloat((balances[p.accountId] + p.amount).toFixed(2));
-      });
-      localStorage.setItem(balanceKey, JSON.stringify(balances));
-
-      const txKey = `kdm_bank_transactions_${activeOrg.id}`;
-      const savedTx = localStorage.getItem(txKey);
-      const transactions = savedTx ? JSON.parse(savedTx) : [];
-
-      const contactObj = contacts.find(c => c.id === selectedContactId);
-      const contactName = contactObj ? contactObj.name : "Customer";
-
-      payments.forEach(p => {
-        const bankAcc = bankAccounts.find(b => b.id === p.accountId);
-        const newTx = {
-          id: `tx-${Date.now()}-${Math.random()}`,
-          accountId: p.accountId,
-          accountName: bankAcc?.name || 'Bank Account',
-          date: paymentDate,
-          description: `Payment received for Invoice ${invoiceNumber}. Contact: ${contactName}`,
-          amount: p.amount,
-          reference: reference || invoiceNumber
-        };
-        transactions.unshift(newTx);
-      });
-      localStorage.setItem(txKey, JSON.stringify(transactions));
-
       const resolvedId = invoiceDbId || editingInvoiceId;
-      if (isMockMode) {
-        const savedInvs = localStorage.getItem(`kdm_mock_invoices_${activeOrg.id}`);
-        const list = savedInvs ? JSON.parse(savedInvs) : [];
-        const updatedList = list.map((inv: Invoice) => {
-          if (inv.id === resolvedId || inv.invoice_number === editingInvoiceId) {
-            return {
-              ...inv,
-              status: 'Paid' as const
-            };
-          }
-          return inv;
-        });
-        localStorage.setItem(`kdm_mock_invoices_${activeOrg.id}`, JSON.stringify(updatedList));
-      } else {
-        await apiService.updateInvoice(resolvedId!, { status: 'Paid' });
-      }
+      await apiService.updateInvoice(resolvedId!, { status: 'Paid' });
 
       setStatus('Paid');
       setIsPaymentModalOpen(false);
@@ -1265,24 +955,11 @@ export function CreateInvoiceTab({
   const handleCreateProject = async () => {
     if (!newProjectName.trim()) return
     try {
-      let created: Project
-      if (isMockMode) {
-        created = {
-          id: `mock-p-${Date.now()}`,
-          name: newProjectName.trim(),
-          code: newProjectCode.trim() || undefined,
-          created_at: new Date().toISOString()
-        }
-        const updated = [...projects, created]
-        localStorage.setItem(`kdm_mock_projects_${activeOrg.id}`, JSON.stringify(updated))
-        setProjects(updated)
-      } else {
-        created = await apiService.createProject(activeOrg.id, {
-          name: newProjectName.trim(),
-          code: newProjectCode.trim() || undefined
-        })
-        setProjects([...projects, created])
-      }
+      const created = await apiService.createProject(activeOrg.id, {
+        name: newProjectName.trim(),
+        code: newProjectCode.trim() || undefined
+      })
+      setProjects([...projects, created])
       setSelectedProjectId(created.id)
       setNewProjectName('')
       setNewProjectCode('')
@@ -2709,17 +2386,6 @@ export function CreateInvoiceTab({
             }
           }
 
-          if (isMockMode) {
-            await new Promise(resolve => setTimeout(resolve, 1000))
-            showAlert({
-              title: needsApproval ? 'Approved & Emailed (Sandbox)' : 'Email Sent (Sandbox)',
-              message: `Simulated emailing invoice to ${to}. Check backend console/logs.`,
-              type: 'success'
-            })
-            if (setEditingInvoiceId) setEditingInvoiceId(null)
-            setActiveTab('Invoices')
-            return
-          }
           const payload = {
             to,
             subject,

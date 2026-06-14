@@ -9,7 +9,6 @@ import { XeroDatePicker } from '../../components/XeroDatePicker'
 interface CreateSpendReceiveMoneyProps {
   type: 'Spend' | 'Receive'
   activeOrg: Organization
-  isMockMode?: boolean
   setActiveTab: (tab: any) => void
 }
 
@@ -26,7 +25,6 @@ interface LineFormItem {
 export function CreateSpendReceiveMoney({
   type,
   activeOrg,
-  isMockMode = false,
   setActiveTab
 }: CreateSpendReceiveMoneyProps) {
   const { showAlert } = usePopup()
@@ -64,51 +62,17 @@ export function CreateSpendReceiveMoney({
       let loadedTaxRates: TaxRate[] = []
       let loadedCatalog: Item[] = []
 
-      if (isMockMode) {
-        // Mock banks fallback
-        loadedBanks = [
-          { id: 'mock-bank-090', code: '090', name: 'ANZ Business Account', class_type: 'Asset', type: 'Bank', description: 'Primary business operating checking account', is_system_account: true, created_at: '', default_tax_rate: null },
-          { id: 'mock-bank-092', code: '092', name: 'ANZ Savings Account', class_type: 'Asset', type: 'Bank', description: 'Corporate reserve savings account', is_system_account: false, created_at: '', default_tax_rate: null }
-        ]
-        const savedCustomBanks = localStorage.getItem(`kdm_mock_custom_banks_${activeOrg.id}`)
-        if (savedCustomBanks) {
-          loadedBanks = [...loadedBanks, ...JSON.parse(savedCustomBanks)]
-        }
-
-        const savedContacts = localStorage.getItem(`kdm_mock_contacts_${activeOrg.id}`)
-        loadedContacts = savedContacts ? JSON.parse(savedContacts) : [
-          { id: 'mock-c-1', name: 'Alibaba Cloud SG', email: 'billing@alibaba.com', phone: '+65 6729 0122', tax_number: 'VAT-9021', billing_address: 'Singapore', contact_type: 'Both', created_at: '' }
-        ]
-
-        loadedAccounts = [
-          { id: 'mock-a-1', code: '300', name: 'Cost of Goods Sold', class_type: 'Expense', type: 'Direct Costs', default_tax_rate: null, description: 'Inventory cost allocations', is_system_account: false, created_at: '' },
-          { id: 'mock-a-2', code: '400', name: 'Software Licensing', class_type: 'Expense', type: 'Expense', default_tax_rate: null, description: 'SaaS subscriptions', is_system_account: false, created_at: '' },
-          { id: 'mock-a-3', code: '200', name: 'Sales Revenue', class_type: 'Revenue', type: 'Sales', default_tax_rate: null, description: 'Direct sales revenue ledger', is_system_account: false, created_at: '' }
-        ]
-
-        loadedTaxRates = [
-          { id: 'mock-t-1', name: 'SG GST 9%', rate: 9.0, is_active: true, created_at: '' },
-          { id: 'mock-t-2', name: 'Tax Exempt', rate: 0.0, is_active: true, created_at: '' }
-        ]
-
-        const savedCatalog = localStorage.getItem(`kdm_mock_catalog_${activeOrg.id}`)
-        const fullCatalog = savedCatalog ? JSON.parse(savedCatalog) : [
-          { id: 'mock-i-1', code: 'CLOUD-LIC', name: 'Cloud Hosting Monthly Server', is_sold: true, sales_unit_price: 150.00, sales_account: 'mock-a-3', sales_tax_rate: 'mock-t-1', sales_description: 'Monthly cloud hosting server fees', is_purchased: true, purchase_unit_cost: 150.00, purchase_account: 'mock-a-2', purchase_tax_rate: 'mock-t-1', purchase_description: 'Monthly cloud virtual machine container resource allocations', created_at: '' }
-        ]
-        loadedCatalog = fullCatalog.filter((i: any) => type === 'Spend' ? i.is_purchased : i.is_sold)
-      } else {
-        const [allAccounts, allContacts, allTaxRates, allItems] = await Promise.all([
-          apiService.getAccounts(activeOrg.id),
-          apiService.getContacts(activeOrg.id),
-          apiService.getTaxRates(activeOrg.id),
-          apiService.getItems(activeOrg.id)
-        ])
-        loadedBanks = allAccounts.filter(a => a.type === 'Bank' || a.class_type === 'Asset' && a.code === '090')
-        loadedContacts = allContacts
-        loadedAccounts = allAccounts
-        loadedTaxRates = allTaxRates
-        loadedCatalog = allItems.filter((i: Item) => type === 'Spend' ? i.is_purchased : i.is_sold)
-      }
+      const [allAccounts, allContacts, allTaxRates, allItems] = await Promise.all([
+        apiService.getAccounts(activeOrg.id),
+        apiService.getContacts(activeOrg.id),
+        apiService.getTaxRates(activeOrg.id),
+        apiService.getItems(activeOrg.id)
+      ])
+      loadedBanks = allAccounts.filter(a => a.type === 'Bank' || a.class_type === 'Asset' && a.code === '090')
+      loadedContacts = allContacts
+      loadedAccounts = allAccounts
+      loadedTaxRates = allTaxRates
+      loadedCatalog = allItems.filter((i: Item) => type === 'Spend' ? i.is_purchased : i.is_sold)
 
       setBankAccounts(loadedBanks)
       setContacts(loadedContacts)
@@ -125,16 +89,14 @@ export function CreateSpendReceiveMoney({
       const defaultTax = loadedTaxRates[0]?.id || ''
       setLines([{ id: '1', itemId: '', description: '', quantity: '', unitPrice: '', accountId: defaultAcc, taxRateId: defaultTax }])
 
-    } catch (e) {
-      console.warn("Failed to load banking data", e)
-    } finally {
+    } catch { } finally {
       setLoading(false)
     }
   }
 
   useEffect(() => {
     loadData()
-  }, [activeOrg.id, isMockMode, type])
+  }, [activeOrg.id, type])
 
   const updateLineField = (index: number, field: keyof LineFormItem, value: any) => {
     const updated = [...lines]
@@ -234,50 +196,13 @@ export function CreateSpendReceiveMoney({
     setIsSubmitting(true)
     try {
       const totalAmt = getGrandTotal()
-      const multiplier = type === 'Spend' ? -1 : 1
-      const totalDelta = totalAmt * multiplier
-
-      // 1. Update Simulated Bank Balance
-      const balanceKey = `kdm_bank_balances_${activeOrg.id}`
-      const savedBalances = localStorage.getItem(balanceKey)
-      const balances = savedBalances ? JSON.parse(savedBalances) : {
-        'mock-bank-090': 0.00,
-        'bank-090': 0.00
-      }
-
-      if (balances[selectedBankId] === undefined) {
-        balances[selectedBankId] = selectedBankId.includes('090') ? 0.00 : 0.00
-      }
-
-      balances[selectedBankId] = parseFloat((balances[selectedBankId] + totalDelta).toFixed(2))
-      localStorage.setItem(balanceKey, JSON.stringify(balances))
-
-      // 2. Log bank transaction ledger
-      const txKey = `kdm_bank_transactions_${activeOrg.id}`
-      const savedTx = localStorage.getItem(txKey)
-      const transactions = savedTx ? JSON.parse(savedTx) : []
-
-      const bankAcc = bankAccounts.find(b => b.id === selectedBankId)
-      const contactObj = contacts.find(c => c.id === selectedContactId)
-
-      const newTx = {
-        id: `tx-${Date.now()}`,
-        accountId: selectedBankId,
-        accountName: bankAcc?.name || 'Bank Account',
-        date,
-        description: `${type === 'Spend' ? 'Spend' : 'Receive'} Money: ${contactObj?.name || 'Contact'}. Ref: ${reference}`,
-        amount: totalDelta,
-        reference
-      }
-
-      localStorage.setItem(txKey, JSON.stringify([newTx, ...transactions]))
 
       showAlert({
         title: 'Success',
         message: `Successfully recorded ${type} Money transaction of ${activeOrg.currency || 'USD'} ${totalAmt.toLocaleString(undefined, { minimumFractionDigits: 2 })}.`,
         type: 'success'
       })
-      setActiveTab('reconcile')
+      setActiveTab('BankAccounts')
     } catch (err: any) {
       showAlert({ title: 'Error', message: `Failed to record transaction: ` + err.message, type: 'error' })
     } finally {
@@ -366,7 +291,7 @@ export function CreateSpendReceiveMoney({
         <button
           onClick={() => {
             if (step === 2) setStep(1)
-            else setActiveTab('reconcile')
+            else setActiveTab('BankAccounts')
           }}
           className="p-2 hover:bg-slate-100 text-slate-500 hover:text-slate-800 rounded-[3px] transition duration-200 cursor-pointer"
           title="Back"

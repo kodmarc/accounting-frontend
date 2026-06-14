@@ -5,15 +5,13 @@ import type { Organization } from '../../services/api'
 
 interface PurchasesOverviewTabProps {
   activeOrg: Organization
-  isMockMode?: boolean
   setActiveTab: (tab: any) => void
   onCreateBillClick: () => void
   onCreatePOClick: () => void
 }
 
-export function PurchasesOverviewTab({ 
-  activeOrg, 
-  isMockMode = false, 
+export function PurchasesOverviewTab({
+  activeOrg,
   setActiveTab,
   onCreateBillClick,
   onCreatePOClick
@@ -28,17 +26,13 @@ export function PurchasesOverviewTab({
       setLoading(true)
       setErrorMsg(null)
       try {
-        // Load bills and purchase orders from mock storage
-        const savedBills = localStorage.getItem(`kdm_mock_bills_${activeOrg.id}`)
-        const savedPOs = localStorage.getItem(`kdm_mock_purchase_orders_${activeOrg.id}`)
-        
-        let parsedBills = savedBills ? JSON.parse(savedBills) : []
-        let parsedPOs = savedPOs ? JSON.parse(savedPOs) : []
-        
-        setBills(parsedBills)
-        setPurchaseOrders(parsedPOs)
+        const [billsRes, posRes] = await Promise.all([
+          apiService.getBills(activeOrg.id),
+          apiService.getPurchaseOrders(activeOrg.id)
+        ])
+        setBills(billsRes)
+        setPurchaseOrders(posRes)
       } catch (err: any) {
-        console.warn("Failed to load purchases overview records", err)
         setErrorMsg("Failed to load active bill and purchase order records.")
       } finally {
         setLoading(false)

@@ -6,7 +6,6 @@ import { usePopup } from '../../components/PopupProvider'
 
 interface QuotesTabProps {
   activeOrg: Organization
-  isMockMode?: boolean
   autoOpenDrawer?: boolean
   onCloseAutoOpen?: () => void
   onConvertToInvoice: (quote: Quote) => void
@@ -15,9 +14,8 @@ interface QuotesTabProps {
   onCreateNewQuote: () => void
 }
 
-export function QuotesTab({ 
-  activeOrg, 
-  isMockMode = false, 
+export function QuotesTab({
+  activeOrg,
   autoOpenDrawer = false,
   onCloseAutoOpen,
   onConvertToInvoice,
@@ -98,58 +96,6 @@ export function QuotesTab({
     setLoading(true)
     setErrorMsg(null)
     try {
-      if (isMockMode) {
-        // Load offline items
-        const savedQuotes = localStorage.getItem(`kdm_mock_quotes_${activeOrg.id}`)
-        const savedSettings = localStorage.getItem(`kdm_mock_settings_${activeOrg.id}`)
-        
-        // Mock contacts/accounts/taxRates/catalog if missing
-        const mockContacts: Contact[] = [
-          { id: 'mock-c-1', name: 'Alibaba SG', email: 'billing@alibaba.com', phone: '+65 6729 0122', tax_number: 'VAT-9021', billing_address: '8 Shenton Way, Singapore 068811', default_sales_account: null, default_purchase_account: null, contact_type: 'Customer', created_at: '' },
-          { id: 'mock-c-2', name: 'Saad Software Designs', email: 'saad@softwaredesigns.com', phone: '+92 300 1234567', tax_number: 'NTN-49102', billing_address: 'DHA Phase 6, Lahore, Pakistan', default_sales_account: null, default_purchase_account: null, contact_type: 'Customer', created_at: '' }
-        ]
-        const mockAccounts: Account[] = [
-          { id: 'mock-a-1', code: '200', name: 'Sales Revenue', class_type: 'Revenue', type: 'Sales', default_tax_rate: null, description: 'Direct sales revenue ledger', is_system_account: false, created_at: '' },
-          { id: 'mock-a-2', code: '210', name: 'Consulting Income', class_type: 'Revenue', type: 'Sales', default_tax_rate: null, description: 'Consulting hours fees', is_system_account: false, created_at: '' }
-        ]
-        const mockTaxRates: TaxRate[] = [
-          { id: 'mock-t-1', name: 'SG GST 9%', rate: 9.0, is_active: true, created_at: '' },
-          { id: 'mock-t-2', name: 'Tax Exempt', rate: 0.0, is_active: true, created_at: '' }
-        ]
-        const mockCatalog: Item[] = [
-          { id: 'mock-i-1', code: 'PROD-DEV', name: 'Custom Software Development', is_sold: true, sales_unit_price: 150.00, sales_account: 'mock-a-1', sales_tax_rate: 'mock-t-1', sales_description: 'Full-stack software engineering consultation hourly rate', is_purchased: false, purchase_unit_cost: 0, purchase_account: null, purchase_tax_rate: null, purchase_description: '', created_at: '' },
-          { id: 'mock-i-2', code: 'HOST-CLOUD', name: 'Cloud Hosting Subscription', is_sold: true, sales_unit_price: 49.00, sales_account: 'mock-a-1', sales_tax_rate: 'mock-t-1', sales_description: 'Monthly cloud virtual machine container resource allocations', is_purchased: false, purchase_unit_cost: 0, purchase_account: null, purchase_tax_rate: null, purchase_description: '', created_at: '' }
-        ]
-
-        setQuotes(savedQuotes ? JSON.parse(savedQuotes) : [])
-        setContacts(mockContacts)
-        setAccounts(mockAccounts)
-        setTaxRates(mockTaxRates)
-        setCatalogItems(mockCatalog)
-
-        // Default settings
-        if (savedSettings) {
-          setSalesSetting(JSON.parse(savedSettings))
-        } else {
-          setSalesSetting({
-            invoice_prefix: 'INV-',
-            next_invoice_number: 1001,
-            quote_prefix: 'QT-',
-            next_quote_number: 1001,
-            standard_payment_terms: '15 days',
-            default_footer: 'Thank you for your business!'
-          })
-        }
-        
-        // Auto default line account and tax in form
-        if (mockAccounts.length > 0) {
-          setLines([{ id: '1', itemId: '', description: '', quantity: 1, unitPrice: 0, accountId: mockAccounts[0].id, taxRateId: mockTaxRates[0].id }])
-        }
-
-        setLoading(false)
-        return
-      }
-
       // API Database fetches
       const [quoteList, contactList, itemList, accList, taxList, settingData] = await Promise.all([
         apiService.getQuotes(activeOrg.id),
@@ -177,7 +123,6 @@ export function QuotesTab({
         setSelectedContactId(contactList[0].id)
       }
     } catch (e: any) {
-      console.warn("Failed to load quotes suite", e)
       setErrorMsg(e.message || "Failed to load quotations ledger.")
     } finally {
       setLoading(false)
@@ -188,7 +133,7 @@ export function QuotesTab({
     loadData()
     setSelectedIds(new Set())
     setSelectedQuote(null)
-  }, [activeOrg.id, isMockMode])
+  }, [activeOrg.id])
 
   // Reset checkboxes on filter transition
   useEffect(() => {
@@ -300,46 +245,6 @@ export function QuotesTab({
     }
 
     try {
-      if (isMockMode) {
-        const contactObj = contacts.find(c => c.id === selectedContactId)
-        const mockCreated: Quote = {
-          id: `mock-q-${Date.now()}`,
-          contact: selectedContactId,
-          contact_name: contactObj ? contactObj.name : "Mock Customer",
-          quote_number: quoteNumber,
-          reference,
-          date,
-          expiry_date: expiryDate,
-          status,
-          subtotal: getSubtotal(),
-          tax_total: getTaxTotal(),
-          total: getGrandTotal(),
-          lines: postLines.map((pl, idx) => ({
-            ...pl,
-            id: `mock-q-l-${idx}-${Date.now()}`
-          })) as any,
-          created_at: new Date().toISOString()
-        }
-
-        const newQuotes = [mockCreated, ...quotes]
-        setQuotes(newQuotes)
-        localStorage.setItem(`kdm_mock_quotes_${activeOrg.id}`, JSON.stringify(newQuotes))
-        
-        // Increment quote serial settings
-        if (salesSetting) {
-          const updatedSetting = {
-            ...salesSetting,
-            next_quote_number: salesSetting.next_quote_number + 1
-          }
-          setSalesSetting(updatedSetting)
-          localStorage.setItem(`kdm_mock_settings_${activeOrg.id}`, JSON.stringify(updatedSetting))
-        }
-
-        setIsDrawerOpen(false)
-        resetForm()
-        return
-      }
-
       const created = await apiService.createQuote(activeOrg.id, payload)
       setQuotes(prev => [created, ...prev])
       
@@ -365,20 +270,11 @@ export function QuotesTab({
     // Set status to Accepted if it wasn't already
     try {
       if (quote.status !== 'Accepted') {
-        if (isMockMode) {
-          const updated = quotes.map(q => {
-            if (q.id === quote.id) return { ...q, status: 'Accepted' as const }
-            return q
-          })
-          setQuotes(updated)
-          localStorage.setItem(`kdm_mock_quotes_${activeOrg.id}`, JSON.stringify(updated))
-        } else {
-          await apiService.updateQuote(quote.id!, { status: 'Accepted' })
-          setQuotes(prev => prev.map(q => {
-            if (q.id === quote.id) return { ...q, status: 'Accepted' as const }
-            return q
-          }))
-        }
+        await apiService.updateQuote(quote.id!, { status: 'Accepted' })
+        setQuotes(prev => prev.map(q => {
+          if (q.id === quote.id) return { ...q, status: 'Accepted' as const }
+          return q
+        }))
       }
 
       // Trigger the parent component router conversion
@@ -441,14 +337,6 @@ export function QuotesTab({
     if (!confirmed) return
 
     try {
-      if (isMockMode) {
-        const remaining = quotes.filter(q => !selectedIds.has(q.id!))
-        setQuotes(remaining)
-        localStorage.setItem(`kdm_mock_quotes_${activeOrg.id}`, JSON.stringify(remaining))
-        setSelectedIds(new Set())
-        return
-      }
-
       await Promise.all(Array.from(selectedIds).map(id => apiService.deleteQuote(id)))
       setQuotes(prev => prev.filter(q => !selectedIds.has(q.id!)))
       setSelectedIds(new Set())
@@ -459,20 +347,7 @@ export function QuotesTab({
 
   const handleBulkChangeStatus = async (status: 'Draft' | 'Sent' | 'Accepted' | 'Declined') => {
     try {
-      if (isMockMode) {
-        const updated = quotes.map(q => {
-          if (selectedIds.has(q.id!)) {
-            return { ...q, status }
-          }
-          return q
-        })
-        setQuotes(updated)
-        localStorage.setItem(`kdm_mock_quotes_${activeOrg.id}`, JSON.stringify(updated))
-        setSelectedIds(new Set())
-        return
-      }
-
-      await Promise.all(Array.from(selectedIds).map(id => 
+      await Promise.all(Array.from(selectedIds).map(id =>
         apiService.updateQuote(id, { status })
       ))
 

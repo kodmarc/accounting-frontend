@@ -484,7 +484,6 @@ function App() {
       {activeTab === 'Contacts' && (
         <ContactsTab
           activeOrg={activeOrg}
-          isMockMode={false}
           initialFilter="All"
           onViewInvoice={handleViewInvoice}
           onViewBill={handleViewBill}
@@ -494,7 +493,6 @@ function App() {
       {activeTab === 'Customers' && (
         <ContactsTab
           activeOrg={activeOrg}
-          isMockMode={false}
           initialFilter="Customer"
           onViewInvoice={handleViewInvoice}
           onViewBill={handleViewBill}
@@ -504,7 +502,6 @@ function App() {
       {activeTab === 'Suppliers' && (
         <ContactsTab
           activeOrg={activeOrg}
-          isMockMode={false}
           initialFilter="Supplier"
           onViewInvoice={handleViewInvoice}
           onViewBill={handleViewBill}
@@ -512,21 +509,20 @@ function App() {
       )}
 
       {activeTab === 'ChartOfAccounts' && (
-        <ChartOfAccountsTab activeOrg={activeOrg} isMockMode={false} />
+        <ChartOfAccountsTab activeOrg={activeOrg} />
       )}
 
       {activeTab === 'TaxRates' && (
-        <TaxRatesTab activeOrg={activeOrg} isMockMode={false} />
+        <TaxRatesTab activeOrg={activeOrg} />
       )}
 
       {activeTab === 'Products' && (
-        <ProductsTab activeOrg={activeOrg} isMockMode={false} />
+        <ProductsTab activeOrg={activeOrg} />
       )}
 
       {activeTab === 'SalesOverview' && (
         <SalesOverviewTab
           activeOrg={activeOrg}
-          isMockMode={false}
           setActiveTab={setActiveTab}
           onCreateInvoiceClick={() => setActiveTab('CreateInvoice')}
           onCreateQuoteClick={() => setActiveTab('CreateQuote')}
@@ -536,7 +532,6 @@ function App() {
       {activeTab === 'PurchasesOverview' && (
         <PurchasesOverviewTab
           activeOrg={activeOrg}
-          isMockMode={false}
           setActiveTab={setActiveTab}
           onCreateBillClick={() => { setEditingBillId(null); setActiveTab('CreateBill') }}
           onCreatePOClick={() => { setEditingPoId(null); setActiveTab('CreatePurchaseOrder') }}
@@ -546,7 +541,6 @@ function App() {
       {activeTab === 'Invoices' && (
         <InvoicesTab
           activeOrg={activeOrg}
-          isMockMode={false}
           autoOpenDrawer={invoiceDrawerOpen}
           onCloseAutoOpen={() => setInvoiceDrawerOpen(false)}
           setActiveTab={setActiveTab}
@@ -558,7 +552,6 @@ function App() {
       {['SalesSettings', 'PurchasesSettings', 'AccountingSettings', 'ContactsSettings'].includes(activeTab) && (
         <SettingsTab
           activeOrg={activeOrg}
-          isMockMode={false}
           activeTab={activeTab as any}
           setActiveTab={setActiveTab}
           onOrgUpdate={(updated) => {
@@ -573,7 +566,6 @@ function App() {
       {activeTab === 'Bills' && (
         <BillsTab
           activeOrg={activeOrg}
-          isMockMode={false}
           setActiveTab={setActiveTab}
           onEditBill={(id) => { setEditingBillId(id); setActiveTab('EditBill') }}
           onCreateNewBill={() => { setEditingBillId(null); setActiveTab('CreateBill') }}
@@ -583,7 +575,6 @@ function App() {
       {activeTab === 'Quotes' && (
         <QuotesTab
           activeOrg={activeOrg}
-          isMockMode={false}
           autoOpenDrawer={quoteDrawerOpen}
           onCloseAutoOpen={() => setQuoteDrawerOpen(false)}
           setActiveTab={setActiveTab}
@@ -604,7 +595,6 @@ function App() {
       {(activeTab === 'CreateInvoice' || activeTab === 'EditInvoice') && (
         <CreateInvoiceTab
           activeOrg={activeOrg}
-          isMockMode={false}
           setActiveTab={setActiveTab}
           editingInvoiceId={activeTab === 'EditInvoice' ? editingInvoiceId : null}
           setEditingInvoiceId={setEditingInvoiceId}
@@ -614,7 +604,6 @@ function App() {
       {(activeTab === 'CreateQuote' || activeTab === 'EditQuote') && (
         <CreateQuoteTab
           activeOrg={activeOrg}
-          isMockMode={false}
           setActiveTab={setActiveTab}
           editingQuoteId={activeTab === 'EditQuote' ? editingQuoteId : null}
           setEditingQuoteId={setEditingQuoteId}
@@ -625,7 +614,6 @@ function App() {
       {activeTab === 'PurchaseOrders' && (
         <PurchaseOrdersTab
           activeOrg={activeOrg}
-          isMockMode={false}
           setActiveTab={setActiveTab}
           onEditPO={(id) => { setEditingPoId(id); setActiveTab('EditPurchaseOrder') }}
           onCreateNewPO={() => { setEditingPoId(null); setActiveTab('CreatePurchaseOrder') }}
@@ -636,7 +624,6 @@ function App() {
       {(activeTab === 'CreateBill' || activeTab === 'EditBill') && (
         <CreateBillTab
           activeOrg={activeOrg}
-          isMockMode={false}
           setActiveTab={setActiveTab}
           editingBillId={activeTab === 'EditBill' ? editingBillId : null}
           setEditingBillId={setEditingBillId}
@@ -646,7 +633,6 @@ function App() {
       {(activeTab === 'CreatePurchaseOrder' || activeTab === 'EditPurchaseOrder') && (
         <CreatePurchaseOrderTab
           activeOrg={activeOrg}
-          isMockMode={false}
           setActiveTab={setActiveTab}
           editingPoId={activeTab === 'EditPurchaseOrder' ? editingPoId : null}
           setEditingPoId={setEditingPoId}
@@ -657,30 +643,29 @@ function App() {
       {activeTab === 'Projects' && (
         <ProjectsTab
           activeOrg={activeOrg}
-          isMockMode={false}
           onViewInvoice={handleViewInvoice}
           onViewBill={handleViewBill}
         />
       )}
 
       {activeTab === 'CreateTransferMoney' && (
-        <CreateTransferMoney activeOrg={activeOrg} isMockMode={false} setActiveTab={setActiveTab} />
+        <CreateTransferMoney activeOrg={activeOrg} setActiveTab={setActiveTab} />
       )}
 
       {activeTab === 'CreateSpendMoney' && (
-        <CreateSpendReceiveMoney type="Spend" activeOrg={activeOrg} isMockMode={false} setActiveTab={setActiveTab} />
+        <CreateSpendReceiveMoney type="Spend" activeOrg={activeOrg} setActiveTab={setActiveTab} />
       )}
 
       {activeTab === 'CreateReceiveMoney' && (
-        <CreateSpendReceiveMoney type="Receive" activeOrg={activeOrg} isMockMode={false} setActiveTab={setActiveTab} />
+        <CreateSpendReceiveMoney type="Receive" activeOrg={activeOrg} setActiveTab={setActiveTab} />
       )}
 
       {activeTab === 'CreateManualJournal' && (
-        <CreateManualJournal activeOrg={activeOrg} isMockMode={false} setActiveTab={setActiveTab} />
+        <CreateManualJournal activeOrg={activeOrg} setActiveTab={setActiveTab} />
       )}
 
       {activeTab === 'UserProfile' && (
-        <UserProfileTab currentUser={currentUser} setCurrentUser={setCurrentUser} isMockMode={false} setActiveTab={setActiveTab} />
+        <UserProfileTab currentUser={currentUser} setCurrentUser={setCurrentUser} setActiveTab={setActiveTab} />
       )}
 
       {activeTab === 'OnlinePayments' && (
