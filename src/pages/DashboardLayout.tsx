@@ -51,6 +51,7 @@ interface DropdownItem {
     | 'AccountTransactions'
     | 'BalanceSheet'
     | 'ProfitAndLoss'
+    | 'CashFlowStatement'
     | 'ReportingSettings'
     | 'BankAccounts'
     | 'ChartOfAccounts'
@@ -125,6 +126,7 @@ export function DashboardLayout({
       AccountTransactions: 'reporting',
       BalanceSheet: 'reporting',
       ProfitAndLoss: 'reporting',
+      CashFlowStatement: 'reporting',
       ReportingSettings: 'reporting',
       BankAccounts: '',
       ChartOfAccounts: 'accounts',
@@ -169,6 +171,7 @@ export function DashboardLayout({
     { key: 'AccountTransactions', label: 'Account Transactions', permissionKey: 'reporting' },
     { key: 'BalanceSheet', label: 'Balance Sheet', permissionKey: 'reporting' },
     { key: 'ProfitAndLoss', label: 'Profit and Loss', permissionKey: 'reporting' },
+    { key: 'CashFlowStatement', label: 'Cash Flow Statement', permissionKey: 'reporting' },
     { key: 'ReportingSettings', label: 'Reporting settings', permissionKey: 'reporting' }
   ]
 

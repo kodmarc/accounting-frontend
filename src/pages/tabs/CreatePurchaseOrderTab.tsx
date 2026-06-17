@@ -1,15 +1,16 @@
 import { useState, useEffect, useRef } from 'react'
 import { ArrowLeft, Plus, Trash2, CheckCircle, Save, X, Loader2, ChevronDown, MoreVertical, AlertCircle } from 'lucide-react'
-import { apiService, API_BASE_URL } from '../../services/api'
-import type { Organization, Contact, Item, Account, TaxRate, Project } from '../../services/api'
+import { apiService, API_BASE_URL, fetchWithAuth } from '../../services/api'
+import type { Organization, Contact, Item, Account, TaxRate, Project, SalesSetting } from '../../services/api'
 import { SearchableInput } from '../../components/SearchableInput'
 import { EmailModal } from '../../components/EmailModal'
 import { usePopup } from '../../components/PopupProvider'
 import { XeroDatePicker } from '../../components/XeroDatePicker'
+import type { TabId } from '../../types/tabs'
 
 interface CreatePurchaseOrderTabProps {
   activeOrg: Organization
-  setActiveTab: (tab: any) => void
+  setActiveTab: (tab: TabId) => void
   editingPoId?: string | null
   setEditingPoId?: (id: string | null) => void
   setEditingBillId?: (id: string | null) => void
@@ -142,19 +143,22 @@ export function CreatePurchaseOrderTab({
       let loadedProjects: Project[] = []
 
       // API fetches
+      let loadedSettings: SalesSetting | null = null
       try {
-        const [contactList, itemList, accList, taxList, projectList] = await Promise.all([
+        const [contactList, itemList, accList, taxList, projectList, settings] = await Promise.all([
           apiService.getContacts(activeOrg.id),
           apiService.getItems(activeOrg.id),
           apiService.getAccounts(activeOrg.id),
           apiService.getTaxRates(activeOrg.id),
-          apiService.getProjects ? apiService.getProjects(activeOrg.id) : Promise.resolve([])
+          apiService.getProjects ? apiService.getProjects(activeOrg.id) : Promise.resolve([]),
+          apiService.getSalesSettings(activeOrg.id),
         ])
         loadedContacts = contactList.filter(c => c.contact_type === 'Supplier' || c.contact_type === 'Both')
         loadedAccounts = accList
         loadedTaxRates = taxList
         loadedCatalog = itemList.filter(i => i.is_purchased)
         loadedProjects = projectList
+        loadedSettings = settings
       } catch (err) {
         // Fallbacks
         loadedContacts = [
@@ -188,28 +192,10 @@ export function CreatePurchaseOrderTab({
       const firstAcc = loadedAccounts.find(a => a.class_type === 'Expense' || a.type === 'Direct Costs')?.id || loadedAccounts[0]?.id || ''
       const firstTax = loadedTaxRates[0]?.id || ''
 
-      // Load specific PO for editing if set
-      const savedPurchases = localStorage.getItem(`kdm_purchase_settings_${activeOrg.id}`)
-      let loadedPurchaseSetting = {
-        po_prefix: 'PO-',
-        next_po_number: 1001,
-        supplier_terms: '30 days',
-        purchase_footer: 'Please submit all vendor bills via email.'
-      }
-      if (savedPurchases) {
-        const parsed = JSON.parse(savedPurchases)
-        loadedPurchaseSetting = {
-          po_prefix: parsed.po_prefix || 'PO-',
-          next_po_number: Number(parsed.next_po_number) || 1001,
-          supplier_terms: parsed.supplier_terms || '30 days',
-          purchase_footer: parsed.purchase_footer || 'Please submit all vendor bills via email.'
-        }
-      }
-
       if (editingPoId) {
         let po: any = null
         try {
-          po = await apiService.getPurchaseOrder(editingPoId)
+          po = await apiService.getPurchaseOrder(editingPoId, activeOrg.id)
         } catch { }
         if (po) {
           setSelectedContactId(po.contact)
@@ -241,16 +227,16 @@ export function CreatePurchaseOrderTab({
           })))
         }
       } else {
-        const prefix = loadedPurchaseSetting.po_prefix
-        const nextNum = String(loadedPurchaseSetting.next_po_number).padStart(4, '0')
+        const prefix = loadedSettings?.po_prefix ?? 'PO-'
+        const nextNum = String(loadedSettings?.next_po_number ?? 1).padStart(4, '0')
         setPoNumber(`${prefix}${nextNum}`)
 
         const today = new Date()
-        today.setDate(today.getDate() + 15) // default 15 days expiry
+        today.setDate(today.getDate() + 15)
         setExpiryDate(today.toISOString().split('T')[0])
 
         setLines([{ id: '1', itemId: '', description: '', quantity: '', unitPrice: '', discount: '', accountId: firstAcc, taxRateId: firstTax }])
-        setNotes(loadedPurchaseSetting.purchase_footer || '')
+        setNotes('')
 
         if (loadedContacts.length > 0) {
           setSelectedContactId(loadedContacts[0].id)
@@ -670,11 +656,12 @@ export function CreatePurchaseOrderTab({
 
       let resolvedPoId = editingPoId || ''
       if (isEdit) {
-        const res = await apiService.updatePurchaseOrder(editingPoId!, payload)
+        const res = await apiService.updatePurchaseOrder(editingPoId!, payload, activeOrg.id)
         resolvedPoId = res.id || editingPoId!
       } else {
         const res = await apiService.createPurchaseOrder(activeOrg.id, payload)
         resolvedPoId = res.id || ''
+        if (res.po_number) setPoNumber(res.po_number)
       }
 
       localStorage.setItem(`kdm_po_notes_${resolvedPoId}`, notes)
@@ -705,7 +692,7 @@ export function CreatePurchaseOrderTab({
     setIsSubmitting(true)
     try {
       // Update PO status to Billed
-      await apiService.updatePurchaseOrder(editingPoId, { status: 'Billed' })
+      await apiService.updatePurchaseOrder(editingPoId, { status: 'Billed' }, activeOrg.id)
 
       // Prepopulate vendor bill from states
       const postLines = lines.map(l => {
@@ -769,7 +756,7 @@ export function CreatePurchaseOrderTab({
 
     setIsSubmitting(true)
     try {
-      await apiService.deletePurchaseOrder(editingPoId!)
+      await apiService.deletePurchaseOrder(editingPoId!, activeOrg.id)
 
       if (setEditingPoId) setEditingPoId(null)
       setActiveTab('PurchaseOrders')
@@ -785,7 +772,7 @@ export function CreatePurchaseOrderTab({
     if (!editingPoId) return
     setIsSubmitting(true)
     try {
-      await apiService.updatePurchaseOrder(editingPoId, { status: newStatus })
+      await apiService.updatePurchaseOrder(editingPoId, { status: newStatus }, activeOrg.id)
       setStatus(newStatus)
       setIsMoreDropdownOpen(false)
       showAlert({ title: 'Success', message: `Purchase order status updated to ${newStatus}.`, type: 'success' })
@@ -800,12 +787,6 @@ export function CreatePurchaseOrderTab({
   const handlePrintPDF = async () => {
     setIsDownloadingPdf(true)
     try {
-      const token = localStorage.getItem('kdm_auth_token')
-      const headers: Record<string, string> = {}
-      if (token) {
-        headers['Authorization'] = `Token ${token}`
-      }
-
       // Load logo, bank details, template settings, and org details
       const logo = localStorage.getItem(`kdm_org_logo_${activeOrg.id}`) || ''
       const bankDetails = JSON.parse(localStorage.getItem(`kdm_bank_details_${activeOrg.id}`) || '{}')
@@ -844,10 +825,9 @@ export function CreatePurchaseOrderTab({
 
       // Fetch PDF from Django backend dynamically
       const url = `${API_BASE_URL}/purchase-orders/download-pdf/?_t=${Date.now()}`
-      const res = await fetch(url, {
+      const res = await fetchWithAuth(url, {
         method: 'POST',
         headers: {
-          ...headers,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
@@ -893,11 +873,8 @@ export function CreatePurchaseOrderTab({
       a.click()
       document.body.removeChild(a)
       window.URL.revokeObjectURL(downloadUrl)
-    } catch {
-      // Fallback: print screen cleanly
-      document.body.classList.add('pdf-mode')
-      window.print()
-      document.body.classList.remove('pdf-mode')
+    } catch (err: any) {
+      showAlert({ title: 'Download Failed', message: 'Failed to download PDF: ' + err.message, type: 'error' })
     } finally {
       setIsDownloadingPdf(false)
     }
@@ -972,7 +949,7 @@ export function CreatePurchaseOrderTab({
 
   const taxOptions = taxRates.map(t => ({
     value: t.id,
-    label: `${t.name} (${t.rate}%)`
+    label: t.name
   }))
 
   const projectOptions = [
@@ -2272,7 +2249,7 @@ export function CreatePurchaseOrderTab({
             org_country: activeOrg.country
           }
 
-          await apiService.sendPurchaseOrderEmail(payload)
+          await apiService.sendPurchaseOrderEmail(payload, activeOrg.id)
           showAlert({
             title: needsApproval ? 'Approved & Emailed' : 'Email Sent',
             message: needsApproval

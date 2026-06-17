@@ -1,17 +1,18 @@
 import { useState, useEffect, useRef } from 'react'
 import { ArrowLeft, Plus, Trash2, CheckCircle, Save, X, Loader2, ChevronDown, MoreVertical, AlertCircle } from 'lucide-react'
-import { apiService, API_BASE_URL } from '../../services/api'
+import { apiService, API_BASE_URL, fetchWithAuth } from '../../services/api'
 import type { Organization, Contact, Item, Account, TaxRate, SalesSetting, Quote, Project } from '../../services/api'
 import { SearchableInput } from '../../components/SearchableInput'
 import { EmailModal } from '../../components/EmailModal'
 import { usePopup } from '../../components/PopupProvider'
 import { XeroDatePicker } from '../../components/XeroDatePicker'
+import type { TabId } from '../../types/tabs'
 
 // PDF generation is processed via backend Django endpoints
 
 interface CreateQuoteTabProps {
   activeOrg: Organization
-  setActiveTab: (tab: any) => void
+  setActiveTab: (tab: TabId) => void
   editingQuoteId?: string | null
   setEditingQuoteId?: (id: string | null) => void
   setEditingInvoiceId?: (id: string | null) => void
@@ -175,12 +176,12 @@ export function CreateQuoteTab({
           const allQuotes = await apiService.getQuotes(activeOrg.id)
           const matched = allQuotes.find(q => q.quote_number === editingQuoteId || q.id === editingQuoteId)
           if (matched && matched.id) {
-            targetQuote = await apiService.getQuote(matched.id)
+            targetQuote = await apiService.getQuote(matched.id, activeOrg.id)
           } else {
-            targetQuote = await apiService.getQuote(editingQuoteId)
+            targetQuote = await apiService.getQuote(editingQuoteId, activeOrg.id)
           }
         } catch {
-          targetQuote = await apiService.getQuote(editingQuoteId)
+          targetQuote = await apiService.getQuote(editingQuoteId, activeOrg.id)
         }
 
         if (targetQuote) {
@@ -639,7 +640,7 @@ export function CreateQuoteTab({
 
       if (isEdit) {
         const resolvedId = quoteDbId || editingQuoteId
-        await apiService.updateQuote(resolvedId!, payload)
+        await apiService.updateQuote(resolvedId!, payload, activeOrg.id)
         localStorage.setItem(`kdm_quote_notes_${editingQuoteId}`, notes)
         localStorage.setItem(`kdm_quote_attachment_${editingQuoteId}`, attachmentName)
 
@@ -697,24 +698,16 @@ export function CreateQuoteTab({
 
     setIsDownloadingPdf(true)
     try {
-      const token = localStorage.getItem('kdm_auth_token')
-      const headers: Record<string, string> = {}
-      if (token) {
-        headers['Authorization'] = `Token ${token}`
-      }
-
-      // Fetch PDF from Django backend with POST transmitting customization payloads
-      const url = `${API_BASE_URL}/quotes/${resolvedId}/download-pdf/?_t=${Date.now()}`
+      const url = `${API_BASE_URL}/quotes/${resolvedId}/download-pdf/?org_id=${activeOrg.id}&_t=${Date.now()}`
 
       const logo = localStorage.getItem(`kdm_org_logo_${activeOrg.id}`) || ''
       const templateSettings = JSON.parse(localStorage.getItem(`kdm_sales_template_settings_${activeOrg.id}`) || '{}')
       const orgDetails = JSON.parse(localStorage.getItem(`kdm_org_extensions_${activeOrg.id}`) || '{}')
       const termsValue = salesSetting?.standard_payment_terms || '15 days'
 
-      const res = await fetch(url, {
+      const res = await fetchWithAuth(url, {
         method: 'POST',
         headers: {
-          ...headers,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
@@ -762,7 +755,7 @@ export function CreateQuoteTab({
     setIsSubmitting(true)
     try {
       const resolvedId = quoteDbId || editingQuoteId!
-      await apiService.deleteQuote(resolvedId)
+      await apiService.deleteQuote(resolvedId, activeOrg.id)
 
       if (setEditingQuoteId) setEditingQuoteId(null)
       setActiveTab('Quotes')
@@ -822,7 +815,7 @@ export function CreateQuoteTab({
 
       const resolvedId = quoteDbId || editingQuoteId!
       await apiService.createInvoice(activeOrg.id, invPayload as any)
-      await apiService.updateQuote(resolvedId, { status: 'Invoiced' })
+      await apiService.updateQuote(resolvedId, { status: 'Invoiced' }, activeOrg.id)
 
       setStatus('Invoiced')
       showAlert({
@@ -844,7 +837,7 @@ export function CreateQuoteTab({
     setIsSubmitting(true)
     try {
       const resolvedId = quoteDbId || editingQuoteId
-      await apiService.updateQuote(resolvedId!, { status: newStatus })
+      await apiService.updateQuote(resolvedId!, { status: newStatus }, activeOrg.id)
       setStatus(newStatus)
       setIsMoreDropdownOpen(false)
     } catch (err: any) {
@@ -861,7 +854,7 @@ export function CreateQuoteTab({
     setIsSubmitting(true)
     try {
       const resolvedId = quoteDbId || editingQuoteId
-      await apiService.updateQuote(resolvedId!, { status: 'Invoiced' })
+      await apiService.updateQuote(resolvedId!, { status: 'Invoiced' }, activeOrg.id)
       setStatus('Invoiced')
 
       if (setEditingInvoiceId) {
@@ -974,7 +967,7 @@ export function CreateQuoteTab({
 
   const taxOptions = taxRates.map(t => ({
     value: t.id,
-    label: `${t.name} (${t.rate}%)`
+    label: t.name
   }))
 
   const projectOptions = [
@@ -2143,7 +2136,7 @@ export function CreateQuoteTab({
               tax_id: activeOrg.tax_id
             }
           }
-          await apiService.sendQuoteEmail(resolvedId!, payload)
+          await apiService.sendQuoteEmail(resolvedId!, payload, activeOrg.id)
           showAlert({
             title: needsSave ? 'Sent & Emailed' : 'Email Sent',
             message: needsSave

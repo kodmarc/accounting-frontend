@@ -1,15 +1,16 @@
 import { useState, useEffect, useRef } from 'react'
 import { ArrowLeft, Plus, Trash2, CheckCircle, Save, X, Loader2, ChevronDown, MoreVertical, AlertCircle } from 'lucide-react'
-import { apiService, API_BASE_URL } from '../../services/api'
-import type { Organization, Contact, Item, Account, TaxRate, Project } from '../../services/api'
+import { apiService, API_BASE_URL, fetchWithAuth } from '../../services/api'
+import type { Organization, Contact, Item, Account, TaxRate, Project, SalesSetting } from '../../services/api'
 import { SearchableInput } from '../../components/SearchableInput'
 import { EmailModal } from '../../components/EmailModal'
 import { usePopup } from '../../components/PopupProvider'
 import { XeroDatePicker } from '../../components/XeroDatePicker'
+import type { TabId } from '../../types/tabs'
 
 interface CreateBillTabProps {
   activeOrg: Organization
-  setActiveTab: (tab: any) => void
+  setActiveTab: (tab: TabId) => void
   editingBillId?: string | null
   setEditingBillId?: (id: string | null) => void
 }
@@ -150,12 +151,13 @@ export function CreateBillTab({
       let loadedProjects: Project[] = []
 
       // API Database fetches
-      const [contactList, itemList, accList, taxList, projList] = await Promise.all([
+      const [contactList, itemList, accList, taxList, projList, settings] = await Promise.all([
         apiService.getContacts(activeOrg.id),
         apiService.getItems(activeOrg.id),
         apiService.getAccounts(activeOrg.id),
         apiService.getTaxRates(activeOrg.id),
-        apiService.getProjects(activeOrg.id)
+        apiService.getProjects(activeOrg.id),
+        apiService.getSalesSettings(activeOrg.id),
       ])
 
       loadedContacts = contactList.filter(c => c.contact_type === 'Supplier' || c.contact_type === 'Both')
@@ -179,28 +181,10 @@ export function CreateBillTab({
       const firstAcc = loadedAccounts.find(a => a.class_type === 'Expense' || a.type === 'Direct Costs')?.id || loadedAccounts[0]?.id || ''
       const firstTax = loadedTaxRates[0]?.id || ''
 
-      // Load Purchases Settings dynamically from LocalStorage
-      const savedPurchases = localStorage.getItem(`kdm_purchase_settings_${activeOrg.id}`)
-      let loadedPurchaseSetting = {
-        bill_prefix: 'BIL-',
-        next_bill_number: 1001,
-        supplier_terms: '30 days',
-        purchase_footer: 'Please submit all vendor bills via email.'
-      }
-      if (savedPurchases) {
-        const parsed = JSON.parse(savedPurchases)
-        loadedPurchaseSetting = {
-          bill_prefix: parsed.bill_prefix || 'BIL-',
-          next_bill_number: Number(parsed.next_bill_number) || 1001,
-          supplier_terms: parsed.supplier_terms || '30 days',
-          purchase_footer: parsed.purchase_footer || 'Please submit all vendor bills via email.'
-        }
-      }
-
       if (editingBillId) {
         let targetBill: any = null
         try {
-          targetBill = await apiService.getBill(editingBillId)
+          targetBill = await apiService.getBill(editingBillId, activeOrg.id)
         } catch { }
 
         if (targetBill) {
@@ -237,20 +221,20 @@ export function CreateBillTab({
       } else {
         // NEW MODE: Initialize standard blank bill defaults
         setSelectedContactId('')
-        
-        // Auto bill number generation from Purchase Settings
-        const prefix = loadedPurchaseSetting.bill_prefix
-        const nextNum = String(loadedPurchaseSetting.next_bill_number).padStart(4, '0')
+
+        // Auto bill number generation from DB settings
+        const prefix = settings?.bill_prefix ?? 'BIL-'
+        const nextNum = String(settings?.next_bill_number ?? 1).padStart(4, '0')
         setBillNumber(`${prefix}${nextNum}`)
 
-        // Auto set due date based on settings terms
-        const terms = loadedPurchaseSetting.supplier_terms.toLowerCase()
+        // Auto set due date based on standard payment terms
+        const terms = (settings?.standard_payment_terms ?? '30 days').toLowerCase()
         let days = 30
         if (terms.includes('receipt')) days = 0
         else if (terms.includes('7')) days = 7
         else if (terms.includes('15')) days = 15
         else if (terms.includes('30')) days = 30
-        
+
         const today = new Date()
         today.setDate(today.getDate() + days)
         setDueDate(today.toISOString().split('T')[0])
@@ -546,10 +530,6 @@ export function CreateBillTab({
       formErrors.contact = 'Supplier is required.'
       hasValidationErrors = true
     }
-    if (!billNumber.trim()) {
-      formErrors.billNumber = 'Bill number is required.'
-      hasValidationErrors = true
-    }
     if (!date) {
       formErrors.date = 'Bill date is required.'
       hasValidationErrors = true
@@ -651,11 +631,12 @@ export function CreateBillTab({
     try {
       let resolvedBillId = editingBillId || ''
       if (isEdit) {
-        const res = await apiService.updateBill(editingBillId!, payload)
+        const res = await apiService.updateBill(editingBillId!, payload, activeOrg.id)
         resolvedBillId = res.id || editingBillId!
       } else {
         const res = await apiService.createBill(activeOrg.id, payload)
         resolvedBillId = res.id || ''
+        if (res.bill_number) setBillNumber(res.bill_number)
       }
 
       localStorage.setItem(`kdm_bill_notes_${resolvedBillId}`, notes)
@@ -680,16 +661,9 @@ export function CreateBillTab({
     }
   }
 
-  // Premium download PDF with exact quote and sales dynamic POST generation & clean offline print fallback
   const handlePrintPDF = async () => {
     setIsDownloadingPdf(true)
     try {
-      const token = localStorage.getItem('kdm_auth_token')
-      const headers: Record<string, string> = {}
-      if (token) {
-        headers['Authorization'] = `Token ${token}`
-      }
-
       // Load logo, bank details, template settings, and org details
       const logo = localStorage.getItem(`kdm_org_logo_${activeOrg.id}`) || ''
       const bankDetails = JSON.parse(localStorage.getItem(`kdm_bank_details_${activeOrg.id}`) || '{}')
@@ -726,12 +700,10 @@ export function CreateBillTab({
         }
       })
 
-      // Fetch PDF from Django backend dynamically
       const url = `${API_BASE_URL}/bills/download-pdf/?_t=${Date.now()}`
-      const res = await fetch(url, {
+      const res = await fetchWithAuth(url, {
         method: 'POST',
         headers: {
-          ...headers,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
@@ -777,11 +749,8 @@ export function CreateBillTab({
       a.click()
       document.body.removeChild(a)
       window.URL.revokeObjectURL(downloadUrl)
-    } catch {
-      // Fallback: print screen cleanly
-      document.body.classList.add('pdf-mode')
-      window.print()
-      document.body.classList.remove('pdf-mode')
+    } catch (err: any) {
+      showAlert({ title: 'Download Failed', message: 'Failed to download PDF: ' + err.message, type: 'error' })
     } finally {
       setIsDownloadingPdf(false)
     }
@@ -800,7 +769,7 @@ export function CreateBillTab({
     
     setIsSubmitting(true)
     try {
-      await apiService.deleteBill(editingBillId!)
+      await apiService.deleteBill(editingBillId!, activeOrg.id)
 
       if (setEditingBillId) setEditingBillId(null)
       setActiveTab('Bills')
@@ -816,7 +785,7 @@ export function CreateBillTab({
     if (!editingBillId) return
     setIsSubmitting(true)
     try {
-      await apiService.updateBill(editingBillId, { status: newStatus })
+      await apiService.updateBill(editingBillId, { status: newStatus }, activeOrg.id)
       setStatus(newStatus)
       setIsMoreDropdownOpen(false)
     } catch (err: any) {
@@ -858,7 +827,10 @@ export function CreateBillTab({
 
     setIsSubmitting(true);
     try {
-      await apiService.updateBill(editingBillId!, { status: 'Paid' });
+      await apiService.recordBillPayment(editingBillId!, {
+        date: paymentDate,
+        payments: payments.map(p => ({ bank_account_id: p.accountId, amount: p.amount })),
+      }, activeOrg.id);
 
       setStatus('Paid');
       setIsPaymentModalOpen(false);
@@ -1060,7 +1032,7 @@ export function CreateBillTab({
 
   const taxOptions = taxRates.map(t => ({
     value: t.id,
-    label: `${t.name} (${t.rate}%)`
+    label: t.name
   }))
 
   const projectOptions = [
@@ -1529,24 +1501,9 @@ export function CreateBillTab({
               id="billNumberInput"
               type="text"
               value={billNumber}
-              readOnly={isReadOnly}
-              onChange={e => {
-                setBillNumber(e.target.value)
-                if (e.target.value.trim()) {
-                  setErrors(prev => {
-                    const next = { ...prev }
-                    delete next.billNumber
-                    return next
-                  })
-                }
-              }}
-              className={`w-full bg-white text-slate-800 border rounded-[3px] px-3.5 py-2 text-[15px] font-normal focus:outline-none transition ${
-                errors.billNumber ? 'border-rose-500 focus:border-rose-500 bg-rose-50/10' : 'border-slate-200 focus:border-[#0F5B38]'
-              } ${isReadOnly ? 'bg-slate-50 text-slate-400 cursor-not-allowed border-slate-200' : ''}`}
+              readOnly
+              className="w-full bg-slate-50 text-slate-400 cursor-not-allowed border border-slate-200 rounded-[3px] px-3.5 py-2 text-[15px] font-normal focus:outline-none"
             />
-            {errors.billNumber && (
-              <span className="text-rose-500 text-[11px] font-semibold block mt-1">{errors.billNumber}</span>
-            )}
           </div>
 
           {/* Reference / PO */}
@@ -2438,7 +2395,7 @@ export function CreateBillTab({
             org_country: activeOrg.country
           }
 
-          await apiService.sendBillEmail(payload)
+          await apiService.sendBillEmail(payload, activeOrg.id)
           showAlert({
             title: needsApproval ? 'Approved & Emailed' : 'Email Sent',
             message: needsApproval 

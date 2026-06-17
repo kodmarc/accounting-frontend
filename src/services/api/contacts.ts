@@ -13,9 +13,16 @@ export const contactsApi = {
     })
   },
 
-  async updateContact(contactId: string, data: Partial<Contact>): Promise<Contact> {
-    return request(`/contacts/${contactId}/`, {
+  async updateContact(contactId: string, data: Partial<Contact>, orgId: string): Promise<Contact> {
+    return request(`/contacts/${contactId}/?org_id=${orgId}`, {
       method: 'PUT',
+      body: JSON.stringify(data),
+    })
+  },
+
+  async patchContact(contactId: string, data: Partial<Contact>, orgId: string): Promise<Contact> {
+    return request(`/contacts/${contactId}/?org_id=${orgId}`, {
+      method: 'PATCH',
       body: JSON.stringify(data),
     })
   },

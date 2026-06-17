@@ -395,7 +395,7 @@ export function TaxRatesTab({ activeOrg }: TaxRatesTabProps) {
                     </span>
                   </td>
                   <td className="px-6 py-2.5 font-black text-[#0F5B38] text-[13px]">
-                    {parseFloat(tr.rate as any).toFixed(2)}%
+                    {Number(tr.rate).toFixed(2)}%
                   </td>
                   <td className="px-6 py-2.5 text-slate-550 text-[11px] font-semibold">
                     {tr.is_active ? 'Active' : 'Inactive'}

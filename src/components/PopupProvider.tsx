@@ -84,8 +84,7 @@ export function PopupProvider({ children }: PopupProviderProps) {
           await confirmState.onConfirm()
           confirmState.resolve(true)
           setConfirmState(null)
-        } catch (err: any) {
-          console.error("Action failed:", err)
+        } catch {
           confirmState.resolve(false)
           setConfirmState(null)
         } finally {

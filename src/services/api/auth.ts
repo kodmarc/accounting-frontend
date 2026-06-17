@@ -30,4 +30,18 @@ export const authApi = {
       body: JSON.stringify({ first_name: firstName, last_name: lastName, password }),
     })
   },
+
+  async forgotPassword(email: string): Promise<{ message: string }> {
+    return request('/auth/forgot-password/', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    })
+  },
+
+  async resetPassword(token: string, password: string): Promise<{ message: string }> {
+    return request('/auth/reset-password/', {
+      method: 'POST',
+      body: JSON.stringify({ token, password }),
+    })
+  },
 }

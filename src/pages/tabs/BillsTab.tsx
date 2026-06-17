@@ -3,10 +3,11 @@ import { Plus, Receipt, Search, Trash2, Eye } from 'lucide-react'
 import { apiService } from '../../services/api'
 import type { Organization, Contact, Item, Account, TaxRate } from '../../services/api'
 import { usePopup } from '../../components/PopupProvider'
+import type { TabId } from '../../types/tabs'
 
 interface BillsTabProps {
   activeOrg: Organization
-  setActiveTab: (tab: any) => void
+  setActiveTab: (tab: TabId) => void
   onEditBill: (id: string) => void
   onCreateNewBill: () => void
 }
@@ -96,7 +97,7 @@ export function BillsTab({
     if (!confirmed) return
 
     try {
-      await Promise.all(targets.map(b => apiService.deleteBill(b.id)))
+      await Promise.all(targets.map(b => apiService.deleteBill(b.id, activeOrg.id)))
     } catch (err: any) {
       showAlert({ title: 'Error deleting bills', message: err.message || 'API failed to delete bills.', type: 'error' })
       return
@@ -117,7 +118,7 @@ export function BillsTab({
 
     try {
       await Promise.all(
-        bills.filter(b => selectedIds.has(b.id)).map(b => apiService.updateBill(b.id, { status: 'Paid' }))
+        bills.filter(b => selectedIds.has(b.id)).map(b => apiService.updateBill(b.id, { status: 'Paid' }, activeOrg.id))
       )
     } catch (err: any) {
       showAlert({ title: 'Error updating bills', message: err.message || 'API failed to update bills.', type: 'error' })
@@ -137,7 +138,7 @@ export function BillsTab({
   const handleBulkMarkSent = async () => {
     try {
       await Promise.all(
-        bills.filter(b => selectedIds.has(b.id) && b.status === 'Draft').map(b => apiService.updateBill(b.id, { status: 'Awaiting Payment' }))
+        bills.filter(b => selectedIds.has(b.id) && b.status === 'Draft').map(b => apiService.updateBill(b.id, { status: 'Awaiting Payment' }, activeOrg.id))
       )
     } catch (err: any) {
       showAlert({ title: 'Error updating bills', message: err.message || 'API failed to update bills.', type: 'error' })

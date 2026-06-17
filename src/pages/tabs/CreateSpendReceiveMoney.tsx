@@ -5,11 +5,12 @@ import type { Organization, Account, Contact, TaxRate, Item } from '../../servic
 import { SearchableInput } from '../../components/SearchableInput'
 import { usePopup } from '../../components/PopupProvider'
 import { XeroDatePicker } from '../../components/XeroDatePicker'
+import type { TabId } from '../../types/tabs'
 
 interface CreateSpendReceiveMoneyProps {
   type: 'Spend' | 'Receive'
   activeOrg: Organization
-  setActiveTab: (tab: any) => void
+  setActiveTab: (tab: TabId) => void
 }
 
 interface LineFormItem {
@@ -268,7 +269,7 @@ export function CreateSpendReceiveMoney({
 
   const taxOptions = taxRates.map(t => ({
     value: t.id,
-    label: `${t.name} (${t.rate}%)`
+    label: t.name
   }))
 
   if (loading) {

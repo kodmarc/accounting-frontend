@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
-import { Plus, CreditCard, ArrowLeft, Search, Trash2, Pencil } from 'lucide-react'
+import { Plus, CreditCard, ArrowLeft, Search, Pencil, Archive, ArchiveRestore } from 'lucide-react'
 import { apiService } from '../../services/api'
-import type { Organization, Account, Invoice } from '../../services/api'
+import type { Organization, Account, Invoice, Payment } from '../../services/api'
 import { usePopup } from '../../components/PopupProvider'
 
 interface BankAccountsTabProps {
@@ -15,12 +15,14 @@ export function BankAccountsTab({ activeOrg, onViewInvoice, onViewBill }: BankAc
   const [bankAccounts, setBankAccounts] = useState<Account[]>([])
   const [invoices, setInvoices] = useState<Invoice[]>([])
   const [bills, setBills] = useState<any[]>([])
+  const [payments, setPayments] = useState<Payment[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
   const [sortOption, setSortOption] = useState<'name-asc' | 'name-desc'>('name-asc')
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [editingBankAcc, setEditingBankAcc] = useState<Account | null>(null)
   const [viewingBankAcc, setViewingBankAcc] = useState<Account | null>(null)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [activeFilter, setActiveFilter] = useState<'Active' | 'All' | 'Deactivated'>('Active')
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [code, setCode] = useState('')
   const [name, setName] = useState('')
@@ -29,31 +31,75 @@ export function BankAccountsTab({ activeOrg, onViewInvoice, onViewBill }: BankAc
 
   const loadData = async () => {
     setLoading(true)
-    try {
-      const [allAccounts, loadedInvoices, loadedBills] = await Promise.all([
-        apiService.getAccounts(activeOrg.id),
-        apiService.getInvoices(activeOrg.id),
-        apiService.getBills(activeOrg.id),
-      ])
-      setBankAccounts(allAccounts.filter(a => a.type === 'Bank'))
-      setInvoices(loadedInvoices)
-      setBills(loadedBills)
-    } catch {
-      setBankAccounts([])
-    } finally {
-      setLoading(false)
-    }
+    const [accountsRes, invoicesRes, billsRes, paymentsRes] = await Promise.allSettled([
+      apiService.getAccounts(activeOrg.id),
+      apiService.getInvoices(activeOrg.id),
+      apiService.getBills(activeOrg.id),
+      apiService.getPayments(activeOrg.id),
+    ])
+    if (accountsRes.status === 'fulfilled') setBankAccounts(accountsRes.value.filter((a: Account) => a.type === 'Bank'))
+    else setBankAccounts([])
+    if (invoicesRes.status === 'fulfilled') setInvoices(invoicesRes.value)
+    if (billsRes.status === 'fulfilled') setBills(billsRes.value)
+    if (paymentsRes.status === 'fulfilled') setPayments(paymentsRes.value)
+    setLoading(false)
   }
 
   useEffect(() => {
     loadData()
-    setSelectedIds(new Set())
     setViewingBankAcc(null)
   }, [activeOrg.id])
 
   useEffect(() => {
     setSelectedIds(new Set())
-  }, [sortOption])
+  }, [activeFilter])
+
+  const handleToggleSelect = (id: string) => {
+    const next = new Set(selectedIds)
+    next.has(id) ? next.delete(id) : next.add(id)
+    setSelectedIds(next)
+  }
+
+  const handleToggleSelectAll = (visibleIds: string[]) => {
+    const allSelected = visibleIds.length > 0 && visibleIds.every(id => selectedIds.has(id))
+    const next = new Set(selectedIds)
+    if (allSelected) visibleIds.forEach(id => next.delete(id))
+    else visibleIds.forEach(id => next.add(id))
+    setSelectedIds(next)
+  }
+
+  const handleBulkDeactivate = async () => {
+    const list = Array.from(selectedIds)
+    if (list.length === 0) return
+
+    const isReactivating = activeFilter === 'Deactivated'
+    const confirmed = await showConfirm({
+      title: isReactivating ? 'Reactivate Selected' : 'Deactivate Selected',
+      message: isReactivating
+        ? `Reactivate ${list.length} selected bank account(s)?`
+        : `Deactivate ${list.length} selected bank account(s)? Historical data is preserved.`,
+      confirmText: isReactivating ? 'Reactivate' : 'Deactivate',
+      isDestructive: !isReactivating
+    })
+    if (!confirmed) return
+
+    setLoading(true)
+    try {
+      const newStatus = isReactivating
+      await Promise.all(list.map(id => apiService.patchAccount(id, { is_active: newStatus }, activeOrg.id)))
+      setBankAccounts(prev => prev.map(b => selectedIds.has(b.id) ? { ...b, is_active: newStatus } : b))
+      setSelectedIds(new Set())
+      showAlert({
+        title: isReactivating ? 'Accounts Reactivated' : 'Accounts Deactivated',
+        message: `${list.length} account(s) ${isReactivating ? 'reactivated' : 'deactivated'}.`,
+        type: 'success'
+      })
+    } catch (e: any) {
+      showAlert({ title: 'Error', message: e.message, type: 'error' })
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const lastActiveElementRef = useRef<HTMLElement | null>(null)
   useEffect(() => {
@@ -69,14 +115,14 @@ export function BankAccountsTab({ activeOrg, onViewInvoice, onViewBill }: BankAc
   const handleAddBankAccount = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!code || !name) {
-      alert('Account Code and Bank Name are required.')
+      showAlert({ title: 'Validation Warning', message: 'Account Code and Bank Name are required.', type: 'warning' })
       return
     }
     setIsSubmitting(true)
     const payload: Partial<Account> = { code, name, class_type: 'Asset', type: 'Bank', description }
     try {
       if (editingBankAcc) {
-        const updated = await apiService.updateAccount(editingBankAcc.id, payload)
+        const updated = await apiService.updateAccount(editingBankAcc.id, payload, activeOrg.id)
         setBankAccounts(prev => prev.map(b => b.id === editingBankAcc.id ? updated : b))
         if (viewingBankAcc?.id === editingBankAcc.id) setViewingBankAcc(updated)
         setEditingBankAcc(null)
@@ -87,7 +133,7 @@ export function BankAccountsTab({ activeOrg, onViewInvoice, onViewBill }: BankAc
       setIsModalOpen(false)
       resetForm()
     } catch (e: any) {
-      alert('Failed to register bank account: ' + (e.message || 'Code must be unique'))
+      showAlert({ title: 'Error', message: 'Failed to save bank account: ' + (e.message || 'Code must be unique'), type: 'error' })
     } finally {
       setIsSubmitting(false)
     }
@@ -122,71 +168,44 @@ export function BankAccountsTab({ activeOrg, onViewInvoice, onViewBill }: BankAc
     setViewingBankAcc(bankAcc)
   }
 
+  const handleDeactivate = async (bank: Account) => {
+    const confirmed = await showConfirm({
+      title: 'Deactivate Bank Account',
+      message: `Deactivate "${bank.name}"? It will be hidden from account dropdowns but all historical data is preserved.`,
+      confirmText: 'Deactivate',
+      isDestructive: true
+    })
+    if (!confirmed) return
+
+    try {
+      const updated = await apiService.patchAccount(bank.id, { is_active: false }, activeOrg.id)
+      setBankAccounts(prev => prev.map(b => b.id === bank.id ? updated : b))
+      setViewingBankAcc(updated)
+      showAlert({ title: 'Account Deactivated', message: `${bank.name} has been deactivated.`, type: 'success' })
+    } catch (e: any) {
+      showAlert({ title: 'Error', message: e.message, type: 'error' })
+    }
+  }
+
+  const handleReactivate = async (bank: Account) => {
+    try {
+      const updated = await apiService.patchAccount(bank.id, { is_active: true }, activeOrg.id)
+      setBankAccounts(prev => prev.map(b => b.id === bank.id ? updated : b))
+      setViewingBankAcc(updated)
+      showAlert({ title: 'Account Restored', message: `${bank.name} is now active.`, type: 'success' })
+    } catch (e: any) {
+      showAlert({ title: 'Error', message: e.message, type: 'error' })
+    }
+  }
+
   const currencySymbol = activeOrg.currency === 'PKR' ? '₨' : '$'
 
-  const handleToggleSelect = (id: string) => {
-    const next = new Set(selectedIds)
-    next.has(id) ? next.delete(id) : next.add(id)
-    setSelectedIds(next)
-  }
-
-  const handleToggleSelectAll = (visibleIds: string[]) => {
-    const allSelected = visibleIds.length > 0 && visibleIds.every(id => selectedIds.has(id))
-    const next = new Set(selectedIds)
-    if (allSelected) visibleIds.forEach(id => next.delete(id))
-    else visibleIds.forEach(id => next.add(id))
-    setSelectedIds(next)
-  }
-
-  const handleBulkDelete = async () => {
-    const toDelete = bankAccounts.filter(b => selectedIds.has(b.id!))
-    if (toDelete.length === 0) return
-
-    const confirmed = await showConfirm({
-      title: 'Delete Bank Accounts',
-      message: `Are you sure you want to delete ${toDelete.length} selected bank account(s)?`,
-      confirmText: 'Delete Selected',
-      isDestructive: true
-    })
-    if (!confirmed) return
-
-    setLoading(true)
-    try {
-      await Promise.all(toDelete.map(b => apiService.deleteAccount(b.id!)))
-      setBankAccounts(prev => prev.filter(b => !selectedIds.has(b.id!)))
-      setSelectedIds(new Set())
-    } catch (e: any) {
-      showAlert({ title: 'Deletion Failed', message: 'Failed to delete bank accounts: ' + e.message, type: 'error' })
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const handleDeleteBankAccount = async (bankId: string) => {
-    const bank = bankAccounts.find(b => b.id === bankId)
-    if (!bank) return
-
-    const confirmed = await showConfirm({
-      title: 'Delete Bank Account',
-      message: `Are you sure you want to permanently delete the bank account "${bank.name}"?`,
-      confirmText: 'Delete',
-      isDestructive: true
-    })
-    if (!confirmed) return
-
-    setLoading(true)
-    try {
-      await apiService.deleteAccount(bankId)
-      setBankAccounts(prev => prev.filter(b => b.id !== bankId))
-      if (viewingBankAcc?.id === bankId) setViewingBankAcc(null)
-    } catch (e: any) {
-      showAlert({ title: 'Deletion Failed', message: 'Deletion failed: ' + e.message, type: 'error' })
-    } finally {
-      setLoading(false)
-    }
-  }
-
   const filteredBanks = bankAccounts
+    .filter(bank => {
+      if (activeFilter === 'Deactivated') return bank.is_active === false
+      if (activeFilter === 'Active') return bank.is_active !== false
+      return true
+    })
     .filter(bank =>
       bank.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       bank.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -194,11 +213,11 @@ export function BankAccountsTab({ activeOrg, onViewInvoice, onViewBill }: BankAc
     )
     .sort((a, b) => sortOption === 'name-asc' ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name))
 
-  // Account Details Subpage
   if (viewingBankAcc) {
-    const totalInc = 0
-    const totalExp = 0
-    const runningBal = 0
+    const accountPayments = payments.filter(p => p.bank_account === viewingBankAcc.id)
+    const totalInc = accountPayments.filter(p => p.invoice !== null).reduce((sum, p) => sum + Number(p.amount), 0)
+    const totalExp = accountPayments.filter(p => p.bill !== null).reduce((sum, p) => sum + Number(p.amount), 0)
+    const runningBal = totalInc - totalExp
 
     return (
       <div className="space-y-6 font-sans text-left animate-fadeIn">
@@ -213,22 +232,44 @@ export function BankAccountsTab({ activeOrg, onViewInvoice, onViewBill }: BankAc
             </button>
             <span className="text-slate-300">/</span>
             <span className="text-[#071f13] text-xs font-bold">{viewingBankAcc.name} Details</span>
+            {viewingBankAcc.is_active === false && (
+              <span className="text-[9px] font-extrabold px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 uppercase tracking-wide">Inactive</span>
+            )}
           </div>
 
-          <button
-            onClick={() => handleEditClick(viewingBankAcc)}
-            className="flex items-center space-x-1.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 text-xs font-bold px-3 py-1.5 rounded-[3px] transition cursor-pointer select-none shadow-sm"
-          >
-            <Pencil className="h-3.5 w-3.5 text-slate-500" />
-            <span>Edit Account</span>
-          </button>
+          <div className="flex space-x-2">
+            <button
+              onClick={() => handleEditClick(viewingBankAcc)}
+              className="flex items-center space-x-1.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 text-xs font-bold px-3 py-1.5 rounded-[3px] transition cursor-pointer select-none shadow-sm"
+            >
+              <Pencil className="h-3.5 w-3.5 text-slate-500" />
+              <span>Edit Account</span>
+            </button>
+            {viewingBankAcc.is_active !== false ? (
+              <button
+                onClick={() => handleDeactivate(viewingBankAcc)}
+                className="flex items-center space-x-1.5 bg-amber-50 border border-amber-200/50 hover:bg-amber-100/60 text-amber-700 font-bold text-xs px-3 py-1.5 rounded-[3px] shadow-sm transition cursor-pointer"
+              >
+                <Archive className="h-3.5 w-3.5" />
+                <span>Deactivate</span>
+              </button>
+            ) : (
+              <button
+                onClick={() => handleReactivate(viewingBankAcc)}
+                className="flex items-center space-x-1.5 bg-emerald-50 border border-emerald-200/50 hover:bg-emerald-100/60 text-emerald-700 font-bold text-xs px-3 py-1.5 rounded-[3px] shadow-sm transition cursor-pointer"
+              >
+                <ArchiveRestore className="h-3.5 w-3.5" />
+                <span>Reactivate</span>
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="bg-slate-50 border border-slate-200 rounded-[3px] p-6 space-y-4">
           <div>
             <h1 className="text-xl font-bold text-[#071f13]">{viewingBankAcc.name}</h1>
             <p className="text-xs text-slate-500 font-medium mt-1">
-              Account Code: <span className="font-bold text-[#0F5B38]">{viewingBankAcc.code}</span> • Type: Bank Feed Account
+              Account Code: <span className="font-bold text-[#0F5B38]">{viewingBankAcc.code}</span> · Type: Bank Feed Account
             </p>
             {viewingBankAcc.description && (
               <p className="text-xs text-slate-500 mt-2 italic font-medium">"{viewingBankAcc.description}"</p>
@@ -240,9 +281,9 @@ export function BankAccountsTab({ activeOrg, onViewInvoice, onViewBill }: BankAc
               <div className="absolute right-0 top-0 translate-x-3 -translate-y-3 h-12 w-12 bg-emerald-50 rounded-full flex items-center justify-center border border-emerald-100/50">
                 <CreditCard className="h-4.5 w-4.5 text-[#0F5B38]" />
               </div>
-              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Dynamic Balance</span>
-              <p className="text-xl font-black text-slate-800 mt-1">
-                {currencySymbol}{runningBal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Net Balance</span>
+              <p className={`text-xl font-black mt-1 ${runningBal >= 0 ? 'text-slate-800' : 'text-rose-600'}`}>
+                {runningBal < 0 ? '-' : ''}{currencySymbol}{Math.abs(runningBal).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </p>
             </div>
 
@@ -262,15 +303,154 @@ export function BankAccountsTab({ activeOrg, onViewInvoice, onViewBill }: BankAc
           </div>
         </div>
 
-        <div className="space-y-3">
-          <h3 className="font-bold text-slate-800 text-sm">Account Transaction History</h3>
-          <div className="text-center py-16 bg-slate-50/50 rounded-[3px] border border-slate-200 p-8">
-            <p className="text-slate-400 text-xs font-semibold">
-              No ledger payments or bank transactions have been registered under this account yet.
-            </p>
+        <div className="bg-white rounded-[3px] border border-slate-200 p-6 shadow-sm space-y-4">
+          <div className="border-b border-slate-100 pb-2">
+            <h3 className="text-sm font-bold text-slate-800">Account Transaction History</h3>
+            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mt-0.5">Payments recorded against this bank account.</p>
           </div>
+          {accountPayments.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-200 select-none text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
+                    <th className="p-3">Date</th>
+                    <th className="p-3">Document</th>
+                    <th className="p-3">Type</th>
+                    <th className="p-3 text-right">Amount</th>
+                    <th className="p-3 text-center">Flow</th>
+                    <th className="p-3 text-center w-12">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 font-medium">
+                  {[...accountPayments].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(p => {
+                    const isInvoicePayment = p.invoice !== null
+                    const linkedInvoice = isInvoicePayment ? invoices.find(i => i.id === p.invoice) : null
+                    const linkedBill = !isInvoicePayment ? bills.find(b => b.id === p.bill) : null
+                    const docNumber = linkedInvoice?.invoice_number ?? linkedBill?.bill_number ?? '—'
+                    return (
+                      <tr
+                        key={p.id}
+                        onClick={() => {
+                          if (isInvoicePayment && onViewInvoice && p.invoice) onViewInvoice(p.invoice)
+                          else if (!isInvoicePayment && onViewBill && p.bill) onViewBill(p.bill)
+                        }}
+                        className="hover:bg-emerald-50/25 transition-colors duration-150 cursor-pointer"
+                      >
+                        <td className="p-3 whitespace-nowrap">{p.date}</td>
+                        <td className="p-3 font-bold text-[#0F5B38]">{docNumber}</td>
+                        <td className="p-3 text-slate-600">{isInvoicePayment ? 'Invoice Payment' : 'Bill Payment'}</td>
+                        <td className="p-3 text-right font-bold text-slate-800">
+                          {currencySymbol}{Number(p.amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </td>
+                        <td className="p-3 text-center">
+                          <span className={`text-[9px] font-extrabold px-2 py-0.5 rounded-full border ${isInvoicePayment ? 'bg-emerald-50 text-emerald-600 border-emerald-100/30' : 'bg-rose-50 text-rose-600 border-rose-100/30'}`}>
+                            {isInvoicePayment ? 'Inflow' : 'Outflow'}
+                          </span>
+                        </td>
+                        <td className="p-3 text-center" onClick={e => e.stopPropagation()}>
+                          <button
+                            onClick={() => {
+                              if (isInvoicePayment && onViewInvoice && p.invoice) onViewInvoice(p.invoice)
+                              else if (!isInvoicePayment && onViewBill && p.bill) onViewBill(p.bill)
+                            }}
+                            className="hover:bg-emerald-50 text-[#0F5B38] rounded-[3px] transition cursor-pointer text-[10px] font-extrabold uppercase tracking-wide px-2.5 py-1"
+                          >View</button>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="text-center py-12 text-slate-400 text-xs font-semibold">
+              No payments have been recorded against this bank account yet.
+            </div>
+          )}
         </div>
+
+        {isModalOpen && (
+          <div className="fixed inset-0 z-50 overflow-y-auto font-sans flex items-center justify-center">
+            <div className="fixed inset-0 bg-[#071f13]/35 backdrop-blur-md transition-opacity animate-fadeIn" onClick={() => setIsModalOpen(false)}></div>
+            <div className="relative transform overflow-hidden rounded-[28px] bg-white text-left shadow-2xl transition-all w-full max-w-md border border-slate-100 p-8 space-y-6 mx-4 animate-scaleIn">
+              {renderModalContent()}
+            </div>
+          </div>
+        )}
       </div>
+    )
+  }
+
+  function renderModalContent() {
+    return (
+      <>
+        <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+          <div className="space-y-1">
+            <h3 className="text-md font-bold text-slate-850">
+              {editingBankAcc ? 'Edit Bank Account' : 'Add New Bank Account'}
+            </h3>
+            <p className="text-xs text-slate-400 font-semibold">Declare bank details to link to your general ledger.</p>
+          </div>
+          <button
+            onClick={() => setIsModalOpen(false)}
+            className="text-slate-400 hover:text-slate-650 text-xs font-bold bg-slate-50 hover:bg-slate-100 p-2 rounded-[3px]"
+          >
+            ✕
+          </button>
+        </div>
+
+        <form onSubmit={handleAddBankAccount} className="space-y-4 text-xs font-semibold text-slate-600">
+          <div className="space-y-1">
+            <label className="text-slate-500 uppercase tracking-wide text-[10px]">Bank / Account Name *</label>
+            <input
+              type="text"
+              placeholder="e.g. ANZ Savings Account"
+              value={name}
+              onChange={e => setName(e.target.value)}
+              className="w-full bg-slate-50 border border-slate-200/80 rounded-[3px] px-4 py-3 font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-400/20 focus:border-[#0F5B38]"
+            />
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-slate-500 uppercase tracking-wide text-[10px]">Account Code *</label>
+            <input
+              type="text"
+              placeholder="e.g. 092"
+              value={code}
+              onChange={e => setCode(e.target.value)}
+              className="w-full bg-slate-50 border border-slate-200/80 rounded-[3px] px-4 py-3 font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-400/20 focus:border-[#0F5B38]"
+            />
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-slate-500 uppercase tracking-wide text-[10px]">Description</label>
+            <textarea
+              placeholder="Provide description of banking feed..."
+              rows={3}
+              value={description}
+              onChange={e => setDescription(e.target.value)}
+              className="w-full bg-slate-50 border border-slate-200/80 rounded-[3px] px-4 py-3 font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-400/20 focus:border-[#0F5B38] resize-none"
+            ></textarea>
+          </div>
+
+          <div className="flex space-x-3 pt-4 justify-end border-t border-slate-100">
+            <button
+              type="button"
+              onClick={() => setIsModalOpen(false)}
+              className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200/50 text-slate-650 rounded-[3px] cursor-pointer"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className="px-5 py-2.5 bg-[#0F5B38] hover:brightness-105 text-white rounded-[3px] shadow-lg shadow-emerald-950/15 cursor-pointer disabled:opacity-50 font-medium"
+            >
+              {isSubmitting ? 'Saving...' : editingBankAcc ? 'Save Changes' : 'Add Account'}
+            </button>
+          </div>
+        </form>
+      </>
     )
   }
 
@@ -291,8 +471,41 @@ export function BankAccountsTab({ activeOrg, onViewInvoice, onViewBill }: BankAc
         </button>
       </div>
 
-      <div className="flex flex-col md:flex-row md:items-end justify-between pb-0 border-b border-slate-200/60 gap-4">
-        <div className="flex items-end gap-2 flex-grow max-w-2xl pb-0 mb-[2px]">
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between border-b border-slate-200 pb-0 gap-4">
+        <div className="flex space-x-1 select-none text-xs font-semibold -mb-[1px] relative z-10">
+          {(['Active', 'All', 'Deactivated'] as const).map(f => {
+            const isActive = activeFilter === f
+            return (
+              <button
+                key={f}
+                onClick={() => setActiveFilter(f)}
+                className={`px-4 py-2 text-xs font-semibold transition-all border rounded-t-[3px] cursor-pointer whitespace-nowrap ${
+                  isActive
+                    ? 'bg-white text-[#0F5B38] border-slate-200 border-b-transparent font-bold -mb-[1px] relative z-10'
+                    : 'bg-transparent hover:bg-slate-50 text-slate-450 hover:text-slate-855 border-slate-200'
+                }`}
+              >
+                {f === 'Active' ? 'Active' : f === 'All' ? 'All Accounts' : 'Deactivated'}
+              </button>
+            )
+          })}
+        </div>
+
+        <div className="flex items-end space-x-2 w-full sm:w-auto justify-end gap-2 pb-0 mb-[2px]">
+          {selectedIds.size > 0 && (
+            <div className="flex items-center space-x-1.5 animate-fadeIn text-xs font-semibold">
+              <button
+                onClick={handleBulkDeactivate}
+                className="px-2.5 py-1.5 bg-white border border-slate-200 text-slate-700 hover:text-amber-600 hover:border-slate-300 rounded-[3px] shadow-sm transition cursor-pointer"
+              >
+                {activeFilter === 'Deactivated' ? 'Reactivate Selected' : 'Deactivate Selected'}
+              </button>
+              <span className="text-[11px] text-slate-400 font-bold px-1 whitespace-nowrap hidden lg:inline">
+                {selectedIds.size} selected
+              </span>
+            </div>
+          )}
+
           <div className="relative w-full sm:w-64">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
             <input
@@ -304,23 +517,6 @@ export function BankAccountsTab({ activeOrg, onViewInvoice, onViewBill }: BankAc
             />
           </div>
 
-          {selectedIds.size > 0 && (
-            <div className="flex items-center space-x-1.5 animate-fadeIn text-xs font-semibold pb-[2px]">
-              <button
-                onClick={handleBulkDelete}
-                className="px-2.5 py-1.5 bg-white border border-slate-200 text-slate-700 hover:text-rose-600 hover:border-slate-300 rounded-[3px] shadow-sm transition cursor-pointer"
-              >
-                Delete Selected
-              </button>
-              <span className="text-[11px] text-slate-400 font-bold px-1 whitespace-nowrap hidden lg:inline">
-                {selectedIds.size} selected
-              </span>
-            </div>
-          )}
-        </div>
-
-        <div className="flex items-center space-x-1.5 pb-0 mb-[2px]">
-          <span className="text-[10px] text-slate-455 uppercase font-bold tracking-wider">Sort By:</span>
           <select
             value={sortOption}
             onChange={e => setSortOption(e.target.value as any)}
@@ -348,8 +544,8 @@ export function BankAccountsTab({ activeOrg, onViewInvoice, onViewBill }: BankAc
                 <th className="px-4 py-2.5 w-10 text-center">
                   <input
                     type="checkbox"
-                    checked={filteredBanks.length > 0 && filteredBanks.every(bank => selectedIds.has(bank.id!))}
-                    onChange={() => handleToggleSelectAll(filteredBanks.map(b => b.id!))}
+                    checked={filteredBanks.length > 0 && filteredBanks.every(b => selectedIds.has(b.id))}
+                    onChange={() => handleToggleSelectAll(filteredBanks.map(b => b.id))}
                     className="rounded-[3px] border-slate-300 text-[#0F5B38] focus:ring-[#0F5B38] h-3.5 w-3.5 cursor-pointer"
                   />
                 </th>
@@ -357,7 +553,7 @@ export function BankAccountsTab({ activeOrg, onViewInvoice, onViewBill }: BankAc
                 <th className="px-6 py-2.5">Code</th>
                 <th className="px-6 py-2.5">Type</th>
                 <th className="px-6 py-2.5">Statement Balance</th>
-                <th className="px-6 py-2.5 text-right">Action</th>
+                <th className="px-6 py-2.5">Status</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-slate-705 font-medium">
@@ -365,13 +561,13 @@ export function BankAccountsTab({ activeOrg, onViewInvoice, onViewBill }: BankAc
                 <tr
                   key={bank.id}
                   onClick={(e) => handleRowClick(e, bank)}
-                  className={`hover:bg-emerald-50/30 transition-colors duration-150 ease-in-out ${selectedIds.has(bank.id!) ? 'bg-emerald-50/20' : ''} cursor-pointer`}
+                  className={`hover:bg-emerald-50/30 transition-colors duration-150 ease-in-out cursor-pointer ${selectedIds.has(bank.id) ? 'bg-emerald-50/20' : ''}`}
                 >
-                  <td className="px-4 py-2.5 w-10 text-center">
+                  <td className="px-4 py-2.5 w-10 text-center" onClick={e => e.stopPropagation()}>
                     <input
                       type="checkbox"
-                      checked={selectedIds.has(bank.id!)}
-                      onChange={() => handleToggleSelect(bank.id!)}
+                      checked={selectedIds.has(bank.id)}
+                      onChange={() => handleToggleSelect(bank.id)}
                       className="rounded-[3px] border-slate-300 text-[#0F5B38] focus:ring-[#0F5B38] h-3.5 w-3.5 cursor-pointer"
                     />
                   </td>
@@ -381,25 +577,19 @@ export function BankAccountsTab({ activeOrg, onViewInvoice, onViewBill }: BankAc
                   <td className="px-6 py-2.5 font-bold text-[#0F5B38] text-[13px]">{bank.code}</td>
                   <td className="px-6 py-2.5 font-semibold text-slate-500">Bank Feed</td>
                   <td className="px-6 py-2.5 font-black text-slate-800">
-                    {currencySymbol}0.00
+                    {(() => {
+                      const acctPayments = payments.filter(p => p.bank_account === bank.id)
+                      const bal = acctPayments.filter(p => p.invoice !== null).reduce((s, p) => s + Number(p.amount), 0)
+                               - acctPayments.filter(p => p.bill !== null).reduce((s, p) => s + Number(p.amount), 0)
+                      return `${currencySymbol}${bal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                    })()}
                   </td>
-                  <td className="px-6 py-2.5 text-right no-row-click">
-                    <div className="flex items-center justify-end space-x-1">
-                      <button
-                        onClick={() => handleEditClick(bank)}
-                        className="p-1.5 hover:bg-slate-100 text-slate-400 hover:text-[#0F5B38] rounded-[3px] transition-all cursor-pointer"
-                        title="Edit Bank Account Details"
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                      </button>
-                      <button
-                        onClick={() => handleDeleteBankAccount(bank.id!)}
-                        className="p-1.5 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-[3px] transition-all cursor-pointer"
-                        title="Delete Bank Account"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
+                  <td className="px-6 py-2.5">
+                    {bank.is_active === false ? (
+                      <span className="text-[9px] font-extrabold px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">Inactive</span>
+                    ) : (
+                      <span className="text-[9px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600">Active</span>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -420,81 +610,14 @@ export function BankAccountsTab({ activeOrg, onViewInvoice, onViewBill }: BankAc
         </div>
       )}
 
-      {/* Bank Account Creation Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 overflow-y-auto font-sans flex items-center justify-center">
           <div
             className="fixed inset-0 bg-[#071f13]/35 backdrop-blur-md transition-opacity animate-fadeIn"
             onClick={() => setIsModalOpen(false)}
           ></div>
-
           <div className="relative transform overflow-hidden rounded-[28px] bg-white text-left shadow-2xl transition-all w-full max-w-md border border-slate-100 p-8 space-y-6 mx-4 animate-scaleIn">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-              <div className="space-y-1">
-                <h3 className="text-md font-bold text-slate-850">
-                  {editingBankAcc ? 'Edit Bank Account' : 'Add New Bank Account'}
-                </h3>
-                <p className="text-xs text-slate-400 font-semibold">Declare bank details to link to your general ledger.</p>
-              </div>
-              <button
-                onClick={() => setIsModalOpen(false)}
-                className="text-slate-400 hover:text-slate-650 text-xs font-bold bg-slate-50 hover:bg-slate-100 p-2 rounded-[3px]"
-              >
-                ✕
-              </button>
-            </div>
-
-            <form onSubmit={handleAddBankAccount} className="space-y-4 text-xs font-semibold text-slate-600">
-              <div className="space-y-1">
-                <label className="text-slate-500 uppercase tracking-wide text-[10px]">Bank / Account Name *</label>
-                <input
-                  type="text"
-                  placeholder="e.g. ANZ Savings Account"
-                  value={name}
-                  onChange={e => setName(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200/80 rounded-[3px] px-4 py-3 font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-400/20 focus:border-[#0F5B38]"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-slate-500 uppercase tracking-wide text-[10px]">Account Code *</label>
-                <input
-                  type="text"
-                  placeholder="e.g. 092"
-                  value={code}
-                  onChange={e => setCode(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200/80 rounded-[3px] px-4 py-3 font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-400/20 focus:border-[#0F5B38]"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-slate-500 uppercase tracking-wide text-[10px]">Description</label>
-                <textarea
-                  placeholder="Provide description of banking feed..."
-                  rows={3}
-                  value={description}
-                  onChange={e => setDescription(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200/80 rounded-[3px] px-4 py-3 font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-400/20 focus:border-[#0F5B38] resize-none"
-                ></textarea>
-              </div>
-
-              <div className="flex space-x-3 pt-4 justify-end border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200/50 text-slate-650 rounded-[3px] cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="px-5 py-2.5 bg-[#0F5B38] hover:brightness-105 text-white rounded-[3px] shadow-lg shadow-emerald-950/15 cursor-pointer disabled:opacity-50 font-medium"
-                >
-                  {isSubmitting ? 'Saving...' : editingBankAcc ? 'Save Changes' : 'Add Account'}
-                </button>
-              </div>
-            </form>
+            {renderModalContent()}
           </div>
         </div>
       )}

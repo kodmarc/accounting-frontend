@@ -5,10 +5,11 @@ import type { Organization, Account } from '../../services/api'
 import { usePopup } from '../../components/PopupProvider'
 import { XeroDatePicker } from '../../components/XeroDatePicker'
 import { SearchableInput } from '../../components/SearchableInput'
+import type { TabId } from '../../types/tabs'
 
 interface CreateManualJournalProps {
   activeOrg: Organization
-  setActiveTab: (tab: any) => void
+  setActiveTab: (tab: TabId) => void
 }
 
 interface JournalLineItem {

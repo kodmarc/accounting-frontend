@@ -1,17 +1,18 @@
 import { useState, useEffect, useRef } from 'react'
 import { ArrowLeft, Plus, Trash2, CheckCircle, Save, X, Loader2, ChevronDown, MoreVertical, AlertCircle } from 'lucide-react'
-import { apiService, API_BASE_URL } from '../../services/api'
+import { apiService, API_BASE_URL, fetchWithAuth } from '../../services/api'
 import type { Organization, Contact, Item, Account, TaxRate, SalesSetting, Invoice, Quote, Project } from '../../services/api'
 import { SearchableInput } from '../../components/SearchableInput'
 import { EmailModal } from '../../components/EmailModal'
 import { usePopup } from '../../components/PopupProvider'
 import { XeroDatePicker } from '../../components/XeroDatePicker'
+import type { TabId } from '../../types/tabs'
 
 // PDF generation is processed via backend Django endpoints
 
 interface CreateInvoiceTabProps {
   activeOrg: Organization
-  setActiveTab: (tab: any) => void
+  setActiveTab: (tab: TabId) => void
   editingInvoiceId?: string | null
   setEditingInvoiceId?: (id: string | null) => void
 }
@@ -43,6 +44,11 @@ export function CreateInvoiceTab({
   const [paymentRows, setPaymentRows] = useState<{ accountId: string; amount: number | '' }[]>([
     { accountId: '', amount: '' }
   ])
+
+  // Inventory warning modal state
+  const [isInventoryWarningOpen, setIsInventoryWarningOpen] = useState(false)
+  const [inventoryIssues, setInventoryIssues] = useState<{ name: string; required: number; onHand: number }[]>([])
+  const [pendingPaymentAction, setPendingPaymentAction] = useState<(() => void) | null>(null)
 
   // Loading & UX States
   const [loading, setLoading] = useState(true)
@@ -195,12 +201,12 @@ export function CreateInvoiceTab({
             const allQuotes = await apiService.getQuotes(activeOrg.id)
             const matched = allQuotes.find(q => q.quote_number === quoteId || q.id === quoteId)
             if (matched && matched.id) {
-              sourceQuote = await apiService.getQuote(matched.id)
+              sourceQuote = await apiService.getQuote(matched.id, activeOrg.id)
             } else {
-              sourceQuote = await apiService.getQuote(quoteId)
+              sourceQuote = await apiService.getQuote(quoteId, activeOrg.id)
             }
           } catch {
-            sourceQuote = await apiService.getQuote(quoteId)
+            sourceQuote = await apiService.getQuote(quoteId, activeOrg.id)
           }
 
           if (sourceQuote) {
@@ -253,12 +259,12 @@ export function CreateInvoiceTab({
             const allInvoices = await apiService.getInvoices(activeOrg.id)
             const matched = allInvoices.find(i => i.invoice_number === editingInvoiceId || i.id === editingInvoiceId)
             if (matched && matched.id) {
-              targetInvoice = await apiService.getInvoice(matched.id)
+              targetInvoice = await apiService.getInvoice(matched.id, activeOrg.id)
             } else {
-              targetInvoice = await apiService.getInvoice(editingInvoiceId)
+              targetInvoice = await apiService.getInvoice(editingInvoiceId, activeOrg.id)
             }
           } catch {
-            targetInvoice = await apiService.getInvoice(editingInvoiceId)
+            targetInvoice = await apiService.getInvoice(editingInvoiceId, activeOrg.id)
           }
 
           if (targetInvoice) {
@@ -723,7 +729,7 @@ export function CreateInvoiceTab({
 
       if (isEdit) {
         const resolvedId = invoiceDbId || editingInvoiceId
-        await apiService.updateInvoice(resolvedId!, payload)
+        await apiService.updateInvoice(resolvedId!, payload, activeOrg.id)
         localStorage.setItem(`kdm_invoice_notes_${editingInvoiceId}`, notes)
         localStorage.setItem(`kdm_invoice_attachment_${editingInvoiceId}`, attachmentName)
         
@@ -780,14 +786,7 @@ export function CreateInvoiceTab({
 
     setIsDownloadingPdf(true)
     try {
-      const token = localStorage.getItem('kdm_auth_token')
-      const headers: Record<string, string> = {}
-      if (token) {
-        headers['Authorization'] = `Token ${token}`
-      }
-
-      // Fetch PDF from Django backend with POST transmitting customization payloads
-      const url = `${API_BASE_URL}/invoices/${resolvedId}/download-pdf/?_t=${Date.now()}`
+      const url = `${API_BASE_URL}/invoices/${resolvedId}/download-pdf/?org_id=${activeOrg.id}&_t=${Date.now()}`
 
       const logo = localStorage.getItem(`kdm_org_logo_${activeOrg.id}`) || ''
       const bankDetails = JSON.parse(localStorage.getItem(`kdm_bank_details_${activeOrg.id}`) || '{}')
@@ -795,10 +794,9 @@ export function CreateInvoiceTab({
       const orgDetails = JSON.parse(localStorage.getItem(`kdm_org_extensions_${activeOrg.id}`) || '{}')
       const termsValue = salesSetting?.standard_payment_terms || '15 days'
 
-      const res = await fetch(url, {
+      const res = await fetchWithAuth(url, {
         method: 'POST',
         headers: {
-          ...headers,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
@@ -847,7 +845,7 @@ export function CreateInvoiceTab({
     setIsSubmitting(true)
     try {
       const resolvedId = invoiceDbId || editingInvoiceId
-      await apiService.deleteInvoice(resolvedId!)
+      await apiService.deleteInvoice(resolvedId!, activeOrg.id)
 
       if (setEditingInvoiceId) setEditingInvoiceId(null)
       setActiveTab('Invoices')
@@ -864,7 +862,7 @@ export function CreateInvoiceTab({
     setIsSubmitting(true)
     try {
       const resolvedId = invoiceDbId || editingInvoiceId
-      await apiService.updateInvoice(resolvedId, { status: newStatus })
+      await apiService.updateInvoice(resolvedId, { status: newStatus }, activeOrg.id)
       setStatus(newStatus)
       setIsMoreDropdownOpen(false)
     } catch (err: any) {
@@ -872,6 +870,27 @@ export function CreateInvoiceTab({
     } finally {
       setIsSubmitting(false)
       setIsMoreDropdownOpen(false)
+    }
+  }
+
+  const checkInventoryBeforePayment = (onProceed: () => void) => {
+    const issues: { name: string; required: number; onHand: number }[] = []
+    for (const line of lines) {
+      if (!line.itemId) continue
+      const item = catalogItems.find(i => i.id === line.itemId)
+      if (!item || !item.track_quantity) continue
+      const required = parseFloat(line.quantity) || 0
+      const onHand = Number(item.quantity_on_hand ?? 0)
+      if (required > 0 && onHand < required) {
+        issues.push({ name: item.name, required, onHand })
+      }
+    }
+    if (issues.length === 0) {
+      onProceed()
+    } else {
+      setInventoryIssues(issues)
+      setPendingPaymentAction(() => onProceed)
+      setIsInventoryWarningOpen(true)
     }
   }
 
@@ -907,7 +926,10 @@ export function CreateInvoiceTab({
     setIsSubmitting(true);
     try {
       const resolvedId = invoiceDbId || editingInvoiceId;
-      await apiService.updateInvoice(resolvedId!, { status: 'Paid' });
+      await apiService.recordInvoicePayment(resolvedId!, {
+        date: paymentDate,
+        payments: payments.map(p => ({ bank_account_id: p.accountId, amount: p.amount })),
+      }, activeOrg.id);
 
       setStatus('Paid');
       setIsPaymentModalOpen(false);
@@ -1041,7 +1063,7 @@ export function CreateInvoiceTab({
 
   const taxOptions = taxRates.map(t => ({
     value: t.id,
-    label: `${t.name} (${t.rate}%)`
+    label: t.name
   }))
 
   const projectOptions = [
@@ -1389,10 +1411,12 @@ export function CreateInvoiceTab({
 
                   <button
                     onClick={() => {
-                      setSinglePaymentAmount(getGrandTotal().toFixed(2))
-                      setPaymentRows([{ accountId: bankAccounts[0]?.id || '', amount: getGrandTotal() }])
-                      setIsSplitPayment(false)
-                      setIsPaymentModalOpen(true)
+                      checkInventoryBeforePayment(() => {
+                        setSinglePaymentAmount(getGrandTotal().toFixed(2))
+                        setPaymentRows([{ accountId: bankAccounts[0]?.id || '', amount: getGrandTotal() }])
+                        setIsSplitPayment(false)
+                        setIsPaymentModalOpen(true)
+                      })
                     }}
                     className="bg-[#0F5B38] hover:brightness-105 text-white font-medium text-xs px-4.5 py-2 rounded-[3px] shadow-md transition duration-200 cursor-pointer disabled:brightness-90 flex items-center justify-center space-x-1.5 h-[38px]"
                   >
@@ -2408,7 +2432,7 @@ export function CreateInvoiceTab({
               tax_id: activeOrg.tax_id
             }
           }
-          await apiService.sendInvoiceEmail(resolvedId!, payload)
+          await apiService.sendInvoiceEmail(resolvedId!, payload, activeOrg.id)
           showAlert({
             title: needsApproval ? 'Approved & Emailed' : 'Email Sent',
             message: needsApproval
@@ -2420,6 +2444,67 @@ export function CreateInvoiceTab({
           setActiveTab('Invoices')
         }}
       />
+
+      {/* Inventory Warning Modal */}
+      {isInventoryWarningOpen && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center font-sans">
+          <div className="fixed inset-0 bg-[#071f13]/40 backdrop-blur-md animate-fadeIn" />
+          <div className="relative z-10 bg-white rounded-[28px] shadow-2xl border border-slate-100 p-8 w-full max-w-md mx-4 animate-scaleIn space-y-5">
+            <div className="flex items-start space-x-3">
+              <div className="flex-shrink-0 w-9 h-9 rounded-full bg-amber-50 border border-amber-100 flex items-center justify-center">
+                <span className="text-amber-500 text-base font-black">!</span>
+              </div>
+              <div>
+                <h3 className="text-sm font-extrabold text-slate-800">Insufficient Inventory</h3>
+                <p className="text-xs text-slate-500 font-medium mt-0.5">
+                  The following items don't have enough stock to fulfill this invoice.
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-amber-50/60 border border-amber-100 rounded-[6px] divide-y divide-amber-100/70">
+              {inventoryIssues.map((issue, i) => (
+                <div key={i} className="px-4 py-2.5 flex items-center justify-between text-xs">
+                  <span className="font-semibold text-slate-700">{issue.name}</span>
+                  <div className="flex items-center space-x-3 text-right">
+                    <span className="text-slate-400">Required: <span className="font-bold text-slate-700">{issue.required}</span></span>
+                    <span className="text-rose-500">On hand: <span className="font-bold">{issue.onHand}</span></span>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <p className="text-xs text-slate-500 font-medium">
+              You can proceed anyway and the inventory will go negative, or add stock first.
+            </p>
+
+            <div className="flex space-x-3 pt-1">
+              <button
+                onClick={() => {
+                  setIsInventoryWarningOpen(false)
+                  setInventoryIssues([])
+                  if (pendingPaymentAction) pendingPaymentAction()
+                  setPendingPaymentAction(null)
+                }}
+                className="flex-1 px-4 py-2.5 bg-slate-100 hover:bg-slate-200/70 text-slate-700 rounded-[3px] text-xs font-semibold transition cursor-pointer"
+              >
+                Proceed Anyway
+              </button>
+              <button
+                onClick={() => {
+                  setIsInventoryWarningOpen(false)
+                  setInventoryIssues([])
+                  setPendingPaymentAction(null)
+                  setActiveTab('Products')
+                }}
+                className="flex-1 px-4 py-2.5 bg-[#0F5B38] hover:brightness-105 text-white rounded-[3px] text-xs font-semibold shadow-md shadow-emerald-950/15 transition cursor-pointer"
+              >
+                Add Inventory
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

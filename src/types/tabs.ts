@@ -23,6 +23,7 @@ export type TabId =
   | 'AccountTransactions'
   | 'BalanceSheet'
   | 'ProfitAndLoss'
+  | 'CashFlowStatement'
   | 'ReportingSettings'
   | 'BankAccounts'
   | 'ChartOfAccounts'
@@ -44,3 +45,9 @@ export type TabId =
   | 'CreateManualJournal'
   | 'Projects'
   | 'UserProfile'
+
+export type SettingsTabId =
+  | 'SalesSettings'
+  | 'PurchasesSettings'
+  | 'AccountingSettings'
+  | 'ContactsSettings'

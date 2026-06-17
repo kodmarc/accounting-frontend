@@ -11,16 +11,19 @@ import { quotesApi } from './api/quotes'
 import { billsApi } from './api/bills'
 import { purchaseOrdersApi } from './api/purchase-orders'
 import { projectsApi } from './api/projects'
+import { paymentsApi } from './api/payments'
+import { reportsApi } from './api/reports'
+export type { Payment } from './api/payments'
 
 export type {
   User, Organization, Membership,
   TaxRate, Account, Contact, Item, SalesSetting,
   Invoice, InvoiceLine, Quote, QuoteLine,
   Bill, BillLine, PurchaseOrder, PurchaseOrderLine,
-  Project,
+  Project, InventoryMovement,
   SendEmailPayload, SendBillEmailPayload, SendPurchaseOrderEmailPayload,
 } from './api/types'
-export { API_BASE_URL, request } from './api/base'
+export { API_BASE_URL, request, fetchWithAuth } from './api/base'
 
 export const apiService = {
   ...authApi,
@@ -36,4 +39,6 @@ export const apiService = {
   ...billsApi,
   ...purchaseOrdersApi,
   ...projectsApi,
+  ...paymentsApi,
+  ...reportsApi,
 }

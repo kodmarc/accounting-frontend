@@ -1,15 +1,16 @@
 import { useState, useEffect } from 'react'
 import { Plus, FileText, Search, Eye } from 'lucide-react'
 import { apiService } from '../../services/api'
-import type { Organization, Contact } from '../../services/api'
+import type { Organization, Contact, PurchaseOrder } from '../../services/api'
 import { usePopup } from '../../components/PopupProvider'
+import type { TabId } from '../../types/tabs'
 
 interface PurchaseOrdersTabProps {
   activeOrg: Organization
-  setActiveTab: (tab: any) => void
+  setActiveTab: (tab: TabId) => void
   onEditPO: (id: string) => void
   onCreateNewPO: () => void
-  onConvertToBill: (po: any) => void
+  onConvertToBill: (po: PurchaseOrder) => void
 }
 
 export function PurchaseOrdersTab({
@@ -97,7 +98,7 @@ export function PurchaseOrdersTab({
     if (!confirmed) return
 
     try {
-      await Promise.all(targets.map(po => apiService.deletePurchaseOrder(po.id)))
+      await Promise.all(targets.map(po => apiService.deletePurchaseOrder(po.id, activeOrg.id)))
     } catch (err: any) {
       showAlert({ title: 'Error deleting purchase orders', message: err.message || 'API failed to delete purchase orders.', type: 'error' })
       return
@@ -111,7 +112,7 @@ export function PurchaseOrdersTab({
   const handleBulkChangeStatus = async (status: 'Draft' | 'Awaiting Approval' | 'Approved' | 'Billed' | 'Declined') => {
     try {
       await Promise.all(
-        purchaseOrders.filter(po => selectedIds.has(po.id)).map(po => apiService.updatePurchaseOrder(po.id, { status }))
+        purchaseOrders.filter(po => selectedIds.has(po.id)).map(po => apiService.updatePurchaseOrder(po.id, { status }, activeOrg.id))
       )
     } catch (err: any) {
       showAlert({ title: 'Error updating purchase orders', message: err.message || 'API failed to update purchase orders.', type: 'error' })

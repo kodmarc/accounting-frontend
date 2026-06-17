@@ -2,10 +2,11 @@ import { useState, useEffect } from 'react'
 import { TrendingUp, Plus, Settings, Receipt, FileText, ArrowUpRight, ShoppingBag } from 'lucide-react'
 import { apiService } from '../../services/api'
 import type { Organization } from '../../services/api'
+import type { TabId } from '../../types/tabs'
 
 interface PurchasesOverviewTabProps {
   activeOrg: Organization
-  setActiveTab: (tab: any) => void
+  setActiveTab: (tab: TabId) => void
   onCreateBillClick: () => void
   onCreatePOClick: () => void
 }

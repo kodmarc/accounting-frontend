@@ -4,10 +4,11 @@ import { apiService } from '../../services/api'
 import type { Organization, Account } from '../../services/api'
 import { usePopup } from '../../components/PopupProvider'
 import { XeroDatePicker } from '../../components/XeroDatePicker'
+import type { TabId } from '../../types/tabs'
 
 interface CreateTransferMoneyProps {
   activeOrg: Organization
-  setActiveTab: (tab: any) => void
+  setActiveTab: (tab: TabId) => void
 }
 
 export function CreateTransferMoney({

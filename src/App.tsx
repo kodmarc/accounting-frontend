@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import {
   Receipt,
@@ -11,7 +11,7 @@ import { apiService } from './services/api'
 import type { User as ApiUser, Membership, Organization } from './services/api'
 
 import { usePopup } from './components/PopupProvider'
-import type { TabId } from './types/tabs'
+import type { TabId, SettingsTabId } from './types/tabs'
 
 // Page & Shell Imports
 import { AuthPage } from './pages/AuthPage'
@@ -22,6 +22,11 @@ import { DashboardLayout } from './pages/DashboardLayout'
 import { HomeTab } from './pages/tabs/HomeTab'
 import { ContactsTab } from './pages/tabs/ContactsTab'
 import { PlaceholderTab } from './pages/tabs/PlaceholderTab'
+import { AllReportsTab } from './pages/tabs/AllReportsTab'
+import { CashFlowStatementTab } from './pages/tabs/CashFlowStatementTab'
+import { ProfitAndLossTab } from './pages/tabs/ProfitAndLossTab'
+import { BalanceSheetTab } from './pages/tabs/BalanceSheetTab'
+import { AccountTransactionsTab } from './pages/tabs/AccountTransactionsTab'
 import { ChartOfAccountsTab } from './pages/tabs/ChartOfAccountsTab'
 import { TaxRatesTab } from './pages/tabs/TaxRatesTab'
 import { ProductsTab } from './pages/tabs/ProductsTab'
@@ -49,7 +54,7 @@ const VALID_TABS: TabId[] = [
   'Home', 'SalesOverview', 'Invoices', 'OnlinePayments', 'Quotes', 'Products',
   'Customers', 'SalesSettings', 'PurchasesOverview', 'Bills', 'PurchaseOrders',
   'Cheque', 'Expenses', 'Suppliers', 'PurchasesSettings', 'FixedAssets', 'Payroll',
-  'AllReports', 'AccountTransactions', 'BalanceSheet', 'ProfitAndLoss', 'ReportingSettings',
+  'AllReports', 'AccountTransactions', 'BalanceSheet', 'ProfitAndLoss', 'CashFlowStatement', 'ReportingSettings',
   'BankAccounts', 'ChartOfAccounts', 'TaxRates', 'AccountingSettings', 'Contacts',
   'ContactsSettings', 'CreateInvoice', 'CreateQuote', 'EditInvoice', 'EditQuote',
   'CreateBill', 'EditBill', 'CreatePurchaseOrder', 'EditPurchaseOrder',
@@ -66,7 +71,7 @@ const cleanOrgNameForUrl = (name: string) => name.replace(/\s+/g, '')
 function App() {
   const navigate = useNavigate()
   const location = useLocation()
-  const { showConfirm } = usePopup()
+  const { showConfirm, showAlert } = usePopup()
   const isSubmittingNativelyRef = useRef(false)
 
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false)
@@ -75,7 +80,8 @@ function App() {
   const [organizations, setOrganizations] = useState<Membership[]>([])
   const [activeOrg, setActiveOrg] = useState<Organization | null>(null)
 
-  const [authView, setAuthView] = useState<'login' | 'signup'>('login')
+  const [authView, setAuthView] = useState<'login' | 'signup' | 'forgot-password' | 'reset-password'>('login')
+  const [resetToken, setResetToken] = useState<string>('')
   const [orgDropdownOpen, setOrgDropdownOpen] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
@@ -103,21 +109,28 @@ function App() {
   const [editingInvoiceId, setEditingInvoiceId] = useState<string | null>(null)
   const [editingBillId, setEditingBillId] = useState<string | null>(null)
   const [editingPoId, setEditingPoId] = useState<string | null>(null)
+  const [viewingProductItemId, setViewingProductItemId] = useState<string | null>(null)
   const [invoiceDrawerOpen, setInvoiceDrawerOpen] = useState(false)
   const [quoteDrawerOpen, setQuoteDrawerOpen] = useState(false)
 
   const [countriesList, setCountriesList] = useState<SelectOption[]>([])
   const [currenciesList, setCurrenciesList] = useState<SelectOption[]>([])
 
-  const handleViewInvoice = (id: string) => {
+  useEffect(() => {
+    if (activeTab !== 'Products') {
+      setViewingProductItemId(null)
+    }
+  }, [activeTab])
+
+  const handleViewInvoice = useCallback((id: string) => {
     setEditingInvoiceId(id)
     setActiveTab('EditInvoice')
-  }
+  }, [])
 
-  const handleViewBill = (id: string) => {
+  const handleViewBill = useCallback((id: string) => {
     setEditingBillId(id)
     setActiveTab('EditBill')
-  }
+  }, [])
 
   // Load seeded country & currency lists from API on mount
   useEffect(() => {
@@ -138,7 +151,15 @@ function App() {
     if (isCheckingAuth) return
 
     if (!isAuthenticated) {
-      const targetPath = authView === 'signup' ? '/signup' : '/login'
+      // Allow /reset-password URL to show the reset form
+      if (location.pathname === '/reset-password') {
+        const params = new URLSearchParams(location.search)
+        const token = params.get('token') || ''
+        setResetToken(token)
+        setAuthView('reset-password')
+        return
+      }
+      const targetPath = authView === 'signup' ? '/signup' : authView === 'forgot-password' ? '/forgot-password' : '/login'
       if (location.pathname !== targetPath) navigate(targetPath, { replace: true })
       return
     }
@@ -151,9 +172,17 @@ function App() {
       } else if (activeTab === 'EditQuote' && editingQuoteId) {
         targetPath = `/org/${orgSlug}/EditQuote/${editingQuoteId}`
       }
-      if (location.pathname !== targetPath) navigate(targetPath, { replace: true })
+      if (location.pathname !== targetPath) {
+        // Replace when leaving an auth page so login/signup don't stay in back-history
+        const fromAuthPage = ['/login', '/signup', '/forgot-password', '/reset-password'].includes(location.pathname)
+        navigate(targetPath, fromAuthPage ? { replace: true } : undefined)
+      }
     } else {
-      if (location.pathname !== '/organizations') navigate('/organizations', { replace: true })
+      // If the URL is already an org URL, let Effect 2 restore the org from the URL
+      // (happens on page reload — don't redirect until Effect 2 has a chance to run)
+      if (!location.pathname.startsWith('/org/') && location.pathname !== '/organizations') {
+        navigate('/organizations', { replace: true })
+      }
     }
   }, [isAuthenticated, isCheckingAuth, authView, activeOrg, activeTab, editingInvoiceId, editingQuoteId])
 
@@ -330,7 +359,48 @@ function App() {
     }
   }
 
-  const handleLogout = async () => {
+  const handleForgotPassword = useCallback(async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    setAuthStatus('loading')
+    setErrorMsg(null)
+    setSuccessMsg(null)
+    try {
+      const res = await apiService.forgotPassword(email)
+      setAuthStatus('success')
+      setSuccessMsg(res.message)
+    } catch (err: any) {
+      setAuthStatus('idle')
+      setErrorMsg(err.message || 'Something went wrong. Please try again.')
+    }
+  }, [email])
+
+  const handleResetPassword = useCallback(async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    if (password.length < 8) {
+      setErrorMsg('Password must be at least 8 characters.')
+      return
+    }
+    setAuthStatus('loading')
+    setErrorMsg(null)
+    setSuccessMsg(null)
+    try {
+      const res = await apiService.resetPassword(resetToken, password)
+      setAuthStatus('success')
+      setSuccessMsg(res.message)
+      setPassword('')
+      setTimeout(() => {
+        setAuthView('login')
+        setAuthStatus('idle')
+        setSuccessMsg(null)
+        navigate('/login', { replace: true })
+      }, 2000)
+    } catch (err: any) {
+      setAuthStatus('idle')
+      setErrorMsg(err.message || 'Invalid or expired reset link.')
+    }
+  }, [password, resetToken, navigate])
+
+  const handleLogout = useCallback(async () => {
     try {
       await apiService.logout()
     } catch {}
@@ -348,7 +418,7 @@ function App() {
     setAuthStatus('idle')
     setOrgSearchQuery('')
     setEditingOrg(null)
-  }
+  }, [])
 
   const handleCreateOrg = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -420,6 +490,8 @@ function App() {
         setSuccessMsg={setSuccessMsg}
         handleLogin={handleLogin}
         handleSignup={handleSignup}
+        handleForgotPassword={handleForgotPassword}
+        handleResetPassword={handleResetPassword}
       />
     )
   }
@@ -470,7 +542,11 @@ function App() {
       handleLogout={handleLogout}
     >
       {activeTab === 'Home' && (
-        <HomeTab activeOrg={activeOrg} setActiveTab={setActiveTab} />
+        <HomeTab
+          activeOrg={activeOrg}
+          setActiveTab={setActiveTab}
+          setViewingProductItemId={setViewingProductItemId}
+        />
       )}
 
       {activeTab === 'BankAccounts' && (
@@ -509,7 +585,11 @@ function App() {
       )}
 
       {activeTab === 'ChartOfAccounts' && (
-        <ChartOfAccountsTab activeOrg={activeOrg} />
+        <ChartOfAccountsTab
+          activeOrg={activeOrg}
+          onViewInvoice={handleViewInvoice}
+          onViewBill={handleViewBill}
+        />
       )}
 
       {activeTab === 'TaxRates' && (
@@ -517,7 +597,12 @@ function App() {
       )}
 
       {activeTab === 'Products' && (
-        <ProductsTab activeOrg={activeOrg} />
+        <ProductsTab
+          activeOrg={activeOrg}
+          onViewInvoice={handleViewInvoice}
+          onViewBill={handleViewBill}
+          initialViewingItemId={viewingProductItemId}
+        />
       )}
 
       {activeTab === 'SalesOverview' && (
@@ -552,7 +637,7 @@ function App() {
       {['SalesSettings', 'PurchasesSettings', 'AccountingSettings', 'ContactsSettings'].includes(activeTab) && (
         <SettingsTab
           activeOrg={activeOrg}
-          activeTab={activeTab as any}
+          activeTab={activeTab as SettingsTabId}
           setActiveTab={setActiveTab}
           onOrgUpdate={(updated) => {
             setActiveOrg(updated)
@@ -582,11 +667,11 @@ function App() {
           onCreateNewQuote={() => { setEditingQuoteId(null); setActiveTab('CreateQuote') }}
           onConvertToInvoice={async (quote) => {
             try {
-              await apiService.updateQuote(quote.id!, { status: 'Invoiced' })
+              await apiService.updateQuote(quote.id!, { status: 'Invoiced' }, activeOrg.id)
               setEditingInvoiceId(`convert-quote-${quote.id!}`)
               setActiveTab('CreateInvoice')
             } catch (err: any) {
-              alert('Conversion failed: ' + err.message)
+              showAlert({ title: 'Conversion Failed', message: 'Conversion failed: ' + err.message, type: 'error' })
             }
           }}
         />
@@ -714,39 +799,23 @@ function App() {
       )}
 
       {activeTab === 'AllReports' && (
-        <PlaceholderTab
-          title="Financial Reporting"
-          description="The Ledger Analytics portal is aligned. Compile and export Balance Sheets, Cash Flow forecasts, and dynamic Profit & Loss tables."
-          icon={Sparkles}
-          onReturnHome={() => setActiveTab('Home')}
-        />
+        <AllReportsTab setActiveTab={setActiveTab} />
       )}
 
-      {activeTab === 'AccountTransactions' && (
-        <PlaceholderTab
-          title="Account Transactions Report"
-          description="View a full ledger of all transactions across accounts for the active organization."
-          icon={TrendingUp}
-          onReturnHome={() => setActiveTab('Home')}
-        />
+      {activeTab === 'AccountTransactions' && activeOrg && (
+        <AccountTransactionsTab activeOrg={activeOrg} setActiveTab={setActiveTab} />
       )}
 
-      {activeTab === 'BalanceSheet' && (
-        <PlaceholderTab
-          title="Balance Sheet Statement"
-          description="View a complete snapshot of your organization's assets, liabilities, and equity at any point in time."
-          icon={Sparkles}
-          onReturnHome={() => setActiveTab('Home')}
-        />
+      {activeTab === 'BalanceSheet' && activeOrg && (
+        <BalanceSheetTab activeOrg={activeOrg} setActiveTab={setActiveTab} />
       )}
 
-      {activeTab === 'ProfitAndLoss' && (
-        <PlaceholderTab
-          title="Profit & Loss Statement"
-          description="Analyze revenue, cost of goods sold, operating expenses, and net income across any reporting period."
-          icon={Sparkles}
-          onReturnHome={() => setActiveTab('Home')}
-        />
+      {activeTab === 'ProfitAndLoss' && activeOrg && (
+        <ProfitAndLossTab activeOrg={activeOrg} setActiveTab={setActiveTab} />
+      )}
+
+      {activeTab === 'CashFlowStatement' && activeOrg && (
+        <CashFlowStatementTab activeOrg={activeOrg} setActiveTab={setActiveTab} />
       )}
 
       {activeTab === 'ReportingSettings' && (

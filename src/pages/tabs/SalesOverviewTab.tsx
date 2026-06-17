@@ -2,10 +2,11 @@ import { useState, useEffect } from 'react'
 import { TrendingUp, Plus, Settings, Receipt, FileText, ArrowUpRight } from 'lucide-react'
 import { apiService } from '../../services/api'
 import type { Organization, Invoice, Quote } from '../../services/api'
+import type { TabId } from '../../types/tabs'
 
 interface SalesOverviewTabProps {
   activeOrg: Organization
-  setActiveTab: (tab: any) => void
+  setActiveTab: (tab: TabId) => void
   onCreateInvoiceClick: () => void
   onCreateQuoteClick: () => void
 }

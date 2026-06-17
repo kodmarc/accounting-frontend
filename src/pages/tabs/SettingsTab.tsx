@@ -18,12 +18,13 @@ import {
 import { apiService } from '../../services/api'
 import type { Organization, SalesSetting, TaxRate } from '../../services/api'
 import { TaxRatesTab } from './TaxRatesTab'
+import type { SettingsTabId } from '../../types/tabs'
 
 interface SettingsTabProps {
   activeOrg: Organization
   onOrgUpdate?: (updated: Organization) => void
-  activeTab: 'SalesSettings' | 'PurchasesSettings' | 'AccountingSettings' | 'ContactsSettings'
-  setActiveTab: (tab: 'SalesSettings' | 'PurchasesSettings' | 'AccountingSettings' | 'ContactsSettings') => void
+  activeTab: SettingsTabId
+  setActiveTab: (tab: SettingsTabId) => void
 }
 
 export function SettingsTab({

@@ -17,9 +17,16 @@ export const accountsApi = {
     })
   },
 
-  async updateAccount(accountId: string, data: Partial<Account>): Promise<Account> {
-    return request(`/accounts/${accountId}/`, {
+  async updateAccount(accountId: string, data: Partial<Account>, orgId: string): Promise<Account> {
+    return request(`/accounts/${accountId}/?org_id=${orgId}`, {
       method: 'PUT',
+      body: JSON.stringify(data),
+    })
+  },
+
+  async patchAccount(accountId: string, data: Partial<Account>, orgId: string): Promise<Account> {
+    return request(`/accounts/${accountId}/?org_id=${orgId}`, {
+      method: 'PATCH',
       body: JSON.stringify(data),
     })
   },

@@ -76,7 +76,21 @@ export interface Item {
   purchase_account?: string | null;
   purchase_tax_rate?: string | null;
   purchase_description: string;
+  track_quantity: boolean;
+  quantity_on_hand?: number | null;
   is_active?: boolean;
+  created_at: string;
+}
+
+export interface InventoryMovement {
+  id: string;
+  movement_type: 'sale' | 'purchase' | 'manual_add' | 'manual_remove';
+  quantity_change: number;
+  quantity_after: number;
+  reference_type: string;
+  reference_id: string | null;
+  notes: string;
+  created_by_name: string | null;
   created_at: string;
 }
 
@@ -86,6 +100,10 @@ export interface SalesSetting {
   next_invoice_number: number;
   quote_prefix: string;
   next_quote_number: number;
+  bill_prefix: string;
+  next_bill_number: number;
+  po_prefix: string;
+  next_po_number: number;
   standard_payment_terms: string;
   default_footer: string;
 }
@@ -227,19 +245,16 @@ export interface SendEmailPayload {
   to: string;
   subject?: string;
   message?: string;
-  [key: string]: any;
 }
 
 export interface SendBillEmailPayload {
   to: string;
   subject?: string;
   message?: string;
-  [key: string]: any;
 }
 
 export interface SendPurchaseOrderEmailPayload {
   to: string;
   subject?: string;
   message?: string;
-  [key: string]: any;
 }

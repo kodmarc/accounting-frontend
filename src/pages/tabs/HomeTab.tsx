@@ -1,80 +1,109 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import {
   ArrowRightLeft,
   Plus,
-  CreditCard,
   ChevronRight,
   Receipt,
   TrendingUp,
-  CheckCircle2,
   DollarSign,
   Activity,
-  Calendar
+  Calendar,
+  Package,
+  AlertTriangle,
 } from 'lucide-react'
 import { apiService } from '../../services/api'
-import type { Organization, Account, Invoice } from '../../services/api'
+import type { Organization, Account, Invoice, Bill, Item } from '../../services/api'
 import type { TabId } from '../../types/tabs'
 
 interface HomeTabProps {
   activeOrg: Organization | null
   setActiveTab: (tab: TabId) => void
+  setViewingProductItemId: (id: string | null) => void
 }
 
-export function HomeTab({ activeOrg, setActiveTab }: HomeTabProps) {
+export function HomeTab({ activeOrg, setActiveTab, setViewingProductItemId }: HomeTabProps) {
   const [bankAccounts, setBankAccounts] = useState<Account[]>([])
   const [invoices, setInvoices] = useState<Invoice[]>([])
-  const [bills, setBills] = useState<any[]>([])
+  const [bills, setBills] = useState<Bill[]>([])
+  const [trackedItems, setTrackedItems] = useState<Item[]>([])
   const [loading, setLoading] = useState(true)
 
   const currencySymbol = activeOrg?.currency === 'PKR' ? '₨' : '$'
 
-  const loadDashboardData = async () => {
+  const loadDashboardData = useCallback(async () => {
     if (!activeOrg) return
     setLoading(true)
     try {
-      const [allAccounts, invs, billsList] = await Promise.all([
+      const [allAccounts, invs, billsList, allItems] = await Promise.all([
         apiService.getAccounts(activeOrg.id),
         apiService.getInvoices(activeOrg.id),
         apiService.getBills(activeOrg.id),
+        apiService.getItems(activeOrg.id),
       ])
       setBankAccounts(allAccounts.filter(a => a.type === 'Bank'))
       setInvoices(invs)
       setBills(billsList)
+      const tracked = allItems
+        .filter(i => i.track_quantity)
+        .sort((a, b) => (a.quantity_on_hand ?? 0) - (b.quantity_on_hand ?? 0))
+      setTrackedItems(tracked)
     } catch {
       // silently fail — empty state shown
     } finally {
       setLoading(false)
     }
-  }
+  }, [activeOrg])
 
   useEffect(() => {
     loadDashboardData()
-  }, [activeOrg?.id])
+  }, [loadDashboardData])
+
+  const today = useMemo(() => new Date(), [])
+
+  // Invoices (Receivables)
+  const {
+    totalReceivables,
+    draftInvoicesTotal,
+    draftInvoicesCount,
+    overdueInvoicesTotal,
+    awaitingPaymentInvoices,
+  } = useMemo(() => {
+    const awaiting = invoices.filter(inv => inv.status === 'Awaiting Payment')
+    const drafts = invoices.filter(inv => inv.status === 'Draft')
+    return {
+      awaitingPaymentInvoices: awaiting,
+      totalReceivables: awaiting.reduce((sum, inv) => sum + Number(inv.total), 0),
+      draftInvoicesTotal: drafts.reduce((sum, inv) => sum + Number(inv.total), 0),
+      draftInvoicesCount: drafts.length,
+      overdueInvoicesTotal: awaiting
+        .filter(inv => new Date(inv.due_date) < today)
+        .reduce((sum, inv) => sum + Number(inv.total), 0),
+    }
+  }, [invoices, today])
+
+  // Bills (Payables)
+  const {
+    totalPayables,
+    draftBillsTotal,
+    draftBillsCount,
+    overdueBillsTotal,
+    awaitingPaymentBillsCount,
+  } = useMemo(() => {
+    const awaiting = bills.filter(b => b.status === 'Awaiting Payment')
+    const drafts = bills.filter(b => b.status === 'Draft')
+    return {
+      totalPayables: awaiting.reduce((sum, b) => sum + Number(b.total), 0),
+      awaitingPaymentBillsCount: awaiting.length,
+      draftBillsTotal: drafts.reduce((sum, b) => sum + Number(b.total), 0),
+      draftBillsCount: drafts.length,
+      overdueBillsTotal: awaiting
+        .filter(b => new Date(b.due_date) < today)
+        .reduce((sum, b) => sum + Number(b.total), 0),
+    }
+  }, [bills, today])
 
   // All bank balances come from the backend eventually; show 0 until supported
   const totalCash = 0
-
-  // Invoices (Receivables)
-  const awaitingPaymentInvoices = invoices.filter(inv => inv.status === 'Awaiting Payment')
-  const totalReceivables = awaitingPaymentInvoices.reduce((sum, inv) => sum + Number(inv.total), 0)
-
-  const draftInvoices = invoices.filter(inv => inv.status === 'Draft')
-  const draftInvoicesTotal = draftInvoices.reduce((sum, inv) => sum + Number(inv.total), 0)
-
-  const today = new Date()
-  const overdueInvoices = awaitingPaymentInvoices.filter(inv => new Date(inv.due_date) < today)
-  const overdueInvoicesTotal = overdueInvoices.reduce((sum, inv) => sum + Number(inv.total), 0)
-
-  // Bills (Payables)
-  const awaitingPaymentBills = bills.filter(b => b.status === 'Awaiting Payment')
-  const totalPayables = awaitingPaymentBills.reduce((sum, b) => sum + Number(b.total), 0)
-
-  const draftBills = bills.filter(b => b.status === 'Draft')
-  const draftBillsTotal = draftBills.reduce((sum, b) => sum + Number(b.total), 0)
-
-  const overdueBills = awaitingPaymentBills.filter(b => new Date(b.due_date) < today)
-  const overdueBillsTotal = overdueBills.reduce((sum, b) => sum + Number(b.total), 0)
-
   const netCashSurplus = totalCash + totalReceivables - totalPayables
 
   // Watchlist account balances calculated from invoices/bills data
@@ -201,7 +230,7 @@ export function HomeTab({ activeOrg, setActiveTab }: HomeTabProps) {
             </h2>
           </div>
           <div className="flex items-center space-x-1 text-[10px] text-slate-400 font-bold mt-3">
-            <span>{awaitingPaymentBills.length} bills pending</span>
+            <span>{awaitingPaymentBillsCount} bills pending</span>
           </div>
         </div>
 
@@ -219,58 +248,9 @@ export function HomeTab({ activeOrg, setActiveTab }: HomeTabProps) {
         </div>
       </div>
 
-      {/* Dynamic Bank Accounts list */}
-      <div className="space-y-4">
-        <h3 className="text-sm font-bold text-slate-800 flex items-center space-x-2">
-          <CreditCard className="h-4.5 w-4.5 text-[#0F5B38]" />
-          <span>Active Bank Account Reserves</span>
-        </h3>
 
-        {bankAccounts.length === 0 ? (
-          <div className="bg-white rounded-[3px] border border-slate-100 p-8 text-center">
-            <p className="text-slate-400 text-xs font-semibold">No bank accounts registered. Go to the Bank Accounts tab to add one.</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {bankAccounts.map(bank => (
-              <div
-                key={bank.id}
-                className="bg-white rounded-[3px] border border-emerald-100/50 shadow-sm hover:shadow-md hover:border-emerald-200 transition-all duration-300 flex flex-col overflow-hidden"
-              >
-                <div
-                  onClick={() => setActiveTab('BankAccounts')}
-                  className="p-5 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-[#071f13] to-[#0d3f27] text-white cursor-pointer group"
-                >
-                  <div>
-                    <h4 className="font-bold text-xs group-hover:underline">{bank.name}</h4>
-                    <p className="text-[9px] text-emerald-200/80">Code: {bank.code}</p>
-                  </div>
-                  <span className="p-1.5 bg-white/10 rounded-[3px] backdrop-blur-sm">
-                    <CreditCard className="h-4 w-4 text-emerald-350" />
-                  </span>
-                </div>
-
-                <div className="p-5 flex-1 flex flex-col justify-between space-y-4">
-                  <div>
-                    <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">Statement Balance</span>
-                    <p className="text-md font-extrabold text-slate-800 mt-0.5">
-                      {currencySymbol}0.00
-                    </p>
-                  </div>
-
-                  <div className="p-3 bg-emerald-50/30 rounded-[3px] border border-emerald-100/30 flex items-center space-x-2">
-                    <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                    <span className="text-[10px] font-bold text-emerald-800">Up to date</span>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Receivables and Payables breakdown rows */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      {/* Receivables, Payables, and Inventory breakdown rows */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
 
         {/* Invoices Owed to You */}
         <div className="bg-white rounded-[3px] border border-slate-100 shadow-sm p-6 flex flex-col justify-between">
@@ -291,7 +271,7 @@ export function HomeTab({ activeOrg, setActiveTab }: HomeTabProps) {
                 <p className="text-md font-bold text-slate-700">
                   {currencySymbol}{draftInvoicesTotal.toFixed(2)}
                 </p>
-                <span className="text-xs text-slate-500 font-semibold">{draftInvoices.length} draft</span>
+                <span className="text-xs text-slate-500 font-semibold">{draftInvoicesCount} draft</span>
               </div>
             </div>
 
@@ -354,7 +334,7 @@ export function HomeTab({ activeOrg, setActiveTab }: HomeTabProps) {
                 <p className="text-md font-bold text-slate-700">
                   {currencySymbol}{draftBillsTotal.toFixed(2)}
                 </p>
-                <span className="text-xs text-slate-500 font-semibold">{draftBills.length} draft</span>
+                <span className="text-xs text-slate-500 font-semibold">{draftBillsCount} draft</span>
               </div>
             </div>
 
@@ -394,6 +374,77 @@ export function HomeTab({ activeOrg, setActiveTab }: HomeTabProps) {
             className="mt-6 w-full flex items-center justify-center space-x-1.5 py-2 bg-slate-50 hover:bg-slate-100 text-[#071f13] font-bold text-xs rounded-[3px] border border-slate-200 transition-all duration-300 cursor-pointer"
           >
             <span>Manage Bills Ledger</span>
+            <ChevronRight className="h-3.5 w-3.5" />
+          </button>
+        </div>
+
+        {/* Inventory Stock Alerts */}
+        <div className="bg-white rounded-[3px] border border-slate-100 shadow-sm p-6 flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between mb-4 border-b border-slate-100 pb-3">
+              <div>
+                <h3 className="font-bold text-slate-800 text-sm">Inventory Status</h3>
+                <p className="text-[10px] text-slate-400 font-medium">Products low on stock</p>
+              </div>
+              <span className="p-2 bg-amber-50 text-amber-500 rounded-[3px]">
+                <Package className="h-4 w-4" />
+              </span>
+            </div>
+
+            {trackedItems.length === 0 ? (
+              <div className="text-center py-8">
+                <Package className="h-8 w-8 text-slate-200 mx-auto mb-2" />
+                <p className="text-xs text-slate-400 font-medium leading-relaxed">
+                  No tracked inventory items.<br />Enable stock tracking in Products.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-1">
+                {trackedItems.slice(0, 7).map(item => {
+                  const qty = Number(item.quantity_on_hand ?? 0)
+                  const isOut = qty <= 0
+                  const isLow = qty > 0 && qty <= 5
+                  return (
+                    <button
+                      key={item.id}
+                      onClick={() => {
+                        setViewingProductItemId(item.id)
+                        setActiveTab('Products')
+                      }}
+                      className="w-full flex items-center justify-between py-1.5 px-2 rounded-[3px] hover:bg-slate-50 transition cursor-pointer border-b border-slate-50 last:border-0 group"
+                    >
+                      <div className="flex items-center space-x-2 min-w-0">
+                        {isOut ? (
+                          <AlertTriangle className="h-3.5 w-3.5 text-rose-500 shrink-0" />
+                        ) : isLow ? (
+                          <AlertTriangle className="h-3.5 w-3.5 text-amber-400 shrink-0" />
+                        ) : (
+                          <div className="h-3 w-3 rounded-full bg-emerald-100 border border-emerald-300 shrink-0" />
+                        )}
+                        <span className="text-xs font-semibold text-slate-700 truncate group-hover:text-[#0F5B38] transition" title={item.name}>
+                          {item.name}
+                        </span>
+                      </div>
+                      <span className={`text-xs font-black shrink-0 ml-2 ${isOut ? 'text-rose-500' : isLow ? 'text-amber-500' : 'text-slate-600'}`}>
+                        {qty % 1 === 0 ? qty : qty.toFixed(2)}
+                      </span>
+                    </button>
+                  )
+                })}
+                {trackedItems.length > 7 && (
+                  <p className="text-[10px] text-slate-400 font-semibold text-center pt-1">
+                    +{trackedItems.length - 7} more items tracked
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+
+          <button
+            onClick={() => setActiveTab('Products')}
+            className="mt-6 w-full flex items-center justify-center space-x-1.5 py-2 bg-amber-50 hover:bg-amber-100/60 text-amber-700 font-bold text-xs rounded-[3px] border border-amber-100 transition-all duration-300 cursor-pointer"
+          >
+            <span>Manage Inventory</span>
             <ChevronRight className="h-3.5 w-3.5" />
           </button>
         </div>

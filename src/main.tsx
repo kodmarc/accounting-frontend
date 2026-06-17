@@ -4,13 +4,16 @@ import { BrowserRouter } from 'react-router-dom'
 import './index.css'
 import App from './App.tsx'
 import { PopupProvider } from './components/PopupProvider.tsx'
+import { ErrorBoundary } from './components/ErrorBoundary.tsx'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <BrowserRouter>
-      <PopupProvider>
-        <App />
-      </PopupProvider>
-    </BrowserRouter>
+    <ErrorBoundary>
+      <BrowserRouter>
+        <PopupProvider>
+          <App />
+        </PopupProvider>
+      </BrowserRouter>
+    </ErrorBoundary>
   </StrictMode>,
 )

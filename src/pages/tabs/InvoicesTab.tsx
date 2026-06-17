@@ -3,12 +3,13 @@ import { Plus, Receipt, Search, Trash2, Eye, Printer, CheckCircle, Send, X, Arro
 import { apiService } from '../../services/api'
 import type { Organization, Invoice, Contact, Item, Account, TaxRate, SalesSetting } from '../../services/api'
 import { usePopup } from '../../components/PopupProvider'
+import type { TabId } from '../../types/tabs'
 
 interface InvoicesTabProps {
   activeOrg: Organization
   autoOpenDrawer?: boolean
   onCloseAutoOpen?: () => void
-  setActiveTab: (tab: any) => void
+  setActiveTab: (tab: TabId) => void
   onEditInvoice: (id: string) => void
   onCreateNewInvoice: () => void
 }
@@ -321,7 +322,7 @@ export function InvoicesTab({
     if (!confirmed) return
 
     try {
-      await Promise.all(Array.from(selectedIds).map(id => apiService.deleteInvoice(id)))
+      await Promise.all(Array.from(selectedIds).map(id => apiService.deleteInvoice(id, activeOrg.id)))
       setInvoices(prev => prev.filter(i => !selectedIds.has(i.id!)))
       setSelectedIds(new Set())
     } catch (err: any) {
@@ -339,7 +340,7 @@ export function InvoicesTab({
 
     try {
       await Promise.all(Array.from(selectedIds).map(id =>
-        apiService.updateInvoice(id, { status: 'Paid' })
+        apiService.updateInvoice(id, { status: 'Paid' }, activeOrg.id)
       ))
 
       setInvoices(prev => prev.map(i => {
@@ -355,7 +356,7 @@ export function InvoicesTab({
   const handleBulkMarkSent = async () => {
     try {
       await Promise.all(Array.from(selectedIds).map(id =>
-        apiService.updateInvoice(id, { status: 'Awaiting Payment' })
+        apiService.updateInvoice(id, { status: 'Awaiting Payment' }, activeOrg.id)
       ))
 
       setInvoices(prev => prev.map(i => {
@@ -364,7 +365,7 @@ export function InvoicesTab({
       }))
       setSelectedIds(new Set())
     } catch (err: any) {
-      alert("Failed to transition: " + err.message)
+      showAlert({ title: 'Update Failed', message: "Failed to transition: " + err.message, type: 'error' })
     }
   }
 

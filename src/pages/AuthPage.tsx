@@ -11,8 +11,8 @@ import {
 } from 'lucide-react'
 
 interface AuthPageProps {
-  authView: 'login' | 'signup'
-  setAuthView: (view: 'login' | 'signup') => void
+  authView: 'login' | 'signup' | 'forgot-password' | 'reset-password'
+  setAuthView: (view: 'login' | 'signup' | 'forgot-password' | 'reset-password') => void
   email: string
   setEmail: (val: string) => void
   password: string
@@ -30,6 +30,8 @@ interface AuthPageProps {
   setSuccessMsg: (val: string | null) => void
   handleLogin: (e: React.FormEvent<HTMLFormElement>) => void
   handleSignup: (e: React.FormEvent<HTMLFormElement>) => void
+  handleForgotPassword: (e: React.FormEvent<HTMLFormElement>) => void
+  handleResetPassword: (e: React.FormEvent<HTMLFormElement>) => void
 }
 
 export function AuthPage({
@@ -51,7 +53,9 @@ export function AuthPage({
   successMsg,
   setSuccessMsg,
   handleLogin,
-  handleSignup
+  handleSignup,
+  handleForgotPassword,
+  handleResetPassword,
 }: AuthPageProps) {
   return (
     <div className="min-h-screen flex items-center justify-center bg-white p-6 antialiased font-sans relative overflow-hidden">
@@ -65,10 +69,16 @@ export function AuthPage({
             <Calculator className="h-6 w-6 text-emerald-200" />
           </div>
           <h1 className="text-3xl font-black text-[#071f13] tracking-tight">
-            {authView === 'login' ? 'Welcome Back' : 'Get Started'}
+            {authView === 'login' && 'Welcome Back'}
+            {authView === 'signup' && 'Get Started'}
+            {authView === 'forgot-password' && 'Reset Password'}
+            {authView === 'reset-password' && 'New Password'}
           </h1>
           <p className="text-slate-400 text-xs font-semibold tracking-widest uppercase">
-            {authView === 'login' ? 'Access your financial portal' : 'Create a fresh account'}
+            {authView === 'login' && 'Access your financial portal'}
+            {authView === 'signup' && 'Create a fresh account'}
+            {authView === 'forgot-password' && 'We\'ll send you a reset link'}
+            {authView === 'reset-password' && 'Choose a new password'}
           </p>
         </div>
 
@@ -131,6 +141,16 @@ export function AuthPage({
                   {showPassword ? <EyeOff className="h-4.5 w-4.5" /> : <Eye className="h-4.5 w-4.5" />}
                 </button>
               </div>
+            </div>
+
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => { setAuthView('forgot-password'); setErrorMsg(null); setSuccessMsg(null) }}
+                className="text-xs text-[#0F5B38] font-semibold hover:underline cursor-pointer"
+              >
+                Forgot password?
+              </button>
             </div>
 
             <button
@@ -280,6 +300,94 @@ export function AuthPage({
                 Sign In
               </button>
             </div>
+          </form>
+        )}
+
+        {authView === 'forgot-password' && (
+          <form onSubmit={handleForgotPassword} className="space-y-6">
+            <div className="space-y-1.5">
+              <label htmlFor="forgot-email" className="text-xs font-bold text-slate-500 uppercase tracking-wide">Email Address</label>
+              <div className="relative">
+                <Mail className="absolute left-3.5 top-3.5 h-5 w-5 text-slate-400" />
+                <input
+                  id="forgot-email"
+                  type="email"
+                  required
+                  placeholder="name@company.com"
+                  autoComplete="email"
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200/80 rounded-[3px] pl-11 pr-4 py-3.5 text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-400/20 focus:border-[#0F5B38] transition-all duration-300"
+                />
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={authStatus !== 'idle'}
+              className={`w-full bg-gradient-to-r from-[#071f13] to-[#0F5B38] hover:brightness-105 text-white font-bold py-3.5 rounded-[3px] shadow-lg shadow-emerald-900/10 transition-all duration-300 active:scale-[0.98] cursor-pointer flex items-center justify-center space-x-2 ${authStatus !== 'idle' ? 'opacity-90 cursor-not-allowed' : ''}`}
+            >
+              {authStatus === 'loading' && <RefreshCw className="h-4 w-4 animate-spin shrink-0" />}
+              {authStatus === 'success' && <CheckCircle2 className="h-4.5 w-4.5 text-emerald-300 shrink-0" />}
+              <span>
+                {authStatus === 'idle' && 'Send Reset Link'}
+                {authStatus === 'loading' && 'Sending...'}
+                {authStatus === 'success' && 'Link Sent!'}
+              </span>
+            </button>
+
+            <div className="text-center text-sm text-slate-500 font-semibold">
+              <button
+                type="button"
+                onClick={() => { setAuthView('login'); setErrorMsg(null); setSuccessMsg(null) }}
+                className="text-[#0F5B38] font-bold hover:underline"
+              >
+                Back to Sign In
+              </button>
+            </div>
+          </form>
+        )}
+
+        {authView === 'reset-password' && (
+          <form onSubmit={handleResetPassword} className="space-y-6">
+            <div className="space-y-1.5">
+              <label htmlFor="reset-password" className="text-xs font-bold text-slate-500 uppercase tracking-wide">New Password</label>
+              <div className="relative">
+                <Lock className="absolute left-3.5 top-3.5 h-5 w-5 text-slate-400" />
+                <input
+                  id="reset-password"
+                  type={showPassword ? 'text' : 'password'}
+                  required
+                  minLength={8}
+                  placeholder="Min. 8 characters"
+                  autoComplete="new-password"
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200/80 rounded-[3px] pl-11 pr-12 py-3.5 text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-400/20 focus:border-[#0F5B38] transition-all duration-300"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3.5 top-3.5 p-0.5 hover:bg-slate-100 text-slate-400 hover:text-slate-600 rounded-[3px] transition cursor-pointer"
+                >
+                  {showPassword ? <EyeOff className="h-4.5 w-4.5" /> : <Eye className="h-4.5 w-4.5" />}
+                </button>
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={authStatus !== 'idle'}
+              className={`w-full bg-gradient-to-r from-[#071f13] to-[#0F5B38] hover:brightness-105 text-white font-bold py-3.5 rounded-[3px] shadow-lg shadow-emerald-900/10 transition-all duration-300 active:scale-[0.98] cursor-pointer flex items-center justify-center space-x-2 ${authStatus !== 'idle' ? 'opacity-90 cursor-not-allowed' : ''}`}
+            >
+              {authStatus === 'loading' && <RefreshCw className="h-4 w-4 animate-spin shrink-0" />}
+              {authStatus === 'success' && <CheckCircle2 className="h-4.5 w-4.5 text-emerald-300 shrink-0" />}
+              <span>
+                {authStatus === 'idle' && 'Set New Password'}
+                {authStatus === 'loading' && 'Updating...'}
+                {authStatus === 'success' && 'Password Updated!'}
+              </span>
+            </button>
           </form>
         )}
       </div>

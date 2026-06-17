@@ -3,13 +3,14 @@ import { Plus, FileText, Search, Trash2, Eye, CheckCircle, Send, X, Shield, Arro
 import { apiService } from '../../services/api'
 import type { Organization, Quote, Contact, Item, Account, TaxRate, SalesSetting } from '../../services/api'
 import { usePopup } from '../../components/PopupProvider'
+import type { TabId } from '../../types/tabs'
 
 interface QuotesTabProps {
   activeOrg: Organization
   autoOpenDrawer?: boolean
   onCloseAutoOpen?: () => void
   onConvertToInvoice: (quote: Quote) => void
-  setActiveTab: (tab: any) => void
+  setActiveTab: (tab: TabId) => void
   onEditQuote: (id: string) => void
   onCreateNewQuote: () => void
 }
@@ -270,7 +271,7 @@ export function QuotesTab({
     // Set status to Accepted if it wasn't already
     try {
       if (quote.status !== 'Accepted') {
-        await apiService.updateQuote(quote.id!, { status: 'Accepted' })
+        await apiService.updateQuote(quote.id!, { status: 'Accepted' }, activeOrg.id)
         setQuotes(prev => prev.map(q => {
           if (q.id === quote.id) return { ...q, status: 'Accepted' as const }
           return q
@@ -337,7 +338,7 @@ export function QuotesTab({
     if (!confirmed) return
 
     try {
-      await Promise.all(Array.from(selectedIds).map(id => apiService.deleteQuote(id)))
+      await Promise.all(Array.from(selectedIds).map(id => apiService.deleteQuote(id, activeOrg.id)))
       setQuotes(prev => prev.filter(q => !selectedIds.has(q.id!)))
       setSelectedIds(new Set())
     } catch (err: any) {
@@ -348,7 +349,7 @@ export function QuotesTab({
   const handleBulkChangeStatus = async (status: 'Draft' | 'Sent' | 'Accepted' | 'Declined') => {
     try {
       await Promise.all(Array.from(selectedIds).map(id =>
-        apiService.updateQuote(id, { status })
+        apiService.updateQuote(id, { status }, activeOrg.id)
       ))
 
       setQuotes(prev => prev.map(q => {

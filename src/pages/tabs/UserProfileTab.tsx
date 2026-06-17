@@ -3,11 +3,12 @@ import { User, Lock, Eye, EyeOff, Save, CheckCircle, RefreshCw } from 'lucide-re
 import { apiService } from '../../services/api'
 import type { User as ApiUser } from '../../services/api'
 import { usePopup } from '../../components/PopupProvider'
+import type { TabId } from '../../types/tabs'
 
 interface UserProfileTabProps {
   currentUser: ApiUser | null
   setCurrentUser: (user: ApiUser) => void
-  setActiveTab: (tab: any) => void
+  setActiveTab: (tab: TabId) => void
 }
 
 export function UserProfileTab({
