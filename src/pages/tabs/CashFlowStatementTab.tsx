@@ -3,10 +3,11 @@ import { ChevronDown, ChevronUp, Loader2, TrendingUp, RefreshCw, FileDown, Alert
 import type { Organization } from '../../services/api'
 import { apiService } from '../../services/api'
 import type { CFReport, CFLine, CFParams } from '../../services/api/reports'
+import type { TabId } from '../../types/tabs'
 
 interface CashFlowStatementTabProps {
   activeOrg: Organization
-  setActiveTab: (tab: string) => void
+  setActiveTab: (tab: TabId) => void
 }
 
 const DATE_PRESETS = [

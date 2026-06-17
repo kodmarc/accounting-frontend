@@ -20,7 +20,7 @@ export function SalesOverviewTab({
   const [invoices, setInvoices] = useState<Invoice[]>([])
   const [quotes, setQuotes] = useState<Quote[]>([])
   const [loading, setLoading] = useState(true)
-  const [errorMsg, setErrorMsg] = useState<string | null>(null)
+  const [, setErrorMsg] = useState<string | null>(null)
 
   useEffect(() => {
     const loadOverviewData = async () => {

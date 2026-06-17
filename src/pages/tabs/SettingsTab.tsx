@@ -1,19 +1,16 @@
 import { useState, useEffect } from 'react'
 import { 
-  Settings, 
-  Shield, 
-  BadgePercent, 
-  CheckCircle, 
-  Save, 
-  AlertCircle, 
-  Building, 
-  FileText, 
-  ShoppingCart, 
-  BookOpen, 
+  Settings,
+  Shield,
+  CheckCircle,
+  Save,
+  AlertCircle,
+  Building,
+  FileText,
+  ShoppingCart,
+  BookOpen,
   Database,
-  ArrowRight,
-  ExternalLink,
-  Laptop
+  ArrowRight
 } from 'lucide-react'
 import { apiService } from '../../services/api'
 import type { Organization, SalesSetting, TaxRate } from '../../services/api'
@@ -93,7 +90,7 @@ export function SettingsTab({
   // Accounts Settings
   const [yearEndMonth, setYearEndMonth] = useState('December')
   const [yearEndDay, setYearEndDay] = useState('31')
-  const [taxRates, setTaxRates] = useState<TaxRate[]>([])
+  const [, setTaxRates] = useState<TaxRate[]>([])
   const [seedingLedger, setSeedingLedger] = useState(false)
 
   // Brand Logo and Bank Details extensions

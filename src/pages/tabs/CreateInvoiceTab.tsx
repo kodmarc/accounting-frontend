@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { ArrowLeft, Plus, Trash2, CheckCircle, Save, X, Loader2, ChevronDown, MoreVertical, AlertCircle } from 'lucide-react'
+import { ArrowLeft, Plus, Trash2, Loader2, ChevronDown, MoreVertical, AlertCircle } from 'lucide-react'
 import { apiService, API_BASE_URL, fetchWithAuth } from '../../services/api'
 import type { Organization, Contact, Item, Account, TaxRate, SalesSetting, Invoice, Quote, Project } from '../../services/api'
 import { SearchableInput } from '../../components/SearchableInput'
@@ -70,7 +70,7 @@ export function CreateInvoiceTab({
   const [selectedProjectId, setSelectedProjectId] = useState('')
   const [notes, setNotes] = useState('')
   const [attachmentName, setAttachmentName] = useState('')
-  const [attachmentFile, setAttachmentFile] = useState<File | null>(null)
+  const [_attachmentFile, setAttachmentFile] = useState<File | null>(null)
   const [invoiceDbId, setInvoiceDbId] = useState<string | null>(null)
 
   // Project List & Creation states
@@ -879,7 +879,7 @@ export function CreateInvoiceTab({
       if (!line.itemId) continue
       const item = catalogItems.find(i => i.id === line.itemId)
       if (!item || !item.track_quantity) continue
-      const required = parseFloat(line.quantity) || 0
+      const required = parseFloat(String(line.quantity)) || 0
       const onHand = Number(item.quantity_on_hand ?? 0)
       if (required > 0 && onHand < required) {
         issues.push({ name: item.name, required, onHand })

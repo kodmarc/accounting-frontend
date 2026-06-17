@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { ArrowLeft, Save, HelpCircle, Loader2 } from 'lucide-react'
+import { ArrowLeft, Save, Loader2 } from 'lucide-react'
 import { apiService } from '../../services/api'
 import type { Organization, Account } from '../../services/api'
 import { usePopup } from '../../components/PopupProvider'

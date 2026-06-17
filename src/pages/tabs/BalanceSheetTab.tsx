@@ -3,10 +3,11 @@ import { ChevronDown, ChevronRight, X, Loader2, BarChart2, RefreshCw, FileDown, 
 import type { Organization } from '../../services/api'
 import { apiService } from '../../services/api'
 import type { BSReport, BSRow, BSTransaction } from '../../services/api/reports'
+import type { TabId } from '../../types/tabs'
 
 interface BalanceSheetTabProps {
   activeOrg: Organization
-  setActiveTab: (tab: string) => void
+  setActiveTab: (tab: TabId) => void
 }
 
 const PRESETS = [

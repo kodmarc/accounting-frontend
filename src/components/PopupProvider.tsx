@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, type ReactNode } from 'react'
+import { createContext, useContext, useState, type ReactNode } from 'react'
 import { HelpCircle, AlertTriangle, Info, CheckCircle2, XCircle } from 'lucide-react'
 
 export interface ConfirmOptions {

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { ArrowLeft, Save, Plus, Trash2, Loader2, CheckCircle } from 'lucide-react'
+import { ArrowLeft, Plus, Trash2, Loader2, CheckCircle } from 'lucide-react'
 import { apiService } from '../../services/api'
 import type { Organization, Account, Contact, TaxRate, Item } from '../../services/api'
 import { SearchableInput } from '../../components/SearchableInput'

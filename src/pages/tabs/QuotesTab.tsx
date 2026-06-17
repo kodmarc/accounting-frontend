@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Plus, FileText, Search, Trash2, Eye, CheckCircle, Send, X, Shield, ArrowUpDown, ChevronDown } from 'lucide-react'
+import { Plus, FileText, Search, Eye } from 'lucide-react'
 import { apiService } from '../../services/api'
 import type { Organization, Quote, Contact, Item, Account, TaxRate, SalesSetting } from '../../services/api'
 import { usePopup } from '../../components/PopupProvider'
@@ -35,7 +35,7 @@ export function QuotesTab({
 
   // Loading & UI States
   const [loading, setLoading] = useState(true)
-  const [errorMsg, setErrorMsg] = useState<string | null>(null)
+  const [, setErrorMsg] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState<'All' | 'Draft' | 'Sent' | 'Accepted' | 'Declined' | 'Invoiced'>('All')
   const [sortOption, setSortOption] = useState<'date-desc' | 'date-asc' | 'amount-asc' | 'amount-desc'>('date-desc')
@@ -50,9 +50,9 @@ export function QuotesTab({
   const [selectedContactId, setSelectedContactId] = useState('')
   const [quoteNumber, setQuoteNumber] = useState('')
   const [reference, setReference] = useState('')
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0])
+  const [date] = useState(new Date().toISOString().split('T')[0])
   const [expiryDate, setExpiryDate] = useState('')
-  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [_isSubmitting, setIsSubmitting] = useState(false)
 
   // Quote Line Items state
   interface LineFormItem {
@@ -69,7 +69,7 @@ export function QuotesTab({
   ])
 
   // Selected quote for statement PDF preview panel
-  const [selectedQuote, setSelectedQuote] = useState<Quote | null>(null)
+  const [, setSelectedQuote] = useState<Quote | null>(null)
 
   // Auto open new quote page if requested by Quick Action
   useEffect(() => {
@@ -142,7 +142,7 @@ export function QuotesTab({
   }, [statusFilter])
 
   // Catalog populate
-  const handleCatalogSelect = (index: number, itemId: string) => {
+  const _handleCatalogSelect = (index: number, itemId: string) => {
     const targetItem = catalogItems.find(i => i.id === itemId)
     if (!targetItem) return
 
@@ -158,7 +158,7 @@ export function QuotesTab({
   }
 
   // Row lines
-  const updateLineField = (index: number, field: keyof LineFormItem, value: any) => {
+  const _updateLineField = (index: number, field: keyof LineFormItem, value: any) => {
     const updated = [...lines]
     updated[index] = {
       ...updated[index],
@@ -167,7 +167,7 @@ export function QuotesTab({
     setLines(updated)
   }
 
-  const addLineItem = () => {
+  const _addLineItem = () => {
     const defaultAcc = accounts[0]?.id || ''
     const defaultTax = taxRates[0]?.id || ''
     setLines([...lines, {
@@ -181,7 +181,7 @@ export function QuotesTab({
     }])
   }
 
-  const removeLineItem = (index: number) => {
+  const _removeLineItem = (index: number) => {
     if (lines.length === 1) return
     setLines(lines.filter((_, idx) => idx !== index))
   }
@@ -205,7 +205,7 @@ export function QuotesTab({
   }
 
   // Submit Quote
-  const handleSubmitQuote = async (status: 'Draft' | 'Sent') => {
+  const _handleSubmitQuote = async (status: 'Draft' | 'Sent') => {
     if (!selectedContactId) {
       showAlert({ title: 'Validation Warning', message: 'Please select a valid customer.', type: 'warning' })
       return
@@ -267,7 +267,7 @@ export function QuotesTab({
   }
 
   // Convert accepted quote to draft invoice
-  const handleTriggerConvert = async (quote: Quote) => {
+  const _handleTriggerConvert = async (quote: Quote) => {
     // Set status to Accepted if it wasn't already
     try {
       if (quote.status !== 'Accepted') {
@@ -284,6 +284,8 @@ export function QuotesTab({
       showAlert({ title: 'Conversion Failed', message: "Failed to convert: " + err.message, type: 'error' })
     }
   }
+
+  void [_handleCatalogSelect, _updateLineField, _addLineItem, _removeLineItem, _handleSubmitQuote, _handleTriggerConvert]
 
   // Reset form
   const resetForm = () => {

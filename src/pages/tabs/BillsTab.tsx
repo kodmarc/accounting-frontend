@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
-import { Plus, Receipt, Search, Trash2, Eye } from 'lucide-react'
+import { Plus, Receipt, Search, Eye } from 'lucide-react'
 import { apiService } from '../../services/api'
-import type { Organization, Contact, Item, Account, TaxRate } from '../../services/api'
+import type { Organization } from '../../services/api'
 import { usePopup } from '../../components/PopupProvider'
 import type { TabId } from '../../types/tabs'
 
@@ -21,7 +21,6 @@ export function BillsTab({
   const { showConfirm, showAlert } = usePopup()
   // Database states
   const [bills, setBills] = useState<any[]>([])
-  const [contacts, setContacts] = useState<Contact[]>([])
 
   // Loading & UI States
   const [loading, setLoading] = useState(true)

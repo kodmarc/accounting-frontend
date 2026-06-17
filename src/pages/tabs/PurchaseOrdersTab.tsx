@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Plus, FileText, Search, Eye } from 'lucide-react'
 import { apiService } from '../../services/api'
-import type { Organization, Contact, PurchaseOrder } from '../../services/api'
+import type { Organization, PurchaseOrder } from '../../services/api'
 import { usePopup } from '../../components/PopupProvider'
 import type { TabId } from '../../types/tabs'
 

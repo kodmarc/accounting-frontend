@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
-import { ArrowLeft, Plus, Trash2, CheckCircle, Save, X, Loader2, ChevronDown, MoreVertical, AlertCircle } from 'lucide-react'
+import { ArrowLeft, Plus, Trash2, Loader2, ChevronDown, MoreVertical, AlertCircle } from 'lucide-react'
 import { apiService, API_BASE_URL, fetchWithAuth } from '../../services/api'
-import type { Organization, Contact, Item, Account, TaxRate, Project, SalesSetting } from '../../services/api'
+import type { Organization, Contact, Item, Account, TaxRate, Project } from '../../services/api'
 import { SearchableInput } from '../../components/SearchableInput'
 import { EmailModal } from '../../components/EmailModal'
 import { usePopup } from '../../components/PopupProvider'
@@ -50,7 +50,7 @@ export function CreateBillTab({
   const [selectedProjectId, setSelectedProjectId] = useState('')
   const [notes, setNotes] = useState('')
   const [attachmentName, setAttachmentName] = useState('')
-  const [attachmentFile, setAttachmentFile] = useState<File | null>(null)
+  const [_attachmentFile, setAttachmentFile] = useState<File | null>(null)
 
   // Payment recording states
   const [isApproveDropdownOpen, setIsApproveDropdownOpen] = useState(false)
@@ -781,7 +781,7 @@ export function CreateBillTab({
   }
 
   // Update bill status instantly on the spot without reloads
-  const handleUpdateStatusOnTheSpot = async (newStatus: 'Draft' | 'Awaiting Payment' | 'Paid') => {
+  const _handleUpdateStatusOnTheSpot = async (newStatus: 'Draft' | 'Awaiting Payment' | 'Paid') => {
     if (!editingBillId) return
     setIsSubmitting(true)
     try {
@@ -795,6 +795,8 @@ export function CreateBillTab({
       setIsMoreDropdownOpen(false)
     }
   }
+
+  void _handleUpdateStatusOnTheSpot
 
   const handleRecordPayment = async () => {
     const payments = isSplitPayment

@@ -3,10 +3,11 @@ import { ChevronDown, ChevronUp, Search, Loader2, BarChart2, RefreshCw, FileDown
 import type { Organization, Account } from '../../services/api'
 import { apiService } from '../../services/api'
 import type { ATReport, ATSection, ATTransaction } from '../../services/api/reports'
+import type { TabId } from '../../types/tabs'
 
 interface AccountTransactionsTabProps {
   activeOrg: Organization
-  setActiveTab: (tab: string) => void
+  setActiveTab: (tab: TabId) => void
 }
 
 const DATE_PRESETS = [

@@ -312,7 +312,6 @@ export function ContactsTab({
       ...costings.bills.map(b => ({ id: b.id!, date: b.date, number: b.bill_number, reference: b.reference, type: 'Bill', amount: -Number(b.total), status: b.status }))
     ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
 
-    const currencySymbol = activeOrg.currency === 'PKR' ? '₨' : '$'
 
     mainContent = (
       <div className="space-y-6 font-sans text-left animate-fadeIn">

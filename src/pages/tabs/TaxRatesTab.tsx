@@ -12,7 +12,7 @@ export function TaxRatesTab({ activeOrg }: TaxRatesTabProps) {
   const { showConfirm, showAlert } = usePopup()
   const [taxRates, setTaxRates] = useState<TaxRate[]>([])
   const [loading, setLoading] = useState(true)
-  const [errorMsg, setErrorMsg] = useState<string | null>(null)
+  const [, setErrorMsg] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
 
   // Type B Layout Filter & Sorting States

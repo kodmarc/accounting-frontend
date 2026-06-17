@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { ArrowLeft, Plus, Trash2, CheckCircle, Save, X, Loader2, ChevronDown, MoreVertical, AlertCircle } from 'lucide-react'
+import { ArrowLeft, Plus, Trash2, CheckCircle, Loader2, ChevronDown, MoreVertical, AlertCircle } from 'lucide-react'
 import { apiService, API_BASE_URL, fetchWithAuth } from '../../services/api'
 import type { Organization, Contact, Item, Account, TaxRate, SalesSetting, Quote, Project } from '../../services/api'
 import { SearchableInput } from '../../components/SearchableInput'
@@ -54,7 +54,7 @@ export function CreateQuoteTab({
   const [selectedProjectId, setSelectedProjectId] = useState('')
   const [notes, setNotes] = useState('')
   const [attachmentName, setAttachmentName] = useState('')
-  const [attachmentFile, setAttachmentFile] = useState<File | null>(null)
+  const [_attachmentFile, setAttachmentFile] = useState<File | null>(null)
 
   // Project List & Creation states
   const [projects, setProjects] = useState<Project[]>([])
@@ -767,7 +767,7 @@ export function CreateQuoteTab({
   }
 
   // Automatically move copy of quote to Invoice as Draft status and mark quote as Invoiced on the spot
-  const handleMarkAsInvoiced = async () => {
+  const _handleMarkAsInvoiced = async () => {
     if (!editingQuoteId) return
     setIsSubmitting(true)
     try {
@@ -830,6 +830,8 @@ export function CreateQuoteTab({
       setIsMoreDropdownOpen(false)
     }
   }
+
+  void _handleMarkAsInvoiced
 
   // Update quote status instantly on the spot without popups or redirects
   const handleUpdateStatusOnTheSpot = async (newStatus: 'Draft' | 'Sent' | 'Accepted' | 'Declined' | 'Invoiced') => {

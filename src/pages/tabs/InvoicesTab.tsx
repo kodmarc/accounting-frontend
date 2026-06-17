@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Plus, Receipt, Search, Trash2, Eye, Printer, CheckCircle, Send, X, ArrowUpDown, ChevronDown } from 'lucide-react'
+import { Plus, Receipt, Search, Eye } from 'lucide-react'
 import { apiService } from '../../services/api'
 import type { Organization, Invoice, Contact, Item, Account, TaxRate, SalesSetting } from '../../services/api'
 import { usePopup } from '../../components/PopupProvider'
@@ -33,7 +33,7 @@ export function InvoicesTab({
 
   // Loading & UI States
   const [loading, setLoading] = useState(true)
-  const [errorMsg, setErrorMsg] = useState<string | null>(null)
+  const [, setErrorMsg] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState<'All' | 'Draft' | 'Awaiting Approval' | 'Awaiting Payment' | 'Paid' | 'Overdue'>('All')
   const [sortOption, setSortOption] = useState<'date-desc' | 'date-asc' | 'amount-asc' | 'amount-desc'>('date-desc')
@@ -48,9 +48,9 @@ export function InvoicesTab({
   const [selectedContactId, setSelectedContactId] = useState('')
   const [invoiceNumber, setInvoiceNumber] = useState('')
   const [reference, setReference] = useState('')
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0])
+  const [date] = useState(new Date().toISOString().split('T')[0])
   const [dueDate, setDueDate] = useState('')
-  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [_isSubmitting, setIsSubmitting] = useState(false)
 
   // Invoice Line Items state
   interface LineFormItem {
@@ -142,7 +142,7 @@ export function InvoicesTab({
   }, [statusFilter])
 
   // Catalog Selection populate fields automatically
-  const handleCatalogSelect = (index: number, itemId: string) => {
+  const _handleCatalogSelect = (index: number, itemId: string) => {
     const targetItem = catalogItems.find(i => i.id === itemId)
     if (!targetItem) return
 
@@ -158,7 +158,7 @@ export function InvoicesTab({
   }
 
   // Row line updates
-  const updateLineField = (index: number, field: keyof LineFormItem, value: any) => {
+  const _updateLineField = (index: number, field: keyof LineFormItem, value: any) => {
     const updated = [...lines]
     updated[index] = {
       ...updated[index],
@@ -167,7 +167,7 @@ export function InvoicesTab({
     setLines(updated)
   }
 
-  const addLineItem = () => {
+  const _addLineItem = () => {
     const defaultAcc = accounts[0]?.id || ''
     const defaultTax = taxRates[0]?.id || ''
     setLines([...lines, {
@@ -181,7 +181,7 @@ export function InvoicesTab({
     }])
   }
 
-  const removeLineItem = (index: number) => {
+  const _removeLineItem = (index: number) => {
     if (lines.length === 1) return
     setLines(lines.filter((_, idx) => idx !== index))
   }
@@ -205,7 +205,7 @@ export function InvoicesTab({
   }
 
   // Submit Invoice
-  const handleSubmitInvoice = async (status: 'Draft' | 'Awaiting Payment') => {
+  const _handleSubmitInvoice = async (status: 'Draft' | 'Awaiting Payment') => {
     if (!selectedContactId) {
       showAlert({ title: 'Validation Warning', message: 'Please select a valid customer.', type: 'warning' })
       return
@@ -268,6 +268,8 @@ export function InvoicesTab({
       setIsSubmitting(false)
     }
   }
+
+  void [_handleCatalogSelect, _updateLineField, _addLineItem, _removeLineItem, _handleSubmitInvoice]
 
   // Reset form
   const resetForm = () => {

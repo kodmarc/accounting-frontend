@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { TrendingUp, Plus, Settings, Receipt, FileText, ArrowUpRight, ShoppingBag } from 'lucide-react'
+import { Plus, Settings, Receipt, FileText, ArrowUpRight, ShoppingBag } from 'lucide-react'
 import { apiService } from '../../services/api'
 import type { Organization } from '../../services/api'
 import type { TabId } from '../../types/tabs'
@@ -20,7 +20,7 @@ export function PurchasesOverviewTab({
   const [bills, setBills] = useState<any[]>([])
   const [purchaseOrders, setPurchaseOrders] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [errorMsg, setErrorMsg] = useState<string | null>(null)
+  const [, setErrorMsg] = useState<string | null>(null)
 
   useEffect(() => {
     const loadOverviewData = async () => {

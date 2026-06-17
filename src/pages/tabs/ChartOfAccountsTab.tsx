@@ -17,7 +17,7 @@ export function ChartOfAccountsTab({ activeOrg, onViewInvoice, onViewBill }: Cha
   const [invoices, setInvoices] = useState<Invoice[]>([])
   const [bills, setBills] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [errorMsg, setErrorMsg] = useState<string | null>(null)
+  const [, setErrorMsg] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
 
   const [viewingAccount, setViewingAccount] = useState<Account | null>(null)

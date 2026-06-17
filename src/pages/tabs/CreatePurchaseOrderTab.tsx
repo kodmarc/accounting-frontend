@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { ArrowLeft, Plus, Trash2, CheckCircle, Save, X, Loader2, ChevronDown, MoreVertical, AlertCircle } from 'lucide-react'
+import { ArrowLeft, Plus, Trash2, Loader2, ChevronDown, MoreVertical, AlertCircle } from 'lucide-react'
 import { apiService, API_BASE_URL, fetchWithAuth } from '../../services/api'
 import type { Organization, Contact, Item, Account, TaxRate, Project, SalesSetting } from '../../services/api'
 import { SearchableInput } from '../../components/SearchableInput'
@@ -54,7 +54,7 @@ export function CreatePurchaseOrderTab({
   const [selectedProjectId, setSelectedProjectId] = useState('')
   const [notes, setNotes] = useState('')
   const [attachmentName, setAttachmentName] = useState('')
-  const [attachmentFile, setAttachmentFile] = useState<File | null>(null)
+  const [_attachmentFile, setAttachmentFile] = useState<File | null>(null)
 
   // Project List & Creation states
   const [isCreateProjectOpen, setIsCreateProjectOpen] = useState(false)
@@ -174,7 +174,7 @@ export function CreatePurchaseOrderTab({
           { id: 'mock-t-2', name: 'Tax Exempt', rate: 0.0, is_active: true, created_at: new Date().toISOString() }
         ]
         loadedCatalog = [
-          { id: 'mock-i-1', code: 'CLOUD-LIC', name: 'Cloud Hosting Monthly Server', is_sold: false, sales_unit_price: 0, sales_account: null, sales_tax_rate: null, sales_description: '', is_purchased: true, purchase_unit_cost: 150.00, purchase_account: 'mock-a-2', purchase_tax_rate: 'mock-t-1', purchase_description: 'Monthly cloud virtual machine container resource allocations', created_at: '' }
+          { id: 'mock-i-1', code: 'CLOUD-LIC', name: 'Cloud Hosting Monthly Server', is_sold: false, sales_unit_price: 0, sales_account: null, sales_tax_rate: null, sales_description: '', is_purchased: true, purchase_unit_cost: 150.00, purchase_account: 'mock-a-2', purchase_tax_rate: 'mock-t-1', purchase_description: 'Monthly cloud virtual machine container resource allocations', track_quantity: false, created_at: '' }
         ]
         loadedProjects = [
           { id: 'mock-p-1', name: 'Internal Operations', code: 'INT-OPS' },
