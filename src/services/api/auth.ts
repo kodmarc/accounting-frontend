@@ -24,24 +24,45 @@ export const authApi = {
     return request('/auth/me/')
   },
 
-  async updateMe(firstName: string, lastName: string, password?: string): Promise<{ user: User; message: string }> {
+  async updateMe(firstName: string, lastName: string): Promise<{ user: User; message: string }> {
     return request('/auth/me/', {
       method: 'PUT',
-      body: JSON.stringify({ first_name: firstName, last_name: lastName, password }),
+      body: JSON.stringify({ first_name: firstName, last_name: lastName }),
     })
   },
 
-  async forgotPassword(email: string): Promise<{ message: string }> {
-    return request('/auth/forgot-password/', {
+  async updatePassword(currentPassword: string, newPassword: string): Promise<{ user: User; message: string }> {
+    return request('/auth/me/', {
+      method: 'PUT',
+      body: JSON.stringify({ current_password: currentPassword, password: newPassword }),
+    })
+  },
+
+  async requestOtp(email: string): Promise<{ message: string }> {
+    return request('/auth/request-otp/', {
       method: 'POST',
       body: JSON.stringify({ email }),
     })
   },
 
-  async resetPassword(token: string, password: string): Promise<{ message: string }> {
-    return request('/auth/reset-password/', {
+  async verifyOtp(email: string, code: string, password: string): Promise<{ message: string }> {
+    return request('/auth/verify-otp/', {
       method: 'POST',
-      body: JSON.stringify({ token, password }),
+      body: JSON.stringify({ email, code, password }),
+    })
+  },
+
+  async requestEmailChange(newEmail: string): Promise<{ message: string }> {
+    return request('/auth/request-email-change/', {
+      method: 'POST',
+      body: JSON.stringify({ email: newEmail }),
+    })
+  },
+
+  async confirmEmailChange(code: string): Promise<{ user: User; message: string }> {
+    return request('/auth/confirm-email-change/', {
+      method: 'POST',
+      body: JSON.stringify({ code }),
     })
   },
 }

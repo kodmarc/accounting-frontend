@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { 
+import {
   Settings,
   Shield,
   CheckCircle,
@@ -10,11 +10,13 @@ import {
   ShoppingCart,
   BookOpen,
   Database,
-  ArrowRight
+  ArrowRight,
+  Users
 } from 'lucide-react'
 import { apiService } from '../../services/api'
 import type { Organization, SalesSetting, TaxRate } from '../../services/api'
 import { TaxRatesTab } from './TaxRatesTab'
+import { OrgUsersTab } from './OrgUsersTab'
 import type { SettingsTabId } from '../../types/tabs'
 
 interface SettingsTabProps {
@@ -22,13 +24,17 @@ interface SettingsTabProps {
   onOrgUpdate?: (updated: Organization) => void
   activeTab: SettingsTabId
   setActiveTab: (tab: SettingsTabId) => void
+  currentUserId?: string
+  isAdmin?: boolean
 }
 
 export function SettingsTab({
   activeOrg,
   onOrgUpdate,
   activeTab,
-  setActiveTab
+  setActiveTab,
+  currentUserId = '',
+  isAdmin = true
 }: SettingsTabProps) {
   // Translate activeTab to internal section string
   const getSectionFromTab = (tab: typeof activeTab) => {
@@ -37,6 +43,7 @@ export function SettingsTab({
       case 'SalesSettings': return 'sales'
       case 'PurchasesSettings': return 'purchases'
       case 'AccountingSettings': return 'accounts'
+      case 'UsersSettings': return 'users'
       default: return 'general'
     }
   }
@@ -557,6 +564,20 @@ export function SettingsTab({
             <BookOpen className="h-4 w-4 shrink-0" />
             <span className="truncate">Accounts Settings</span>
           </button>
+
+          {isAdmin && (
+            <button
+              onClick={() => switchSection('UsersSettings')}
+              className={`w-full flex items-center space-x-3 px-4 py-3 rounded-[3px] font-bold text-xs transition duration-200 cursor-pointer ${
+                currentSection === 'users'
+                  ? 'bg-[#0F5B38] text-white shadow-md'
+                  : 'text-slate-600 hover:bg-slate-100 hover:text-slate-800'
+              }`}
+            >
+              <Users className="h-4 w-4 shrink-0" />
+              <span className="truncate">Users &amp; Permissions</span>
+            </button>
+          )}
         </div>
 
         {/* Right Content Panel */}
@@ -1574,6 +1595,11 @@ export function SettingsTab({
                 </button>
               </div>
             </form>
+          )}
+
+          {/* SECTION E: USERS & PERMISSIONS */}
+          {currentSection === 'users' && isAdmin && (
+            <OrgUsersTab activeOrg={activeOrg} currentUserId={currentUserId} />
           )}
 
           {/* SECTION D: ACCOUNTS SETTINGS */}

@@ -15,13 +15,15 @@ interface CreateInvoiceTabProps {
   setActiveTab: (tab: TabId) => void
   editingInvoiceId?: string | null
   setEditingInvoiceId?: (id: string | null) => void
+  onAddAnother?: () => void
 }
 
 export function CreateInvoiceTab({
   activeOrg,
   setActiveTab,
   editingInvoiceId = null,
-  setEditingInvoiceId
+  setEditingInvoiceId,
+  onAddAnother
 }: CreateInvoiceTabProps) {
   const { showConfirm, showAlert } = usePopup()
   // Database states
@@ -1125,14 +1127,29 @@ export function CreateInvoiceTab({
         {isApproveDropdownOpen && (
           <>
             <div className="fixed inset-0 z-40" onClick={() => setIsApproveDropdownOpen(false)}></div>
-            <div className="absolute right-0 top-full mt-1.5 w-40 bg-white border border-slate-200 rounded-[3px] shadow-xl z-50 p-1.5 font-normal text-xs text-slate-700 animate-scaleIn">
+            <div className="absolute right-0 top-full mt-1.5 w-48 bg-white border border-slate-200 rounded-[3px] shadow-xl z-50 p-1.5 font-normal text-xs text-slate-700 animate-scaleIn">
+              <button
+                onClick={async () => {
+                  setIsApproveDropdownOpen(false)
+                  const id = await handleSaveInvoice('Awaiting Payment', false, true)
+                  if (id) {
+                    setActiveTab('CreateInvoice')
+                    onAddAnother?.()
+                  }
+                }}
+                disabled={isSubmitting}
+                className="w-full text-left px-3.5 py-2 hover:bg-slate-50 transition cursor-pointer text-slate-700 font-semibold rounded-[3px]"
+                type="button"
+              >
+                Approve &amp; Add Another
+              </button>
               <button
                 onClick={() => {
                   handleSaveInvoice('Awaiting Payment')
                   setIsApproveDropdownOpen(false)
                 }}
                 disabled={isSubmitting}
-                className="w-full text-left px-3.5 py-2 hover:bg-slate-50 transition cursor-pointer text-slate-700 font-semibold rounded-[3px]"
+                className="w-full text-left px-3.5 py-2 hover:bg-slate-50 transition cursor-pointer text-slate-700 font-normal rounded-[3px]"
                 type="button"
               >
                 Approve
@@ -2218,11 +2235,10 @@ export function CreateInvoiceTab({
               {/* Payment Date */}
               <div className="space-y-1.5">
                 <label className="text-[10px] text-slate-450 font-extrabold uppercase tracking-wider block">Payment Date</label>
-                <input
-                  type="date"
+                <XeroDatePicker
                   value={paymentDate}
-                  onChange={e => setPaymentDate(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-[3px] px-3.5 py-2 text-xs font-normal focus:outline-none focus:border-[#0F5B38]"
+                  onChange={val => setPaymentDate(val)}
+                  placeholder="DD Mon YYYY"
                 />
               </div>
 

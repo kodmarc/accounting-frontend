@@ -240,6 +240,34 @@ export interface PurchaseOrder {
   created_at?: string;
 }
 
+// ---------- Org Members & Invitations ----------
+export interface OrgMember {
+  id: string;
+  user: User;
+  role: 'Admin' | 'User';
+  permissions: Record<string, boolean>;
+  joined_at: string;
+}
+
+export interface OrgInvitation {
+  id: string;
+  email: string;
+  role: 'Admin' | 'User';
+  permissions: Record<string, boolean>;
+  status: 'pending' | 'accepted';
+  created_at: string;
+  expires_at: string;
+}
+
+export interface InvitationInfo {
+  organization_name: string;
+  invited_by: string;
+  email: string;
+  role: string;
+  status: string;
+  is_expired: boolean;
+}
+
 // ---------- Email DTOs ----------
 export interface SendEmailPayload {
   to: string;

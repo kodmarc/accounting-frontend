@@ -47,6 +47,8 @@ import { CreateSpendReceiveMoney } from './pages/tabs/CreateSpendReceiveMoney'
 import { CreateManualJournal } from './pages/tabs/CreateManualJournal'
 import { UserProfileTab } from './pages/tabs/UserProfileTab'
 import { ProjectsTab } from './pages/tabs/ProjectsTab'
+import { InvitePage } from './pages/InvitePage'
+import { LandingPage } from './pages/LandingPage'
 
 import type { SelectOption } from './components/SearchableSelect'
 
@@ -59,7 +61,7 @@ const VALID_TABS: TabId[] = [
   'ContactsSettings', 'CreateInvoice', 'CreateQuote', 'EditInvoice', 'EditQuote',
   'CreateBill', 'EditBill', 'CreatePurchaseOrder', 'EditPurchaseOrder',
   'CreateTransferMoney', 'CreateSpendMoney', 'CreateReceiveMoney', 'CreateManualJournal',
-  'UserProfile', 'Projects'
+  'UserProfile', 'Projects', 'UsersSettings'
 ]
 
 function isValidTabId(tab: string): tab is TabId {
@@ -80,8 +82,14 @@ function App() {
   const [organizations, setOrganizations] = useState<Membership[]>([])
   const [activeOrg, setActiveOrg] = useState<Organization | null>(null)
 
-  const [authView, setAuthView] = useState<'login' | 'signup' | 'forgot-password' | 'reset-password'>('login')
-  const [resetToken, setResetToken] = useState<string>('')
+  const [authView, setAuthView] = useState<'landing' | 'login' | 'signup' | 'forgot-password'>(() => {
+    const path = window.location.pathname
+    if (path === '/signup') return 'signup'
+    if (path === '/forgot-password') return 'forgot-password'
+    if (path === '/login') return 'login'
+    return 'landing'
+  })
+  const [inviteToken, setInviteToken] = useState<string | null>(null)
   const [orgDropdownOpen, setOrgDropdownOpen] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
@@ -109,6 +117,10 @@ function App() {
   const [editingInvoiceId, setEditingInvoiceId] = useState<string | null>(null)
   const [editingBillId, setEditingBillId] = useState<string | null>(null)
   const [editingPoId, setEditingPoId] = useState<string | null>(null)
+  const [createInvoiceKey, setCreateInvoiceKey] = useState(0)
+  const [createBillKey, setCreateBillKey] = useState(0)
+  const [createPoKey, setCreatePoKey] = useState(0)
+  const [createQuoteKey, setCreateQuoteKey] = useState(0)
   const [viewingProductItemId, setViewingProductItemId] = useState<string | null>(null)
   const [invoiceDrawerOpen, setInvoiceDrawerOpen] = useState(false)
   const [quoteDrawerOpen, setQuoteDrawerOpen] = useState(false)
@@ -150,19 +162,10 @@ function App() {
   useEffect(() => {
     if (isCheckingAuth) return
 
-    if (!isAuthenticated) {
-      // Allow /reset-password URL to show the reset form
-      if (location.pathname === '/reset-password') {
-        const params = new URLSearchParams(location.search)
-        const token = params.get('token') || ''
-        setResetToken(token)
-        setAuthView('reset-password')
-        return
-      }
-      const targetPath = authView === 'signup' ? '/signup' : authView === 'forgot-password' ? '/forgot-password' : '/login'
-      if (location.pathname !== targetPath) navigate(targetPath, { replace: true })
-      return
-    }
+    // Don't redirect away from invite pages
+    if (location.pathname.startsWith('/invite/')) return
+
+    if (!isAuthenticated) return
 
     if (activeOrg) {
       const orgSlug = cleanOrgNameForUrl(activeOrg.name)
@@ -173,8 +176,7 @@ function App() {
         targetPath = `/org/${orgSlug}/EditQuote/${editingQuoteId}`
       }
       if (location.pathname !== targetPath) {
-        // Replace when leaving an auth page so login/signup don't stay in back-history
-        const fromAuthPage = ['/login', '/signup', '/forgot-password', '/reset-password'].includes(location.pathname)
+        const fromAuthPage = ['/login', '/signup', '/forgot-password'].includes(location.pathname)
         navigate(targetPath, fromAuthPage ? { replace: true } : undefined)
       }
     } else {
@@ -184,7 +186,7 @@ function App() {
         navigate('/organizations', { replace: true })
       }
     }
-  }, [isAuthenticated, isCheckingAuth, authView, activeOrg, activeTab, editingInvoiceId, editingQuoteId])
+  }, [isAuthenticated, isCheckingAuth, activeOrg, activeTab, editingInvoiceId, editingQuoteId])
 
   // 2. Sync browser URL → React state
   useEffect(() => {
@@ -192,8 +194,21 @@ function App() {
 
     const path = location.pathname
 
+    // Extract invite token from URL
+    if (path.startsWith('/invite/')) {
+      const token = path.split('/invite/')[1]?.replace(/\/$/, '')
+      if (token) setInviteToken(token)
+      return
+    }
+
+    setInviteToken(null)
+
     if (!isAuthenticated) {
-      setAuthView(path === '/signup' ? 'signup' : 'login')
+      if (path === '/signup') setAuthView('signup')
+      else if (path === '/forgot-password') setAuthView('forgot-password')
+      else if (path === '/login') setAuthView('login')
+      else if (path === '/') setAuthView('landing')
+      else navigate('/', { replace: true })  // unknown path while unauthenticated → landing
       return
     }
 
@@ -365,29 +380,26 @@ function App() {
     setErrorMsg(null)
     setSuccessMsg(null)
     try {
-      const res = await apiService.forgotPassword(email)
-      setAuthStatus('success')
-      setSuccessMsg(res.message)
+      await apiService.requestOtp(email)
+      setAuthStatus('success')  // triggers step-advance useEffect in AuthPage
+      setTimeout(() => {
+        setAuthStatus('idle')   // reset so step-2 form is interactive
+        setSuccessMsg(null)
+      }, 300)
     } catch (err: any) {
       setAuthStatus('idle')
       setErrorMsg(err.message || 'Something went wrong. Please try again.')
     }
   }, [email])
 
-  const handleResetPassword = useCallback(async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault()
-    if (password.length < 8) {
-      setErrorMsg('Password must be at least 8 characters.')
-      return
-    }
+  const handleVerifyOtp = useCallback(async (code: string, newPassword: string) => {
     setAuthStatus('loading')
     setErrorMsg(null)
     setSuccessMsg(null)
     try {
-      const res = await apiService.resetPassword(resetToken, password)
+      const res = await apiService.verifyOtp(email, code, newPassword)
       setAuthStatus('success')
       setSuccessMsg(res.message)
-      setPassword('')
       setTimeout(() => {
         setAuthView('login')
         setAuthStatus('idle')
@@ -396,9 +408,9 @@ function App() {
       }, 2000)
     } catch (err: any) {
       setAuthStatus('idle')
-      setErrorMsg(err.message || 'Invalid or expired reset link.')
+      setErrorMsg(err.message || 'Invalid or expired code.')
     }
-  }, [password, resetToken, navigate])
+  }, [email, navigate])
 
   const handleLogout = useCallback(async () => {
     try {
@@ -468,6 +480,35 @@ function App() {
 
   if (isCheckingAuth) return null
 
+  // Invite page — works for both authenticated and unauthenticated users
+  if (inviteToken) {
+    return (
+      <InvitePage
+        token={inviteToken}
+        isAuthenticated={isAuthenticated}
+        currentUserEmail={currentUser?.email || null}
+        onAccepted={(membership) => {
+          setOrganizations(prev => [...prev, membership])
+          setInviteToken(null)
+          navigate('/organizations', { replace: true })
+        }}
+        onGoToLogin={() => {
+          navigate('/login', { replace: true })
+          setInviteToken(null)
+        }}
+      />
+    )
+  }
+
+  if (!isAuthenticated && authView === 'landing') {
+    return (
+      <LandingPage
+        onSignIn={() => { setAuthView('login'); navigate('/login') }}
+        onGetStarted={() => { setAuthView('signup'); navigate('/signup') }}
+      />
+    )
+  }
+
   if (!isAuthenticated) {
     return (
       <AuthPage
@@ -491,7 +532,7 @@ function App() {
         handleLogin={handleLogin}
         handleSignup={handleSignup}
         handleForgotPassword={handleForgotPassword}
-        handleResetPassword={handleResetPassword}
+        handleVerifyOtp={handleVerifyOtp}
       />
     )
   }
@@ -634,19 +675,25 @@ function App() {
         />
       )}
 
-      {['SalesSettings', 'PurchasesSettings', 'AccountingSettings', 'ContactsSettings'].includes(activeTab) && (
-        <SettingsTab
-          activeOrg={activeOrg}
-          activeTab={activeTab as SettingsTabId}
-          setActiveTab={setActiveTab}
-          onOrgUpdate={(updated) => {
-            setActiveOrg(updated)
-            setOrganizations(prev => prev.map(m =>
-              m.organization.id === updated.id ? { ...m, organization: updated } : m
-            ))
-          }}
-        />
-      )}
+      {(['SalesSettings', 'PurchasesSettings', 'AccountingSettings', 'ContactsSettings', 'UsersSettings'] as TabId[]).includes(activeTab) && (() => {
+        const memb = organizations.find(m => m.organization.id === activeOrg?.id)
+        const isAdmin = memb?.role !== 'User'
+        return (
+          <SettingsTab
+            activeOrg={activeOrg}
+            activeTab={activeTab as SettingsTabId}
+            setActiveTab={setActiveTab}
+            currentUserId={currentUser?.id || ''}
+            isAdmin={isAdmin}
+            onOrgUpdate={(updated) => {
+              setActiveOrg(updated)
+              setOrganizations(prev => prev.map(m =>
+                m.organization.id === updated.id ? { ...m, organization: updated } : m
+              ))
+            }}
+          />
+        )
+      })()}
 
       {activeTab === 'Bills' && (
         <BillsTab
@@ -679,20 +726,24 @@ function App() {
 
       {(activeTab === 'CreateInvoice' || activeTab === 'EditInvoice') && (
         <CreateInvoiceTab
+          key={activeTab === 'EditInvoice' ? `edit-inv-${editingInvoiceId}` : `create-inv-${createInvoiceKey}`}
           activeOrg={activeOrg}
           setActiveTab={setActiveTab}
           editingInvoiceId={activeTab === 'EditInvoice' ? editingInvoiceId : null}
           setEditingInvoiceId={setEditingInvoiceId}
+          onAddAnother={() => setCreateInvoiceKey(k => k + 1)}
         />
       )}
 
       {(activeTab === 'CreateQuote' || activeTab === 'EditQuote') && (
         <CreateQuoteTab
+          key={activeTab === 'EditQuote' ? `edit-quote-${editingQuoteId}` : `create-quote-${createQuoteKey}`}
           activeOrg={activeOrg}
           setActiveTab={setActiveTab}
           editingQuoteId={activeTab === 'EditQuote' ? editingQuoteId : null}
           setEditingQuoteId={setEditingQuoteId}
           setEditingInvoiceId={setEditingInvoiceId}
+          onAddAnother={() => setCreateQuoteKey(k => k + 1)}
         />
       )}
 
@@ -708,20 +759,24 @@ function App() {
 
       {(activeTab === 'CreateBill' || activeTab === 'EditBill') && (
         <CreateBillTab
+          key={activeTab === 'EditBill' ? `edit-bill-${editingBillId}` : `create-bill-${createBillKey}`}
           activeOrg={activeOrg}
           setActiveTab={setActiveTab}
           editingBillId={activeTab === 'EditBill' ? editingBillId : null}
           setEditingBillId={setEditingBillId}
+          onAddAnother={() => setCreateBillKey(k => k + 1)}
         />
       )}
 
       {(activeTab === 'CreatePurchaseOrder' || activeTab === 'EditPurchaseOrder') && (
         <CreatePurchaseOrderTab
+          key={activeTab === 'EditPurchaseOrder' ? `edit-po-${editingPoId}` : `create-po-${createPoKey}`}
           activeOrg={activeOrg}
           setActiveTab={setActiveTab}
           editingPoId={activeTab === 'EditPurchaseOrder' ? editingPoId : null}
           setEditingPoId={setEditingPoId}
           setEditingBillId={setEditingBillId}
+          onAddAnother={() => setCreatePoKey(k => k + 1)}
         />
       )}
 
@@ -826,6 +881,7 @@ function App() {
           onReturnHome={() => setActiveTab('Home')}
         />
       )}
+
     </DashboardLayout>
   )
 }

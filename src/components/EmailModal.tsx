@@ -30,7 +30,6 @@ export const EmailModal: React.FC<EmailModalProps> = ({
   const [isSending, setIsSending] = useState(false)
   const [error, setError] = useState('')
 
-  // Reset/Initialize values when modal opens or props change
   useEffect(() => {
     if (isOpen) {
       setTo(defaultEmail || '')
@@ -41,7 +40,7 @@ export const EmailModal: React.FC<EmailModalProps> = ({
 
 Here is ${documentType} ${documentNumber} for your review. The total amount is ${totalAmount}.
 
-Please let us know if you have any questions.
+Please let us know if you have any question.
 
 Regards,
 ${orgName}`

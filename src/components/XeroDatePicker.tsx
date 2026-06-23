@@ -8,6 +8,15 @@ interface XeroDatePickerProps {
   className?: string
   id?: string
   disabled?: boolean
+  size?: 'sm' | 'default'
+}
+
+// Uses local date components to avoid UTC-to-local shift changing the calendar day
+function toLocalDateString(d: Date): string {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
 }
 
 // Robust parsing for multiple manual formats
@@ -16,21 +25,18 @@ export function parseFlexibleDate(value: string): string | null {
   const cleaned = value.trim()
   if (!cleaned) return null
 
-  // 1. Check for standard yyyy-MM-dd
+  // 1. Check for standard yyyy-MM-dd (unambiguous — validate and return as-is)
   if (/^\d{4}-\d{2}-\d{2}$/.test(cleaned)) {
-    const d = new Date(cleaned)
-    if (!isNaN(d.getTime())) return cleaned
+    const [y, mo, d] = cleaned.split('-').map(Number)
+    const date = new Date(y, mo - 1, d)
+    if (date.getFullYear() === y && date.getMonth() === mo - 1 && date.getDate() === d) {
+      return cleaned
+    }
   }
 
-  // 2. Try Standard JS parsing (e.g. 29 April 2026, April 29 2026, 29 Apr 2026)
-  const parsedTimestamp = Date.parse(cleaned)
-  if (!isNaN(parsedTimestamp)) {
-    const d = new Date(parsedTimestamp)
-    return d.toISOString().split('T')[0]
-  }
-
-  // 3. Try format: DD MM YYYY or DD-MM-YYYY or DD/MM/YYYY or DD.MM.YYYY
-  // split on space, dash, slash, dot
+  // 2. Try DD/MM/YYYY-style split FIRST (before Date.parse) so that
+  //    "06 3 2026" is treated as day=06, month=3 — not month=06, day=3.
+  //    Splits on space, dash, slash, or dot.
   const parts = cleaned.split(/[\s\-\.\/]+/)
   if (parts.length === 3) {
     const dayStr = parts[0]
@@ -38,35 +44,36 @@ export function parseFlexibleDate(value: string): string | null {
     const yearStr = parts[2]
 
     const day = parseInt(dayStr, 10)
-    let month = parseInt(monthStr, 10) - 1 // 0-indexed month
     let year = parseInt(yearStr, 10)
+    let month: number
 
-    // Handle 2-digit years
-    if (yearStr.length === 2) {
-      year += 2000
-    }
+    if (yearStr.length === 2) year += 2000
 
-    // Handle alphabetic months if they exist (e.g., "April", "Apr", "04")
-    if (isNaN(month)) {
-      const monthNames = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"]
-      const fullMonthNames = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"]
+    if (isNaN(parseInt(monthStr, 10))) {
+      // Alphabetic month: "june", "Jun", "June", etc.
+      const monthNames3 = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec']
+      const monthNamesFull = ['january','february','march','april','may','june','july','august','september','october','november','december']
       const lower = monthStr.toLowerCase()
-      
-      let foundIdx = monthNames.indexOf(lower.substring(0, 3))
-      if (foundIdx === -1) {
-        foundIdx = fullMonthNames.indexOf(lower)
-      }
-      if (foundIdx !== -1) {
-        month = foundIdx
-      }
+      let idx = monthNames3.indexOf(lower.substring(0, 3))
+      if (idx === -1) idx = monthNamesFull.indexOf(lower)
+      month = idx // -1 if not found → fails validation below
+    } else {
+      month = parseInt(monthStr, 10) - 1 // 0-indexed
     }
 
     if (!isNaN(day) && !isNaN(month) && !isNaN(year) && month >= 0 && month <= 11) {
       const d = new Date(year, month, day)
       if (d.getFullYear() === year && d.getMonth() === month && d.getDate() === day) {
-        return d.toISOString().split('T')[0]
+        return toLocalDateString(d)
       }
     }
+  }
+
+  // 3. Fallback: JS Date.parse for natural language like "April 29 2026"
+  //    Use local date methods (not toISOString) to avoid UTC offset shifting the day.
+  const parsedTimestamp = Date.parse(cleaned)
+  if (!isNaN(parsedTimestamp)) {
+    return toLocalDateString(new Date(parsedTimestamp))
   }
 
   return null
@@ -94,7 +101,8 @@ export function XeroDatePicker({
   placeholder = '',
   className = '',
   id,
-  disabled = false
+  disabled = false,
+  size = 'default'
 }: XeroDatePickerProps) {
   const [inputValue, setInputValue] = useState('')
   const [isOpen, setIsOpen] = useState(false)
@@ -126,6 +134,8 @@ export function XeroDatePicker({
   }, [])
 
   const handleManualBlur = () => {
+    setIsOpen(false)
+
     if (!inputValue) {
       onChange('')
       return
@@ -213,18 +223,20 @@ export function XeroDatePicker({
           onKeyDown={handleManualKeyDown}
           onFocus={() => { if (!disabled) setIsOpen(true); }}
           placeholder={placeholder}
-          className={`w-full border rounded-[3px] px-3.5 py-2 pr-9.5 text-[15px] font-normal transition placeholder:text-slate-400 ${
-            disabled 
-              ? 'bg-slate-50 text-slate-400 cursor-not-allowed border-slate-200' 
-              : 'bg-white text-slate-800 border-slate-200 focus:border-[#0F5B38]'
+          className={`w-full border rounded-[3px] font-normal transition placeholder:text-slate-400 ${
+            size === 'sm'
+              ? 'px-2 py-1.5 pr-7 text-[11px]'
+              : 'px-3.5 py-2 pr-9.5 text-[15px]'
           } ${
-            className.includes('border-rose-500') 
-              ? className 
-              : className
-          }`}
+            disabled
+              ? 'bg-slate-50 text-slate-400 cursor-not-allowed border-slate-200'
+              : 'bg-white text-slate-800 border-slate-200 focus:border-[#0F5B38]'
+          } ${className}`}
         />
-        <Calendar 
-          className={`absolute right-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 transition ${
+        <Calendar
+          className={`absolute top-1/2 -translate-y-1/2 text-slate-400 transition ${
+            size === 'sm' ? 'right-2 h-3 w-3' : 'right-3.5 h-4 w-4'
+          } ${
             disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer hover:text-[#0F5B38]'
           }`}
           onClick={() => { if (!disabled) setIsOpen(!isOpen); }}
@@ -232,7 +244,10 @@ export function XeroDatePicker({
       </div>
 
       {isOpen && (
-        <div className="absolute left-0 mt-1 bg-white border border-slate-200 rounded-[3px] shadow-xl p-4 w-68 z-[1000] animate-fadeIn select-none">
+        <div
+          className="absolute left-0 mt-1 bg-white border border-slate-200 rounded-[3px] shadow-xl p-4 w-68 z-[1000] animate-fadeIn select-none"
+          onMouseDown={e => e.preventDefault()}
+        >
           {/* Header */}
           <div className="flex items-center justify-between pb-3 border-b border-slate-100">
             <button

@@ -13,11 +13,11 @@ export function clearCache() {
 
 let _refreshPromise: Promise<boolean> | null = null
 
-// Called when both access token and refresh token are expired.
-// Redirects to /login so the user is never stuck on a broken page.
+// Called when the refresh token is explicitly rejected (401).
+// Redirects to / so the landing page shows — not /login directly.
 function forceLogout() {
-  if (!window.location.pathname.startsWith('/login')) {
-    window.location.href = '/login'
+  if (window.location.pathname !== '/') {
+    window.location.href = '/'
   }
 }
 
@@ -28,10 +28,13 @@ async function tryRefreshToken(): Promise<boolean> {
       credentials: 'include',
     })
       .then(res => {
-        if (!res.ok) forceLogout()
+        // Only force-logout on explicit 401 (token truly expired/invalid).
+        // Any other non-ok status (503 during backend spinup, etc.) is a
+        // transient error — let the caller handle it gracefully.
+        if (res.status === 401) forceLogout()
         return res.ok
       })
-      .catch(() => { forceLogout(); return false })
+      .catch(() => false)  // Network/timeout error — don't logout, caller handles it
       .finally(() => { _refreshPromise = null })
   }
   return _refreshPromise

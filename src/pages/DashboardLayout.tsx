@@ -6,7 +6,8 @@ import {
   Plus,
   LogOut,
   UserCheck,
-  Settings
+  Settings,
+  Users
 } from 'lucide-react'
 import type { User, Membership, Organization } from '../services/api'
 import type { TabId } from '../types/tabs'
@@ -97,47 +98,74 @@ export function DashboardLayout({
   const isUserRole = currentMemb?.role === 'User'
   const userPermissions = currentMemb?.permissions || {}
 
+  // Child key → parent group key (for cascading deny: if parent=false, all children blocked)
+  const CHILD_TO_PARENT: Record<string, string> = {
+    invoices: 'sales', quotes: 'sales', products: 'sales', customers: 'sales',
+    online_payments: 'sales', sales_settings: 'sales',
+    bills: 'purchase', purchase_orders: 'purchase', cheque: 'purchase',
+    expenses: 'purchase', suppliers: 'purchase', purchases_settings: 'purchase',
+    chart_of_accounts: 'accounts', tax_rates: 'accounts', accounting_settings: 'accounts',
+    all_reports: 'reporting', account_transactions: 'reporting', balance_sheet: 'reporting',
+    profit_and_loss: 'reporting', cash_flow: 'reporting', reporting_settings: 'reporting',
+    contacts_settings: 'contacts',
+  }
+
   const isTabAllowed = (permKey?: string): boolean => {
     if (!isUserRole) return true
     if (!permKey) return true
-    return userPermissions[permKey] !== false
+    const parentKey = CHILD_TO_PARENT[permKey]
+    if (parentKey && userPermissions[parentKey] === false) return false
+    if (permKey in userPermissions) return userPermissions[permKey] !== false
+    return true
   }
 
   useEffect(() => {
+    // Block UsersSettings for non-admins
+    if (activeTab === 'UsersSettings' && isUserRole) {
+      setActiveTab('Home')
+      return
+    }
+
     const permissionMap: Record<string, string> = {
       Home: '',
       SalesOverview: 'sales',
-      Invoices: 'sales',
-      OnlinePayments: 'sales',
-      Quotes: 'sales',
-      Products: 'sales',
-      Customers: 'sales',
-      SalesSettings: 'sales',
+      Invoices: 'invoices',
+      OnlinePayments: 'online_payments',
+      Quotes: 'quotes',
+      Products: 'products',
+      Customers: 'customers',
+      SalesSettings: 'sales_settings',
       PurchasesOverview: 'purchase',
-      Bills: 'purchase',
-      PurchaseOrders: 'purchase',
-      Cheque: 'purchase',
-      Expenses: 'purchase',
-      Suppliers: 'purchase',
-      PurchasesSettings: 'purchase',
+      Bills: 'bills',
+      PurchaseOrders: 'purchase_orders',
+      Cheque: 'cheque',
+      Expenses: 'expenses',
+      Suppliers: 'suppliers',
+      PurchasesSettings: 'purchases_settings',
       FixedAssets: 'fixed_assets',
       Payroll: 'payroll',
       AllReports: 'reporting',
-      AccountTransactions: 'reporting',
-      BalanceSheet: 'reporting',
-      ProfitAndLoss: 'reporting',
-      CashFlowStatement: 'reporting',
-      ReportingSettings: 'reporting',
-      BankAccounts: '',
-      ChartOfAccounts: 'accounts',
-      AccountingSettings: 'accounts',
+      AccountTransactions: 'account_transactions',
+      BalanceSheet: 'balance_sheet',
+      ProfitAndLoss: 'profit_and_loss',
+      CashFlowStatement: 'cash_flow',
+      ReportingSettings: 'reporting_settings',
+      BankAccounts: 'banking',
+      ChartOfAccounts: 'chart_of_accounts',
+      TaxRates: 'tax_rates',
+      AccountingSettings: 'accounting_settings',
       Contacts: 'contacts',
-      ContactsSettings: 'contacts',
-      CreateInvoice: 'sales',
-      CreateQuote: 'sales',
-      EditInvoice: 'sales',
-      EditQuote: 'sales',
-      Projects: ''
+      ContactsSettings: 'contacts_settings',
+      CreateInvoice: 'invoices',
+      CreateQuote: 'quotes',
+      EditInvoice: 'invoices',
+      EditQuote: 'quotes',
+      CreateBill: 'bills',
+      EditBill: 'bills',
+      CreatePurchaseOrder: 'purchase_orders',
+      EditPurchaseOrder: 'purchase_orders',
+      Projects: 'projects',
+      UsersSettings: '',
     }
 
     const permKey = permissionMap[activeTab]
@@ -148,45 +176,45 @@ export function DashboardLayout({
 
   const salesDropdownItems: DropdownItem[] = [
     { key: 'SalesOverview', label: 'Sales overview', permissionKey: 'sales' },
-    { key: 'Invoices', label: 'Invoices', permissionKey: 'sales' },
-    { key: 'OnlinePayments', label: 'Online payments', permissionKey: 'sales' },
-    { key: 'Quotes', label: 'Quotes', permissionKey: 'sales' },
-    { key: 'Products', label: 'Products and services', permissionKey: 'sales' },
-    { key: 'Customers', label: 'Customers', permissionKey: 'sales' },
-    { key: 'SalesSettings', label: 'Sales settings', permissionKey: 'sales' }
+    { key: 'Invoices', label: 'Invoices', permissionKey: 'invoices' },
+    { key: 'OnlinePayments', label: 'Online payments', permissionKey: 'online_payments' },
+    { key: 'Quotes', label: 'Quotes', permissionKey: 'quotes' },
+    { key: 'Products', label: 'Products and services', permissionKey: 'products' },
+    { key: 'Customers', label: 'Customers', permissionKey: 'customers' },
+    { key: 'SalesSettings', label: 'Sales settings', permissionKey: 'sales_settings' },
   ]
 
   const purchasesDropdownItems: DropdownItem[] = [
     { key: 'PurchasesOverview', label: 'Purchases overview', permissionKey: 'purchase' },
-    { key: 'Bills', label: 'Bills', permissionKey: 'purchase' },
-    { key: 'PurchaseOrders', label: 'Purchase orders', permissionKey: 'purchase' },
-    { key: 'Cheque', label: 'Cheque', permissionKey: 'purchase' },
-    { key: 'Expenses', label: 'Expenses', permissionKey: 'purchase' },
-    { key: 'Suppliers', label: 'Suppliers', permissionKey: 'purchase' },
-    { key: 'PurchasesSettings', label: 'Purchases settings', permissionKey: 'purchase' }
+    { key: 'Bills', label: 'Bills', permissionKey: 'bills' },
+    { key: 'PurchaseOrders', label: 'Purchase orders', permissionKey: 'purchase_orders' },
+    { key: 'Cheque', label: 'Cheque', permissionKey: 'cheque' },
+    { key: 'Expenses', label: 'Expenses', permissionKey: 'expenses' },
+    { key: 'Suppliers', label: 'Suppliers', permissionKey: 'suppliers' },
+    { key: 'PurchasesSettings', label: 'Purchases settings', permissionKey: 'purchases_settings' },
   ]
 
   const reportsDropdownItems: DropdownItem[] = [
     { key: 'AllReports', label: 'All reports', permissionKey: 'reporting' },
-    { key: 'AccountTransactions', label: 'Account Transactions', permissionKey: 'reporting' },
-    { key: 'BalanceSheet', label: 'Balance Sheet', permissionKey: 'reporting' },
-    { key: 'ProfitAndLoss', label: 'Profit and Loss', permissionKey: 'reporting' },
-    { key: 'CashFlowStatement', label: 'Cash Flow Statement', permissionKey: 'reporting' },
-    { key: 'ReportingSettings', label: 'Reporting settings', permissionKey: 'reporting' }
+    { key: 'AccountTransactions', label: 'Account Transactions', permissionKey: 'account_transactions' },
+    { key: 'BalanceSheet', label: 'Balance Sheet', permissionKey: 'balance_sheet' },
+    { key: 'ProfitAndLoss', label: 'Profit and Loss', permissionKey: 'profit_and_loss' },
+    { key: 'CashFlowStatement', label: 'Cash Flow Statement', permissionKey: 'cash_flow' },
+    { key: 'ReportingSettings', label: 'Reporting settings', permissionKey: 'reporting_settings' },
   ]
 
   const accountingDropdownItems: DropdownItem[] = [
-    { key: 'BankAccounts', label: 'Bank accounts', permissionKey: '' },
-    { key: 'ChartOfAccounts', label: 'Chart of accounts', permissionKey: 'accounts' },
-    { key: 'TaxRates', label: 'Tax rates', permissionKey: 'accounts' },
-    { key: 'AccountingSettings', label: 'Accounting settings', permissionKey: 'accounts' }
+    { key: 'BankAccounts', label: 'Bank accounts', permissionKey: 'banking' },
+    { key: 'ChartOfAccounts', label: 'Chart of accounts', permissionKey: 'chart_of_accounts' },
+    { key: 'TaxRates', label: 'Tax rates', permissionKey: 'tax_rates' },
+    { key: 'AccountingSettings', label: 'Accounting settings', permissionKey: 'accounting_settings' },
   ]
 
   const contactsDropdownItems: DropdownItem[] = [
     { key: 'Contacts', label: 'All Contacts', permissionKey: 'contacts' },
-    { key: 'Customers', label: 'Customers', permissionKey: 'contacts' },
-    { key: 'Suppliers', label: 'Suppliers', permissionKey: 'contacts' },
-    { key: 'ContactsSettings', label: 'Contacts settings', permissionKey: 'contacts' }
+    { key: 'Customers', label: 'Customers', permissionKey: 'customers' },
+    { key: 'Suppliers', label: 'Suppliers', permissionKey: 'suppliers' },
+    { key: 'ContactsSettings', label: 'Contacts settings', permissionKey: 'contacts_settings' },
   ]
 
   const allowedSalesItems = salesDropdownItems.filter(item => isTabAllowed(item.permissionKey))
@@ -278,6 +306,25 @@ export function DashboardLayout({
                             <Settings className="h-3.5 w-3.5" />
                             <span>Settings (Central Config)</span>
                           </a>
+
+                          {!isUserRole && (
+                            <a
+                              href={activeOrg ? `/org/${cleanOrgNameForUrl(activeOrg.name)}/UsersSettings` : '#'}
+                              onClick={(e) => {
+                                if (e.button === 1 || e.ctrlKey || e.metaKey || e.shiftKey) {
+                                  setOrgDropdownOpen(false)
+                                  return
+                                }
+                                e.preventDefault()
+                                setActiveTab('UsersSettings')
+                                setOrgDropdownOpen(false)
+                              }}
+                              className="w-full text-left px-3 py-2 rounded-[3px] text-[15px] font-normal text-[#0F5B38] hover:bg-emerald-50 flex items-center space-x-2 transition cursor-pointer"
+                            >
+                              <Users className="h-3.5 w-3.5" />
+                              <span>Users &amp; Permissions</span>
+                            </a>
+                          )}
 
                           <a
                             href="/organizations"

@@ -45,9 +45,11 @@ export type TabId =
   | 'CreateManualJournal'
   | 'Projects'
   | 'UserProfile'
+  | 'UsersSettings'
 
 export type SettingsTabId =
   | 'SalesSettings'
   | 'PurchasesSettings'
   | 'AccountingSettings'
   | 'ContactsSettings'
+  | 'UsersSettings'

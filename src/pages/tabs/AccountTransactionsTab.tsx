@@ -4,6 +4,7 @@ import type { Organization, Account } from '../../services/api'
 import { apiService } from '../../services/api'
 import type { ATReport, ATSection, ATTransaction } from '../../services/api/reports'
 import type { TabId } from '../../types/tabs'
+import { XeroDatePicker } from '../../components/XeroDatePicker'
 
 interface AccountTransactionsTabProps {
   activeOrg: Organization
@@ -428,27 +429,30 @@ export function AccountTransactionsTab({ activeOrg, setActiveTab }: AccountTrans
           {/* Date presets */}
           <div>
             <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1">Period</label>
-            <div className="flex rounded-[3px] border border-slate-200 overflow-hidden">
+            <select
+              value={preset}
+              onChange={e => handlePreset(e.target.value)}
+              className="border border-slate-200 rounded-[3px] px-2 py-1.5 text-[11px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-[#0F5B38] bg-white"
+            >
               {DATE_PRESETS.map(p => (
-                <button key={p.key} onClick={() => handlePreset(p.key)}
-                  className={`px-2.5 py-1.5 text-[11px] font-medium border-r border-slate-200 last:border-r-0 transition-colors cursor-pointer ${preset === p.key ? 'bg-[#0F5B38] text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}>
-                  {p.label}
-                </button>
+                <option key={p.key} value={p.key}>{p.label}</option>
               ))}
-            </div>
+            </select>
           </div>
 
           {preset === 'custom' && (
             <>
               <div>
                 <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1">From</label>
-                <input type="date" value={start} onChange={e => setStart(e.target.value)}
-                  className="border border-slate-200 rounded-[3px] px-2 py-1.5 text-xs text-slate-700 focus:outline-none focus:ring-1 focus:ring-[#0F5B38]" />
+                <div className="w-36">
+                  <XeroDatePicker value={start} onChange={val => setStart(val)} placeholder="DD Mon YYYY" size="sm" />
+                </div>
               </div>
               <div>
                 <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1">To</label>
-                <input type="date" value={end} onChange={e => setEnd(e.target.value)}
-                  className="border border-slate-200 rounded-[3px] px-2 py-1.5 text-xs text-slate-700 focus:outline-none focus:ring-1 focus:ring-[#0F5B38]" />
+                <div className="w-36">
+                  <XeroDatePicker value={end} onChange={val => setEnd(val)} placeholder="DD Mon YYYY" size="sm" />
+                </div>
               </div>
             </>
           )}
@@ -481,7 +485,7 @@ export function AccountTransactionsTab({ activeOrg, setActiveTab }: AccountTrans
           <button onClick={runReport} disabled={loading}
             className="flex items-center gap-1.5 px-4 py-1.5 bg-[#0F5B38] hover:brightness-105 text-white text-[11px] font-semibold rounded-[3px] shadow-sm transition disabled:opacity-60 cursor-pointer">
             {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-            Run
+            Update
           </button>
 
           {report && (

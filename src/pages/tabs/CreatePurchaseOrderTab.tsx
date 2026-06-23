@@ -14,6 +14,7 @@ interface CreatePurchaseOrderTabProps {
   editingPoId?: string | null
   setEditingPoId?: (id: string | null) => void
   setEditingBillId?: (id: string | null) => void
+  onAddAnother?: () => void
 }
 
 export function CreatePurchaseOrderTab({
@@ -21,7 +22,8 @@ export function CreatePurchaseOrderTab({
   setActiveTab,
   editingPoId = null,
   setEditingPoId,
-  setEditingBillId
+  setEditingBillId,
+  onAddAnother
 }: CreatePurchaseOrderTabProps) {
   const { showConfirm, showAlert } = usePopup()
 
@@ -999,14 +1001,29 @@ export function CreatePurchaseOrderTab({
         {isApproveDropdownOpen && (
           <>
             <div className="fixed inset-0 z-40" onClick={() => setIsApproveDropdownOpen(false)}></div>
-            <div className="absolute right-0 top-full mt-1.5 w-40 bg-white border border-slate-200 rounded-[3px] shadow-xl z-50 p-1.5 font-normal text-xs text-slate-700 animate-scaleIn">
+            <div className="absolute right-0 top-full mt-1.5 w-48 bg-white border border-slate-200 rounded-[3px] shadow-xl z-50 p-1.5 font-normal text-xs text-slate-700 animate-scaleIn">
+              <button
+                onClick={async () => {
+                  setIsApproveDropdownOpen(false)
+                  const id = await handleSavePO('Approved', false, true)
+                  if (id) {
+                    setActiveTab('CreatePurchaseOrder')
+                    onAddAnother?.()
+                  }
+                }}
+                disabled={isSubmitting}
+                className="w-full text-left px-3.5 py-2 hover:bg-slate-50 transition cursor-pointer text-slate-700 font-semibold rounded-[3px]"
+                type="button"
+              >
+                Approve &amp; Add Another
+              </button>
               <button
                 onClick={() => {
                   handleSavePO('Approved')
                   setIsApproveDropdownOpen(false)
                 }}
                 disabled={isSubmitting}
-                className="w-full text-left px-3.5 py-2 hover:bg-slate-50 transition cursor-pointer text-slate-700 font-semibold rounded-[3px]"
+                className="w-full text-left px-3.5 py-2 hover:bg-slate-50 transition cursor-pointer text-slate-700 font-normal rounded-[3px]"
                 type="button"
               >
                 Approve

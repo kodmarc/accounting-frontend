@@ -16,6 +16,7 @@ interface CreateQuoteTabProps {
   editingQuoteId?: string | null
   setEditingQuoteId?: (id: string | null) => void
   setEditingInvoiceId?: (id: string | null) => void
+  onAddAnother?: () => void
 }
 
 export function CreateQuoteTab({
@@ -23,7 +24,8 @@ export function CreateQuoteTab({
   setActiveTab,
   editingQuoteId = null,
   setEditingQuoteId,
-  setEditingInvoiceId
+  setEditingInvoiceId,
+  onAddAnother
 }: CreateQuoteTabProps) {
   const { showConfirm, showAlert } = usePopup()
   // Database states
@@ -1098,7 +1100,21 @@ export function CreateQuoteTab({
                   {isSendDropdownOpen && (
                     <>
                       <div className="fixed inset-0 z-40" onClick={() => setIsSendDropdownOpen(false)}></div>
-                      <div className="absolute right-0 top-full mt-1.5 w-40 bg-white border border-slate-200 rounded-[3px] shadow-xl z-50 p-1 animate-fadeIn font-normal">
+                      <div className="absolute right-0 top-full mt-1.5 w-48 bg-white border border-slate-200 rounded-[3px] shadow-xl z-50 p-1 animate-fadeIn font-normal">
+                        <button
+                          onClick={async () => {
+                            setIsSendDropdownOpen(false)
+                            const id = await handleSaveQuote('Sent', false, true)
+                            if (id) {
+                              setActiveTab('CreateQuote')
+                              onAddAnother?.()
+                            }
+                          }}
+                          disabled={isSubmitting}
+                          className="w-full text-left px-3 py-2 hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded-[3px] transition cursor-pointer"
+                        >
+                          Send &amp; Add Another
+                        </button>
                         <button
                           onClick={() => {
                             setIsSendDropdownOpen(false)
@@ -1393,7 +1409,21 @@ export function CreateQuoteTab({
                 {isSendDropdownOpen && (
                   <>
                     <div className="fixed inset-0 z-40" onClick={() => setIsSendDropdownOpen(false)}></div>
-                    <div className="absolute right-0 top-full mt-1.5 w-40 bg-white border border-slate-200 rounded-[3px] shadow-xl z-50 p-1 animate-fadeIn font-normal">
+                    <div className="absolute right-0 top-full mt-1.5 w-48 bg-white border border-slate-200 rounded-[3px] shadow-xl z-50 p-1 animate-fadeIn font-normal">
+                      <button
+                        onClick={async () => {
+                          setIsSendDropdownOpen(false)
+                          const id = await handleSaveQuote('Sent', false, true)
+                          if (id) {
+                            setActiveTab('Quotes')
+                            setTimeout(() => setActiveTab('CreateQuote'), 0)
+                          }
+                        }}
+                        disabled={isSubmitting}
+                        className="w-full text-left px-3 py-2 hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded-[3px] transition cursor-pointer"
+                      >
+                        Send &amp; Add Another
+                      </button>
                       <button
                         onClick={() => {
                           setIsSendDropdownOpen(false)
