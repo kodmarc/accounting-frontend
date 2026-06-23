@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import {
   Calculator, FileText, TrendingUp, Users, Building2, ShieldCheck,
   ArrowRight, BarChart3, CreditCard, Globe, Check,
-  Receipt, Zap, Lock, DollarSign, PieChart,
+  Zap, Lock, DollarSign, PieChart,
   CheckCircle2, ChevronRight, ArrowUpRight, Package, BookOpen,
   Layers, BellRing, RefreshCw, Briefcase,
 } from 'lucide-react'

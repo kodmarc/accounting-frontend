@@ -118,7 +118,6 @@ function PermissionToggles({ perms, onChange }: { perms: Permissions; onChange: 
     onChange(next)
   }
 
-  const allOn  = PERMISSION_TREE.every(g => perms[g.key] !== false && g.children.every(c => perms[c.key] !== false))
   const noneOn = PERMISSION_TREE.every(g => perms[g.key] === false)
 
   return (
