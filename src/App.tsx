@@ -512,8 +512,8 @@ function App() {
   if (!isAuthenticated) {
     return (
       <AuthPage
-        authView={authView}
-        setAuthView={setAuthView}
+        authView={authView as 'login' | 'signup' | 'forgot-password'}
+        setAuthView={setAuthView as (v: 'login' | 'signup' | 'forgot-password') => void}
         email={email}
         setEmail={setEmail}
         password={password}

@@ -21,6 +21,7 @@ export type {
   Invoice, InvoiceLine, Quote, QuoteLine,
   Bill, BillLine, PurchaseOrder, PurchaseOrderLine,
   Project, InventoryMovement,
+  OrgMember, OrgInvitation, InvitationInfo,
   SendEmailPayload, SendBillEmailPayload, SendPurchaseOrderEmailPayload,
 } from './api/types'
 export { API_BASE_URL, request, fetchWithAuth } from './api/base'
