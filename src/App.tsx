@@ -68,6 +68,51 @@ function isValidTabId(tab: string): tab is TabId {
   return VALID_TABS.includes(tab as TabId)
 }
 
+// Maps each tab to the ACL permission key that guards it.
+// Tabs not listed here are accessible to all authenticated org members.
+const TAB_TO_PERMISSION_KEY: Partial<Record<TabId, string>> = {
+  SalesOverview:         'sales',
+  Invoices:              'invoices',
+  CreateInvoice:         'invoices',
+  EditInvoice:           'invoices',
+  OnlinePayments:        'online_payments',
+  Quotes:                'quotes',
+  CreateQuote:           'quotes',
+  EditQuote:             'quotes',
+  Products:              'products',
+  Customers:             'customers',
+  SalesSettings:         'sales_settings',
+  PurchasesOverview:     'purchase',
+  Bills:                 'bills',
+  CreateBill:            'bills',
+  EditBill:              'bills',
+  PurchaseOrders:        'purchase_orders',
+  CreatePurchaseOrder:   'purchase_orders',
+  EditPurchaseOrder:     'purchase_orders',
+  Cheque:                'cheque',
+  Expenses:              'expenses',
+  Suppliers:             'suppliers',
+  PurchasesSettings:     'purchases_settings',
+  BankAccounts:          'banking',
+  CreateTransferMoney:   'banking',
+  CreateSpendMoney:      'banking',
+  CreateReceiveMoney:    'banking',
+  ChartOfAccounts:       'chart_of_accounts',
+  CreateManualJournal:   'chart_of_accounts',
+  TaxRates:              'tax_rates',
+  AccountingSettings:    'accounting_settings',
+  AllReports:            'all_reports',
+  AccountTransactions:   'account_transactions',
+  BalanceSheet:          'balance_sheet',
+  ProfitAndLoss:         'profit_and_loss',
+  CashFlowStatement:     'cash_flow',
+  Contacts:              'contacts',
+  ContactsSettings:      'contacts_settings',
+  Projects:              'projects',
+  FixedAssets:           'fixed_assets',
+  Payroll:               'payroll',
+}
+
 const cleanOrgNameForUrl = (name: string) => name.replace(/\s+/g, '')
 
 function App() {
@@ -127,6 +172,24 @@ function App() {
 
   const [countriesList, setCountriesList] = useState<SelectOption[]>([])
   const [currenciesList, setCurrenciesList] = useState<SelectOption[]>([])
+
+  // Returns true if the current org member can access the given tab.
+  // Admins always can; Users are checked against their permissions JSON.
+  const canAccess = useCallback((tab: TabId): boolean => {
+    if (!activeOrg) return false
+    const memb = organizations.find(m => m.organization.id === activeOrg.id)
+    if (!memb || memb.role !== 'User') return true
+    const key = TAB_TO_PERMISSION_KEY[tab]
+    if (!key) return true
+    return memb.permissions[key] !== false
+  }, [activeOrg, organizations])
+
+  // Redirect to Home if the active tab becomes inaccessible
+  // (e.g. Admin changes this user's permissions while they're on that tab).
+  useEffect(() => {
+    if (!isAuthenticated || !activeOrg) return
+    if (!canAccess(activeTab)) setActiveTab('Home')
+  }, [activeTab, activeOrg, organizations, isAuthenticated, canAccess])
 
   useEffect(() => {
     if (activeTab !== 'Products') {
@@ -228,9 +291,16 @@ function App() {
             setActiveOrg(found.organization)
           }
           if (tabPart && isValidTabId(tabPart)) {
-            if (activeTab !== tabPart) setActiveTab(tabPart)
-            if (tabPart === 'EditInvoice' && editingInvoiceId !== editId) setEditingInvoiceId(editId)
-            else if (tabPart === 'EditQuote' && editingQuoteId !== editId) setEditingQuoteId(editId)
+            const permKey = TAB_TO_PERMISSION_KEY[tabPart as TabId]
+            const isAdmin = found.role !== 'User'
+            const allowed = isAdmin || !permKey || found.permissions[permKey] !== false
+            if (allowed) {
+              if (activeTab !== tabPart) setActiveTab(tabPart)
+              if (tabPart === 'EditInvoice' && editingInvoiceId !== editId) setEditingInvoiceId(editId)
+              else if (tabPart === 'EditQuote' && editingQuoteId !== editId) setEditingQuoteId(editId)
+            } else {
+              navigate(`/org/${orgNameSlug}/Home`, { replace: true })
+            }
           }
         } else {
           setActiveOrg(null)

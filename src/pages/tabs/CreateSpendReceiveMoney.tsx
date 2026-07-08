@@ -196,11 +196,26 @@ export function CreateSpendReceiveMoney({
 
     setIsSubmitting(true)
     try {
-      const totalAmt = getGrandTotal()
-
+      const payload = {
+        type,
+        bank_account_id: selectedBankId,
+        contact_id: selectedContactId || null,
+        date,
+        reference,
+        currency,
+        tax_type: taxType,
+        lines: lines.map(l => ({
+          description: l.description,
+          quantity: Number(l.quantity),
+          unit_price: Number(l.unitPrice),
+          account_id: l.accountId,
+          tax_rate_id: l.taxRateId || null,
+        })),
+      }
+      const result = await apiService.createSpendReceive(activeOrg.id, payload)
       showAlert({
         title: 'Success',
-        message: `Successfully recorded ${type} Money transaction of ${activeOrg.currency || 'USD'} ${totalAmt.toLocaleString(undefined, { minimumFractionDigits: 2 })}.`,
+        message: `Successfully recorded ${type} Money transaction of ${result.currency} ${result.total.toLocaleString(undefined, { minimumFractionDigits: 2 })}.`,
         type: 'success'
       })
       setActiveTab('BankAccounts')

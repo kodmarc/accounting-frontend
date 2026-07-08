@@ -132,29 +132,18 @@ export function CreateManualJournal({
 
     setIsSubmitting(true)
     try {
-      const journalPayload = {
-        id: `journal-${Date.now()}`,
+      await apiService.createManualJournal(activeOrg.id, {
         narration,
         date,
         reference,
         currency,
-        total: totalDebits,
         lines: lines.map(l => ({
+          account_id: l.accountId,
           description: l.description || narration,
-          accountId: l.accountId,
-          accountName: accounts.find(a => a.id === l.accountId)?.name || 'Account',
           debit: l.debit === '' ? 0 : Number(l.debit),
-          credit: l.credit === '' ? 0 : Number(l.credit)
+          credit: l.credit === '' ? 0 : Number(l.credit),
         })),
-        created_at: new Date().toISOString()
-      }
-
-      // Persist manual journal in local storage mock ledger
-      const journalKey = `kdm_manual_journals_${activeOrg.id}`
-      const savedJournals = localStorage.getItem(journalKey)
-      const list = savedJournals ? JSON.parse(savedJournals) : []
-      localStorage.setItem(journalKey, JSON.stringify([journalPayload, ...list]))
-
+      })
       showAlert({
         title: 'Success',
         message: `Manual Journal posted successfully! Ledger adjusted by ${activeOrg.currency || 'USD'} ${totalDebits.toLocaleString(undefined, { minimumFractionDigits: 2 })}.`,
@@ -162,7 +151,7 @@ export function CreateManualJournal({
       })
       setActiveTab('Home')
     } catch (err: any) {
-      showAlert({ title: 'Post Failed', message: 'Failed to record manual journal: ' + err.message, type: 'error' })
+      showAlert({ title: 'Post Failed', message: err.message || 'Failed to record manual journal.', type: 'error' })
     } finally {
       setIsSubmitting(false)
     }

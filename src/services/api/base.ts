@@ -21,6 +21,8 @@ function forceLogout() {
   }
 }
 
+// Singleton: if multiple concurrent requests all 401, only one refresh call is made.
+// All callers await the same promise, preventing token rotation storms.
 async function tryRefreshToken(): Promise<boolean> {
   if (!_refreshPromise) {
     _refreshPromise = fetch(`${API_BASE_URL}/auth/token/refresh/`, {

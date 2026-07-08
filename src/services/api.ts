@@ -13,7 +13,11 @@ import { purchaseOrdersApi } from './api/purchase-orders'
 import { projectsApi } from './api/projects'
 import { paymentsApi } from './api/payments'
 import { reportsApi } from './api/reports'
+import { manualJournalsApi } from './api/manual-journals'
+import { spendReceiveApi } from './api/spend-receive'
 export type { Payment } from './api/payments'
+export type { ManualJournal, ManualJournalLine, CreateManualJournalPayload } from './api/manual-journals'
+export type { SpendReceiveMoney, SpendReceiveMoneyLine, CreateSpendReceivePayload } from './api/spend-receive'
 
 export type {
   User, Organization, Membership,
@@ -42,4 +46,6 @@ export const apiService = {
   ...projectsApi,
   ...paymentsApi,
   ...reportsApi,
+  ...manualJournalsApi,
+  ...spendReceiveApi,
 }

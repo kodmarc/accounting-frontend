@@ -22,6 +22,7 @@ export interface PLReport {
   periods: PLPeriod[]
   basis: string
   rows: PLRow[]
+  trading_income_total: Record<string, number>
 }
 
 export interface PLTransaction {

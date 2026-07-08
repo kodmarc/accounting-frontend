@@ -70,6 +70,11 @@ function fmtNum(val: number | undefined, showZero = false): string {
   return val.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
+function fmtPct(val: number | undefined, income: number): string {
+  if (val === undefined || !income) return '-'
+  return `${((val / income) * 100).toFixed(1)}%`
+}
+
 export function ProfitAndLossTab({ activeOrg, setActiveTab }: ProfitAndLossTabProps) {
   const [preset, setPreset] = useState('this_year')
   const [dateRange, setDateRange] = useState(() => getPresetRange('this_year'))
@@ -81,6 +86,7 @@ export function ProfitAndLossTab({ activeOrg, setActiveTab }: ProfitAndLossTabPr
   const [report, setReport] = useState<PLReport | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
+  const [showPct, setShowPct] = useState(false)
 
   const [drilldown, setDrilldown] = useState<{
     row: PLRow; periodLabel: string; periodStart: string; periodEnd: string
@@ -108,6 +114,7 @@ export function ProfitAndLossTab({ activeOrg, setActiveTab }: ProfitAndLossTabPr
     setError(null)
     setDrilldown(null)
     setDrilldownData(null)
+    setShowPct(false)
     try {
       const data = await apiService.getProfitLoss(activeOrg.id, buildParams())
       setReport(data)
@@ -167,6 +174,12 @@ export function ProfitAndLossTab({ activeOrg, setActiveTab }: ProfitAndLossTabPr
   }
 
   const periods = report?.periods ?? []
+  const tradingIncome = report?.trading_income_total ?? {}
+
+  function displayVal(val: number | undefined, periodLabel: string, isFormula = false): string {
+    if (showPct) return fmtPct(val, tradingIncome[periodLabel] ?? 0)
+    return fmtNum(val, isFormula)
+  }
 
   function renderRow(row: PLRow, depth = 0): ReactNode {
     if (row.kind === 'section_header') {
@@ -189,7 +202,7 @@ export function ProfitAndLossTab({ activeOrg, setActiveTab }: ProfitAndLossTabPr
             </div>
             {periods.map(p => (
               <div key={p.label} className="w-36 text-right py-2 pr-4 font-semibold text-xs text-slate-700 flex-shrink-0">
-                {fmtNum(row.values?.[p.label])}
+                {displayVal(row.values?.[p.label], p.label)}
               </div>
             ))}
           </div>
@@ -214,7 +227,7 @@ export function ProfitAndLossTab({ activeOrg, setActiveTab }: ProfitAndLossTabPr
               className="w-36 text-right py-1.5 pr-4 text-[11px] text-slate-700 flex-shrink-0 cursor-pointer hover:text-violet-600 hover:underline"
               onClick={() => openDrilldown(row, p.label, p.start, p.end)}
             >
-              {fmtNum(row.values?.[p.label])}
+              {displayVal(row.values?.[p.label], p.label)}
             </div>
           ))}
         </div>
@@ -245,7 +258,7 @@ export function ProfitAndLossTab({ activeOrg, setActiveTab }: ProfitAndLossTabPr
                     : 'text-slate-700'
                 }`}
               >
-                {fmtNum(val, true)}
+                {displayVal(val, p.label, true)}
               </div>
             )
           })}
@@ -336,6 +349,31 @@ export function ProfitAndLossTab({ activeOrg, setActiveTab }: ProfitAndLossTabPr
               ))}
             </div>
           </div>
+
+          {/* % of Income toggle */}
+          {report && (
+            <div>
+              <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1">Show As</label>
+              <div className="flex rounded-[3px] border border-slate-200 overflow-hidden">
+                <button
+                  onClick={() => setShowPct(false)}
+                  className={`px-3 py-1.5 text-[11px] font-medium border-r border-slate-200 transition-colors cursor-pointer ${
+                    !showPct ? 'bg-[#0F5B38] text-white' : 'bg-white text-slate-600 hover:bg-slate-50'
+                  }`}
+                >
+                  Value
+                </button>
+                <button
+                  onClick={() => setShowPct(true)}
+                  className={`px-3 py-1.5 text-[11px] font-medium transition-colors cursor-pointer ${
+                    showPct ? 'bg-[#0F5B38] text-white' : 'bg-white text-slate-600 hover:bg-slate-50'
+                  }`}
+                >
+                  % of Income
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Compare */}
           <div>
