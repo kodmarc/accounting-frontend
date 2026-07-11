@@ -192,8 +192,6 @@ export function exportBStoCsv(report: BSReport, filename: string) {
 export async function exportBStoExcel(report: BSReport, filename: string) {
   const labels = report.dates.map(d => d.label)
   const flat   = flattenBS(report.rows, labels, 0)
-  const KEY_IDS = new Set(['total_assets', 'total_liabilities', 'net_assets', 'total_equity'])
-
   const wb = new ExcelJS.Workbook()
   const ws = wb.addWorksheet('Balance Sheet')
   ws.columns = [{ width: 44 }, ...labels.map(() => ({ width: 18 }))]
