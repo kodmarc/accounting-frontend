@@ -4,6 +4,7 @@ import { apiService, API_BASE_URL, fetchWithAuth } from '../../services/api'
 import type { Organization, Contact, Item, Account, TaxRate, SalesSetting, Quote, Project } from '../../services/api'
 import { SearchableInput } from '../../components/SearchableInput'
 import { EmailModal } from '../../components/EmailModal'
+import { ShareModal } from '../../components/ShareModal'
 import { usePopup } from '../../components/PopupProvider'
 import { XeroDatePicker } from '../../components/XeroDatePicker'
 import type { TabId } from '../../types/tabs'
@@ -43,6 +44,7 @@ export function CreateQuoteTab({
   const [isMoreDropdownOpen, setIsMoreDropdownOpen] = useState(false)
   const [isSendDropdownOpen, setIsSendDropdownOpen] = useState(false)
   const [isEmailModalOpen, setIsEmailModalOpen] = useState(false)
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false)
 
   // Form Fields
   const [selectedContactId, setSelectedContactId] = useState('')
@@ -702,9 +704,9 @@ export function CreateQuoteTab({
     try {
       const url = `${API_BASE_URL}/quotes/${resolvedId}/download-pdf/?org_id=${activeOrg.id}&_t=${Date.now()}`
 
-      const logo = localStorage.getItem(`kdm_org_logo_${activeOrg.id}`) || ''
-      const templateSettings = JSON.parse(localStorage.getItem(`kdm_sales_template_settings_${activeOrg.id}`) || '{}')
-      const orgDetails = JSON.parse(localStorage.getItem(`kdm_org_extensions_${activeOrg.id}`) || '{}')
+      const logo = activeOrg.logo || ''
+      const templateSettings = activeOrg.sales_template_settings || {}
+      const orgDetails = activeOrg.org_extensions || {}
       const termsValue = salesSetting?.standard_payment_terms || '15 days'
 
       const res = await fetchWithAuth(url, {
@@ -1223,6 +1225,15 @@ export function CreateQuoteTab({
                             </button>
                             <button
                               onClick={() => {
+                                setIsMoreDropdownOpen(false)
+                                setIsShareModalOpen(true)
+                              }}
+                              className="w-full text-left px-4 py-2 hover:bg-slate-50 transition cursor-pointer text-slate-700 font-normal rounded-[3px]"
+                            >
+                              Share
+                            </button>
+                            <button
+                              onClick={() => {
                                 handleDeleteQuote()
                                 setIsMoreDropdownOpen(false)
                               }}
@@ -1257,6 +1268,15 @@ export function CreateQuoteTab({
                               className="w-full text-left px-4 py-2 hover:bg-slate-50 transition cursor-pointer text-slate-700 font-normal rounded-[3px]"
                             >
                               Mark as declined
+                            </button>
+                            <button
+                              onClick={() => {
+                                setIsMoreDropdownOpen(false)
+                                setIsShareModalOpen(true)
+                              }}
+                              className="w-full text-left px-4 py-2 hover:bg-slate-50 transition cursor-pointer text-slate-700 font-normal rounded-[3px]"
+                            >
+                              Share
                             </button>
                             <button
                               onClick={() => {
@@ -1307,6 +1327,15 @@ export function CreateQuoteTab({
                             </button>
                             <button
                               onClick={() => {
+                                setIsMoreDropdownOpen(false)
+                                setIsShareModalOpen(true)
+                              }}
+                              className="w-full text-left px-4 py-2 hover:bg-slate-50 transition cursor-pointer text-slate-700 font-normal rounded-[3px]"
+                            >
+                              Share
+                            </button>
+                            <button
+                              onClick={() => {
                                 handleDeleteQuote()
                                 setIsMoreDropdownOpen(false)
                               }}
@@ -1334,6 +1363,15 @@ export function CreateQuoteTab({
                             </button>
                             <button
                               onClick={() => {
+                                setIsMoreDropdownOpen(false)
+                                setIsShareModalOpen(true)
+                              }}
+                              className="w-full text-left px-4 py-2 hover:bg-slate-50 transition cursor-pointer text-slate-700 font-normal rounded-[3px]"
+                            >
+                              Share
+                            </button>
+                            <button
+                              onClick={() => {
                                 handleDeleteQuote()
                                 setIsMoreDropdownOpen(false)
                               }}
@@ -1346,16 +1384,27 @@ export function CreateQuoteTab({
                         )}
 
                         {status === 'Invoiced' && (
-                          <button
-                            onClick={() => {
-                              handleDeleteQuote()
-                              setIsMoreDropdownOpen(false)
-                            }}
-                            disabled={isSubmitting}
-                            className="w-full text-left px-4 py-2 hover:bg-rose-50 hover:text-rose-600 transition cursor-pointer text-rose-500 font-normal rounded-[3px]"
-                          >
-                            Delete
-                          </button>
+                          <>
+                            <button
+                              onClick={() => {
+                                setIsMoreDropdownOpen(false)
+                                setIsShareModalOpen(true)
+                              }}
+                              className="w-full text-left px-4 py-2 hover:bg-slate-50 transition cursor-pointer text-slate-700 font-normal rounded-[3px]"
+                            >
+                              Share
+                            </button>
+                            <button
+                              onClick={() => {
+                                handleDeleteQuote()
+                                setIsMoreDropdownOpen(false)
+                              }}
+                              disabled={isSubmitting}
+                              className="w-full text-left px-4 py-2 hover:bg-rose-50 hover:text-rose-600 transition cursor-pointer text-rose-500 font-normal rounded-[3px]"
+                            >
+                              Delete
+                            </button>
+                          </>
                         )}
                       </div>
                     </div>
@@ -2132,6 +2181,20 @@ export function CreateQuoteTab({
         </div>
       )}
 
+      {isShareModalOpen && (quoteDbId || editingQuoteId) && (
+        <ShareModal
+          docType="quote"
+          docId={(quoteDbId || editingQuoteId)!}
+          docNumber={quoteNumber}
+          contactName={contacts.find(c => c.id === selectedContactId)?.name ?? ''}
+          amount={getGrandTotal()}
+          currency={currency}
+          orgName={activeOrg.name}
+          dueLabel={expiryDate ? `expires ${expiryDate}` : ''}
+          onClose={() => setIsShareModalOpen(false)}
+        />
+      )}
+
       <EmailModal
         isOpen={isEmailModalOpen}
         onClose={() => setIsEmailModalOpen(false)}
@@ -2157,15 +2220,17 @@ export function CreateQuoteTab({
             subject,
             message,
             notes,
-            logo: localStorage.getItem(`kdm_org_logo_${activeOrg.id}`) || '',
+            logo: activeOrg.logo || '',
             payment_terms: salesSetting?.standard_payment_terms || '',
             template_settings: {
-              theme_color: localStorage.getItem(`kdm_quote_theme_color_${activeOrg.id}`) || '#0F5B38'
+              ...(activeOrg.sales_template_settings || {}),
+              theme_color: activeOrg.sales_template_settings?.theme_color || '#0F5B38',
             },
             org_details: {
+              ...(activeOrg.org_extensions || {}),
               name: activeOrg.name,
               country: activeOrg.country,
-              tax_id: activeOrg.tax_id
+              tax_id: activeOrg.tax_id,
             }
           }
           await apiService.sendQuoteEmail(resolvedId!, payload, activeOrg.id)

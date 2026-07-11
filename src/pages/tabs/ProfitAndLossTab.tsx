@@ -1,11 +1,13 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useCallback } from 'react'
 import type { ReactNode } from 'react'
-import { ChevronDown, ChevronRight, X, Loader2, TrendingUp, RefreshCw, FileDown } from 'lucide-react'
+import { ChevronDown, ChevronRight, X, Loader2, TrendingUp, RefreshCw } from 'lucide-react'
 import type { Organization } from '../../services/api'
 import type { TabId } from '../../types/tabs'
 import { apiService } from '../../services/api'
 import type { PLReport, PLRow, PLTransaction } from '../../services/api/reports'
 import { XeroDatePicker } from '../../components/XeroDatePicker'
+import { ExportDropdown } from '../../components/ExportDropdown'
+import { exportPLtoCsv, exportPLtoExcel } from '../../utils/exportReports'
 
 interface ProfitAndLossTabProps {
   activeOrg: Organization
@@ -135,8 +137,6 @@ export function ProfitAndLossTab({ activeOrg, setActiveTab }: ProfitAndLossTabPr
       setPdfLoading(false)
     }
   }
-
-  useEffect(() => { runReport() }, [])
 
   function handlePreset(key: string) {
     setPreset(key)
@@ -430,19 +430,13 @@ export function ProfitAndLossTab({ activeOrg, setActiveTab }: ProfitAndLossTabPr
             Update
           </button>
 
-          {/* Export PDF */}
           {report && (
-            <button
-              onClick={handleExportPdf}
-              disabled={pdfLoading}
-              className="flex items-center gap-1.5 px-4 py-1.5 border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-[11px] font-semibold rounded-[3px] shadow-sm transition disabled:opacity-60 cursor-pointer"
-            >
-              {pdfLoading
-                ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                : <FileDown className="h-3.5 w-3.5" />
-              }
-              Export PDF
-            </button>
+            <ExportDropdown
+              pdfLoading={pdfLoading}
+              onPdf={handleExportPdf}
+              onCsv={() => exportPLtoCsv(report, `profit_loss_${dateRange.start}_${dateRange.end}.csv`)}
+              onExcel={() => exportPLtoExcel(report, `profit_loss_${dateRange.start}_${dateRange.end}.xlsx`)}
+            />
           )}
         </div>
       </div>

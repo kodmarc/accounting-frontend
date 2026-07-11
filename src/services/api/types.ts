@@ -17,6 +17,55 @@ export interface Organization {
   currency: string;
   tax_id: string;
   created_at: string;
+
+  // Branding
+  logo: string;
+
+  // Bank details
+  bank_name: string;
+  bank_account_name: string;
+  bank_account_number: string;
+  bank_swift_code: string;
+  bank_additional_instructions: string;
+
+  // Extended profile
+  org_extensions: {
+    email?: string;
+    phone?: string;
+    website?: string;
+    address?: string;
+  };
+
+  // Template preferences
+  sales_template_settings: {
+    theme?: string;
+    showLogo?: boolean;
+    showUEN?: boolean;
+    showTerms?: boolean;
+    theme_color?: string;
+  };
+  purchase_template_settings: {
+    theme?: string;
+    showLogo?: boolean;
+    showUEN?: boolean;
+    showTerms?: boolean;
+  };
+
+  // Purchases config
+  purchase_settings: {
+    po_prefix?: string;
+    next_po_number?: number;
+    bill_prefix?: string;
+    next_bill_number?: number;
+    supplier_terms?: string;
+    purchase_footer?: string;
+  };
+
+  // Financial year
+  accounts_settings: {
+    year_end_month?: string;
+    year_end_day?: string;
+  };
 }
 
 export interface Membership {

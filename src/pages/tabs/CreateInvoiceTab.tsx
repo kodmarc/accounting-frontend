@@ -4,6 +4,7 @@ import { apiService, API_BASE_URL, fetchWithAuth } from '../../services/api'
 import type { Organization, Contact, Item, Account, TaxRate, SalesSetting, Invoice, Quote, Project } from '../../services/api'
 import { SearchableInput } from '../../components/SearchableInput'
 import { EmailModal } from '../../components/EmailModal'
+import { ShareModal } from '../../components/ShareModal'
 import { usePopup } from '../../components/PopupProvider'
 import { XeroDatePicker } from '../../components/XeroDatePicker'
 import type { TabId } from '../../types/tabs'
@@ -59,6 +60,7 @@ export function CreateInvoiceTab({
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [isMoreDropdownOpen, setIsMoreDropdownOpen] = useState(false)
   const [isEmailModalOpen, setIsEmailModalOpen] = useState(false)
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false)
 
   // Form Fields
   const [selectedContactId, setSelectedContactId] = useState('')
@@ -790,10 +792,16 @@ export function CreateInvoiceTab({
     try {
       const url = `${API_BASE_URL}/invoices/${resolvedId}/download-pdf/?org_id=${activeOrg.id}&_t=${Date.now()}`
 
-      const logo = localStorage.getItem(`kdm_org_logo_${activeOrg.id}`) || ''
-      const bankDetails = JSON.parse(localStorage.getItem(`kdm_bank_details_${activeOrg.id}`) || '{}')
-      const templateSettings = JSON.parse(localStorage.getItem(`kdm_sales_template_settings_${activeOrg.id}`) || '{}')
-      const orgDetails = JSON.parse(localStorage.getItem(`kdm_org_extensions_${activeOrg.id}`) || '{}')
+      const logo = activeOrg.logo || ''
+      const bankDetails = {
+        bank_name: activeOrg.bank_name || '',
+        account_name: activeOrg.bank_account_name || '',
+        account_number: activeOrg.bank_account_number || '',
+        swift_code: activeOrg.bank_swift_code || '',
+        additional_instructions: activeOrg.bank_additional_instructions || '',
+      }
+      const templateSettings = activeOrg.sales_template_settings || {}
+      const orgDetails = activeOrg.org_extensions || {}
       const termsValue = salesSetting?.standard_payment_terms || '15 days'
 
       const res = await fetchWithAuth(url, {
@@ -1333,6 +1341,17 @@ export function CreateInvoiceTab({
                             >
                               Print PDF
                             </button>
+                            {(invoiceDbId || editingInvoiceId) && (
+                              <button
+                                onClick={() => {
+                                  setIsShareModalOpen(true)
+                                  setIsMoreDropdownOpen(false)
+                                }}
+                                className="w-full text-left px-4 py-2 hover:bg-slate-50 transition cursor-pointer text-slate-700 font-normal rounded-[3px]"
+                              >
+                                Share
+                              </button>
+                            )}
                             <button
                               onClick={() => {
                                 handleDeleteInvoice()
@@ -1388,6 +1407,17 @@ export function CreateInvoiceTab({
                             >
                               Print PDF
                             </button>
+                            {(invoiceDbId || editingInvoiceId) && (
+                              <button
+                                onClick={() => {
+                                  setIsShareModalOpen(true)
+                                  setIsMoreDropdownOpen(false)
+                                }}
+                                className="w-full text-left px-4 py-2 hover:bg-slate-50 transition cursor-pointer text-slate-700 font-normal rounded-[3px]"
+                              >
+                                Share
+                              </button>
+                            )}
                             <button
                               onClick={() => {
                                 handleDeleteInvoice()
@@ -1464,6 +1494,15 @@ export function CreateInvoiceTab({
                             </button>
                             <button
                               onClick={() => {
+                                setIsShareModalOpen(true)
+                                setIsMoreDropdownOpen(false)
+                              }}
+                              className="w-full text-left px-4 py-2 hover:bg-slate-50 transition cursor-pointer text-slate-700 font-normal rounded-[3px]"
+                            >
+                              Share
+                            </button>
+                            <button
+                              onClick={() => {
                                 handleDeleteInvoice()
                                 setIsMoreDropdownOpen(false)
                               }}
@@ -1483,9 +1522,15 @@ export function CreateInvoiceTab({
                 <>
                   <button
                     onClick={handlePrintPDF}
-                    className="bg-[#0F5B38] hover:brightness-105 text-white font-medium text-xs px-4.5 py-2 rounded-[3px] shadow-md transition duration-200 cursor-pointer flex items-center justify-center space-x-1.5 h-[38px]"
+                    className="bg-white hover:bg-slate-50 text-slate-700 hover:text-[#0F5B38] border border-slate-200 hover:border-slate-300 font-medium text-xs px-4.5 py-2 rounded-[3px] shadow-sm transition duration-200 cursor-pointer h-[38px] flex items-center justify-center space-x-1.5"
                   >
                     <span>Print PDF</span>
+                  </button>
+                  <button
+                    onClick={() => setIsShareModalOpen(true)}
+                    className="bg-[#0F5B38] hover:brightness-105 text-white font-medium text-xs px-4.5 py-2 rounded-[3px] shadow-md transition duration-200 cursor-pointer flex items-center justify-center space-x-1.5 h-[38px]"
+                  >
+                    <span>Share</span>
                   </button>
                 </>
               )}
@@ -2431,21 +2476,24 @@ export function CreateInvoiceTab({
             subject,
             message,
             notes,
-            logo: localStorage.getItem(`kdm_org_logo_${activeOrg.id}`) || '',
+            logo: activeOrg.logo || '',
             payment_terms: salesSetting?.standard_payment_terms || '',
             bank_details: {
-              bank_name: localStorage.getItem(`kdm_bank_name_${activeOrg.id}`) || '',
-              account_name: localStorage.getItem(`kdm_bank_account_name_${activeOrg.id}`) || '',
-              account_number: localStorage.getItem(`kdm_bank_account_number_${activeOrg.id}`) || '',
-              routing_number: localStorage.getItem(`kdm_bank_routing_number_${activeOrg.id}`) || ''
+              bank_name: activeOrg.bank_name || '',
+              account_name: activeOrg.bank_account_name || '',
+              account_number: activeOrg.bank_account_number || '',
+              swift_code: activeOrg.bank_swift_code || '',
+              additional_instructions: activeOrg.bank_additional_instructions || '',
             },
             template_settings: {
-              theme_color: localStorage.getItem(`kdm_invoice_theme_color_${activeOrg.id}`) || '#0F5B38'
+              ...(activeOrg.sales_template_settings || {}),
+              theme_color: activeOrg.sales_template_settings?.theme_color || '#0F5B38',
             },
             org_details: {
+              ...(activeOrg.org_extensions || {}),
               name: activeOrg.name,
               country: activeOrg.country,
-              tax_id: activeOrg.tax_id
+              tax_id: activeOrg.tax_id,
             }
           }
           await apiService.sendInvoiceEmail(resolvedId!, payload, activeOrg.id)
@@ -2460,6 +2508,20 @@ export function CreateInvoiceTab({
           setActiveTab('Invoices')
         }}
       />
+
+      {isShareModalOpen && (invoiceDbId || editingInvoiceId) && (
+        <ShareModal
+          docType="invoice"
+          docId={(invoiceDbId || editingInvoiceId)!}
+          docNumber={invoiceNumber}
+          contactName={contacts.find(c => c.id === selectedContactId)?.name ?? ''}
+          amount={getGrandTotal()}
+          currency={currency}
+          orgName={activeOrg.name}
+          dueLabel={dueDate ? `due ${dueDate}` : ''}
+          onClose={() => setIsShareModalOpen(false)}
+        />
+      )}
 
       {/* Inventory Warning Modal */}
       {isInventoryWarningOpen && (

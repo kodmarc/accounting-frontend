@@ -1,10 +1,12 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
-import { ChevronDown, ChevronUp, Search, Loader2, BarChart2, RefreshCw, FileDown, X } from 'lucide-react'
+import { ChevronDown, ChevronUp, Search, Loader2, BarChart2, RefreshCw, X } from 'lucide-react'
 import type { Organization, Account } from '../../services/api'
 import { apiService } from '../../services/api'
 import type { ATReport, ATSection, ATTransaction } from '../../services/api/reports'
 import type { TabId } from '../../types/tabs'
 import { XeroDatePicker } from '../../components/XeroDatePicker'
+import { ExportDropdown } from '../../components/ExportDropdown'
+import { exportATtoCsv, exportATtoExcel } from '../../utils/exportReports'
 
 interface AccountTransactionsTabProps {
   activeOrg: Organization
@@ -489,11 +491,12 @@ export function AccountTransactionsTab({ activeOrg, setActiveTab }: AccountTrans
           </button>
 
           {report && (
-            <button onClick={handleExportPdf} disabled={pdfLoading}
-              className="flex items-center gap-1.5 px-4 py-1.5 border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-[11px] font-semibold rounded-[3px] shadow-sm transition disabled:opacity-60 cursor-pointer">
-              {pdfLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileDown className="h-3.5 w-3.5" />}
-              Export PDF
-            </button>
+            <ExportDropdown
+              pdfLoading={pdfLoading}
+              onPdf={handleExportPdf}
+              onCsv={() => exportATtoCsv(report, `account_transactions_${start}_${end}.csv`)}
+              onExcel={() => exportATtoExcel(report, `account_transactions_${start}_${end}.xlsx`)}
+            />
           )}
         </div>
       </div>

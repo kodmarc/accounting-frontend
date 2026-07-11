@@ -1,10 +1,12 @@
 import { useState, useCallback } from 'react'
-import { ChevronDown, ChevronUp, Loader2, TrendingUp, RefreshCw, FileDown, AlertCircle } from 'lucide-react'
+import { ChevronDown, ChevronUp, Loader2, TrendingUp, RefreshCw, AlertCircle } from 'lucide-react'
 import type { Organization } from '../../services/api'
 import { apiService } from '../../services/api'
 import type { CFReport, CFLine, CFParams } from '../../services/api/reports'
 import type { TabId } from '../../types/tabs'
 import { XeroDatePicker } from '../../components/XeroDatePicker'
+import { ExportDropdown } from '../../components/ExportDropdown'
+import { exportCFtoCsv, exportCFtoExcel } from '../../utils/exportReports'
 
 interface CashFlowStatementTabProps {
   activeOrg: Organization
@@ -255,11 +257,12 @@ export function CashFlowStatementTab({ activeOrg, setActiveTab }: CashFlowStatem
           </button>
 
           {report && (
-            <button onClick={handleExportPdf} disabled={pdfLoading}
-              className="flex items-center gap-1.5 px-4 py-1.5 border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-[11px] font-semibold rounded-[3px] shadow-sm transition disabled:opacity-60 cursor-pointer">
-              {pdfLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileDown className="h-3.5 w-3.5" />}
-              Export PDF
-            </button>
+            <ExportDropdown
+              pdfLoading={pdfLoading}
+              onPdf={handleExportPdf}
+              onCsv={() => exportCFtoCsv(report, `cash_flow_${start}_${end}.csv`)}
+              onExcel={() => exportCFtoExcel(report, `cash_flow_${start}_${end}.xlsx`)}
+            />
           )}
         </div>
       </div>

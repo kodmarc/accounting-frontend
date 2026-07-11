@@ -20,6 +20,13 @@ export const organizationsApi = {
     })
   },
 
+  async updateOrgSettings(orgId: string, data: Partial<Organization>): Promise<Organization> {
+    return request(`/organizations/${orgId}/`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    })
+  },
+
   async deleteOrganization(orgId: string): Promise<{ message: string }> {
     return request(`/organizations/${orgId}/`, {
       method: 'DELETE',

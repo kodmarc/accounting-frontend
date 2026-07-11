@@ -1,10 +1,12 @@
 import { useState, useCallback, type ReactNode } from 'react'
-import { ChevronDown, ChevronRight, X, Loader2, BarChart2, RefreshCw, FileDown, ExternalLink } from 'lucide-react'
+import { ChevronDown, ChevronRight, X, Loader2, BarChart2, RefreshCw, ExternalLink } from 'lucide-react'
 import type { Organization } from '../../services/api'
 import { apiService } from '../../services/api'
 import type { BSReport, BSRow, BSTransaction } from '../../services/api/reports'
 import type { TabId } from '../../types/tabs'
 import { XeroDatePicker } from '../../components/XeroDatePicker'
+import { ExportDropdown } from '../../components/ExportDropdown'
+import { exportBStoCsv, exportBStoExcel } from '../../utils/exportReports'
 
 interface BalanceSheetTabProps {
   activeOrg: Organization
@@ -382,16 +384,12 @@ export function BalanceSheetTab({ activeOrg, setActiveTab }: BalanceSheetTabProp
           </button>
 
           {report && (
-            <button
-              onClick={handleExportPdf}
-              disabled={pdfLoading}
-              className="flex items-center gap-1.5 px-4 py-1.5 border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-[11px] font-semibold rounded-[3px] shadow-sm transition disabled:opacity-60 cursor-pointer"
-            >
-              {pdfLoading
-                ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                : <FileDown className="h-3.5 w-3.5" />}
-              Export PDF
-            </button>
+            <ExportDropdown
+              pdfLoading={pdfLoading}
+              onPdf={handleExportPdf}
+              onCsv={() => exportBStoCsv(report, `balance_sheet_${asAt}.csv`)}
+              onExcel={() => exportBStoExcel(report, `balance_sheet_${asAt}.xlsx`)}
+            />
           )}
         </div>
       </div>

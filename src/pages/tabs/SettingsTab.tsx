@@ -122,30 +122,60 @@ export function SettingsTab({
       setLoading(true)
       setErrorMsg(null)
       setSuccessMsg(null)
-      
-      // Basic org details mapping
+
+      // A. Basic org fields — direct from activeOrg (no API call needed)
       setOrgName(activeOrg.name)
       setOrgCountry(activeOrg.country)
       setOrgCurrency(activeOrg.currency)
       setOrgTaxId(activeOrg.tax_id)
 
-      try {
-        // A. Load General Profile Extensions from LocalStorage
-        const savedExtensions = localStorage.getItem(`kdm_org_extensions_${activeOrg.id}`)
-        if (savedExtensions) {
-          const parsed = JSON.parse(savedExtensions)
-          setOrgEmail(parsed.email || '')
-          setOrgPhone(parsed.phone || '')
-          setOrgWebsite(parsed.website || '')
-          setOrgAddress(parsed.address || '')
-        } else {
-          setOrgEmail('finance@' + activeOrg.name.toLowerCase().replace(/[^a-z0-9]/g, '') + '.com')
-          setOrgPhone('+65 8291 0382')
-          setOrgWebsite('www.' + activeOrg.name.toLowerCase().replace(/[^a-z0-9]/g, '') + '.com')
-          setOrgAddress('12 Marina Boulevard, Marina Bay Financial Centre, Singapore 018982')
-        }
+      // Org extensions
+      const ext = activeOrg.org_extensions || {}
+      setOrgEmail(ext.email || '')
+      setOrgPhone(ext.phone || '')
+      setOrgWebsite(ext.website || '')
+      setOrgAddress(ext.address || '')
 
-        // B. Load Sales Settings
+      // Logo
+      setLogoBase64(activeOrg.logo || '')
+
+      // Bank details
+      setBankName(activeOrg.bank_name || '')
+      setBankAccName(activeOrg.bank_account_name || '')
+      setBankAccNo(activeOrg.bank_account_number || '')
+      setBankSwift(activeOrg.bank_swift_code || '')
+      setBankNotes(activeOrg.bank_additional_instructions || '')
+
+      // Sales template settings
+      const tmpl = activeOrg.sales_template_settings || {}
+      setTemplateTheme((tmpl.theme as any) || 'Emerald')
+      setShowLogo(tmpl.showLogo !== false)
+      setShowUEN(tmpl.showUEN !== false)
+      setShowTerms(tmpl.showTerms !== false)
+
+      // Purchase settings
+      const ps = activeOrg.purchase_settings || {}
+      setPoPrefix(ps.po_prefix || 'PO-')
+      setNextPoNumber(ps.next_po_number || 1)
+      setSupplierTerms(ps.supplier_terms || '30 days')
+      setPurchaseFooter(ps.purchase_footer || 'Please submit all vendor bills via email.')
+      setBillPrefix(ps.bill_prefix || 'BIL-')
+      setNextBillNumber(ps.next_bill_number || 1)
+
+      // Purchase template settings
+      const pt = activeOrg.purchase_template_settings || {}
+      setPurchaseTemplateTheme((pt.theme as any) || 'Emerald')
+      setPurchaseShowLogo(pt.showLogo !== false)
+      setPurchaseShowUEN(pt.showUEN !== false)
+      setPurchaseShowTerms(pt.showTerms !== false)
+
+      // Accounts settings
+      const as_ = activeOrg.accounts_settings || {}
+      setYearEndMonth(as_.year_end_month || 'December')
+      setYearEndDay(as_.year_end_day || '31')
+
+      try {
+        // B. Sales settings — still from dedicated API
         try {
           const settings = await apiService.getSalesSettings(activeOrg.id)
           setInvoicePrefix(settings.invoice_prefix)
@@ -154,7 +184,7 @@ export function SettingsTab({
           setNextQuoteNumber(settings.next_quote_number)
           setPaymentTerms(settings.standard_payment_terms)
           setDefaultFooter(settings.default_footer)
-        } catch (err) {
+        } catch {
           setInvoicePrefix('INV-')
           setNextInvoiceNumber(1)
           setQuotePrefix('QT-')
@@ -163,99 +193,16 @@ export function SettingsTab({
           setDefaultFooter('Thank you for your business!')
         }
 
-        // C. Load Invoice Template Customizations
-        const savedTemplate = localStorage.getItem(`kdm_sales_template_settings_${activeOrg.id}`)
-        if (savedTemplate) {
-          const parsed = JSON.parse(savedTemplate)
-          setTemplateTheme(parsed.theme || 'Emerald')
-          setShowLogo(parsed.showLogo !== false)
-          setShowUEN(parsed.showUEN !== false)
-          setShowTerms(parsed.showTerms !== false)
-        } else {
-          setTemplateTheme('Emerald')
-          setShowLogo(true)
-          setShowUEN(true)
-          setShowTerms(true)
-        }
-
-        // D. Load Purchases Settings
-        const savedPurchases = localStorage.getItem(`kdm_purchase_settings_${activeOrg.id}`)
-        if (savedPurchases) {
-          const parsed = JSON.parse(savedPurchases)
-          setPoPrefix(parsed.po_prefix || 'PO-')
-          setNextPoNumber(parsed.next_po_number || 1)
-          setSupplierTerms(parsed.supplier_terms || '30 days')
-          setPurchaseFooter(parsed.purchase_footer || 'Please submit all vendor bills via email.')
-          setBillPrefix(parsed.bill_prefix || 'BIL-')
-          setNextBillNumber(parsed.next_bill_number || 1)
-        } else {
-          setPoPrefix('PO-')
-          setNextPoNumber(1)
-          setSupplierTerms('30 days')
-          setPurchaseFooter('Please submit all vendor bills via email.')
-          setBillPrefix('BIL-')
-          setNextBillNumber(1)
-        }
-
-        const savedPurchaseTemplate = localStorage.getItem(`kdm_purchase_template_settings_${activeOrg.id}`)
-        if (savedPurchaseTemplate) {
-          const parsed = JSON.parse(savedPurchaseTemplate)
-          setPurchaseTemplateTheme(parsed.theme || 'Emerald')
-          setPurchaseShowLogo(parsed.showLogo !== false)
-          setPurchaseShowUEN(parsed.showUEN !== false)
-          setPurchaseShowTerms(parsed.showTerms !== false)
-        } else {
-          setPurchaseTemplateTheme('Emerald')
-          setPurchaseShowLogo(true)
-          setPurchaseShowUEN(true)
-          setPurchaseShowTerms(true)
-        }
-
-        // E. Load Accounts configurations
-        const savedAccounts = localStorage.getItem(`kdm_accounts_settings_${activeOrg.id}`)
-        if (savedAccounts) {
-          const parsed = JSON.parse(savedAccounts)
-          setYearEndMonth(parsed.year_end_month || 'December')
-          setYearEndDay(parsed.year_end_day || '31')
-        } else {
-          setYearEndMonth('December')
-          setYearEndDay('31')
-        }
-
-        // F. Fetch Tax Rates from DB
+        // C. Tax rates — from API
         try {
           const ratesList = await apiService.getTaxRates(activeOrg.id)
           setTaxRates(ratesList)
-        } catch (err) {
-          setTaxRates([
-            { id: 'tax-1', name: 'Standard GST (8%)', rate: 8.0, organization: activeOrg.id, code: 'SR-8%' },
-            { id: 'tax-2', name: 'Zero-Rated GST (0%)', rate: 0.0, organization: activeOrg.id, code: 'ZR-0%' }
-          ] as any[])
-        }
-
-        // Load custom Logo
-        const savedLogo = localStorage.getItem(`kdm_org_logo_${activeOrg.id}`)
-        setLogoBase64(savedLogo || '')
-
-        // Load custom Bank details
-        const savedBank = localStorage.getItem(`kdm_bank_details_${activeOrg.id}`)
-        if (savedBank) {
-          const parsed = JSON.parse(savedBank)
-          setBankName(parsed.bank_name || '')
-          setBankAccName(parsed.account_name || '')
-          setBankAccNo(parsed.account_number || '')
-          setBankSwift(parsed.swift_code || '')
-          setBankNotes(parsed.additional_instructions || '')
-        } else {
-          setBankName('')
-          setBankAccName('')
-          setBankAccNo('')
-          setBankSwift('')
-          setBankNotes('')
+        } catch {
+          setTaxRates([])
         }
 
       } catch (err: any) {
-        setErrorMsg("Failed to synchronize all settings parameters. Please reload the console.")
+        setErrorMsg('Failed to load settings. Please reload.')
       } finally {
         setLoading(false)
       }
@@ -282,11 +229,11 @@ export function SettingsTab({
     }
 
     try {
-      // 1. Update extensions in localStorage
+      // 1. PATCH org_extensions to DB
       const extensions = { email: orgEmail, phone: orgPhone, website: orgWebsite, address: orgAddress }
-      localStorage.setItem(`kdm_org_extensions_${activeOrg.id}`, JSON.stringify(extensions))
+      await apiService.updateOrgSettings(activeOrg.id, { org_extensions: extensions })
 
-      // 2. Perform DB Updates
+      // 2. PUT core org fields
       const updated = await apiService.updateOrganization(
         activeOrg.id,
         orgName,
@@ -327,8 +274,9 @@ export function SettingsTab({
     }
 
     try {
-      // 1. Save template styles
-      localStorage.setItem(`kdm_sales_template_settings_${activeOrg.id}`, JSON.stringify(templatePayload))
+      // 1. PATCH sales_template_settings to DB
+      const settingsUpdated = await apiService.updateOrgSettings(activeOrg.id, { sales_template_settings: templatePayload })
+      if (onOrgUpdate) onOrgUpdate(settingsUpdated)
 
       // 2. Save core Sales setting payload
       await apiService.updateSalesSettings(activeOrg.id, salesPayload)
@@ -341,7 +289,7 @@ export function SettingsTab({
   }
 
   // Save Purchases settings
-  const handleSavePurchases = (e: React.FormEvent) => {
+  const handleSavePurchases = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsSaving(true)
     setErrorMsg(null)
@@ -364,33 +312,34 @@ export function SettingsTab({
     }
 
     try {
-      localStorage.setItem(`kdm_purchase_settings_${activeOrg.id}`, JSON.stringify(purchasePayload))
-      localStorage.setItem(`kdm_purchase_template_settings_${activeOrg.id}`, JSON.stringify(templatePayload))
+      const updated = await apiService.updateOrgSettings(activeOrg.id, {
+        purchase_settings: purchasePayload,
+        purchase_template_settings: templatePayload,
+      })
+      if (onOrgUpdate) onOrgUpdate(updated)
       setSuccessMsg("Purchases, numbering sequences, and dynamic template styling parameters updated successfully!")
     } catch (err: any) {
-      setErrorMsg("Failed to store purchases configurations in browser state.")
+      setErrorMsg(err.message || "Failed to save purchases configurations.")
     } finally {
       setIsSaving(false)
     }
   }
 
   // Save Accounts & Ledger configurations
-  const handleSaveAccounts = (e: React.FormEvent) => {
+  const handleSaveAccounts = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsSaving(true)
     setErrorMsg(null)
     setSuccessMsg(null)
 
-    const accountsPayload = {
-      year_end_month: yearEndMonth,
-      year_end_day: yearEndDay
-    }
-
     try {
-      localStorage.setItem(`kdm_accounts_settings_${activeOrg.id}`, JSON.stringify(accountsPayload))
+      const updated = await apiService.updateOrgSettings(activeOrg.id, {
+        accounts_settings: { year_end_month: yearEndMonth, year_end_day: yearEndDay },
+      })
+      if (onOrgUpdate) onOrgUpdate(updated)
       setSuccessMsg("Financial calendar year parameters saved successfully!")
     } catch (err: any) {
-      setErrorMsg("Failed to save ledger configurations.")
+      setErrorMsg(err.message || "Failed to save ledger configurations.")
     } finally {
       setIsSaving(false)
     }
@@ -418,43 +367,52 @@ export function SettingsTab({
     if (!file) return
 
     const reader = new FileReader()
-    reader.onloadend = () => {
+    reader.onloadend = async () => {
       const base64String = reader.result as string
       setLogoBase64(base64String)
-      localStorage.setItem(`kdm_org_logo_${activeOrg.id}`, base64String)
-      setSuccessMsg("Company logo uploaded and saved successfully!")
+      try {
+        const updated = await apiService.updateOrgSettings(activeOrg.id, { logo: base64String })
+        if (onOrgUpdate) onOrgUpdate(updated)
+        setSuccessMsg("Company logo uploaded and saved successfully!")
+      } catch {
+        setErrorMsg("Failed to save logo.")
+      }
       setTimeout(() => setSuccessMsg(null), 3000)
     }
     reader.readAsDataURL(file)
   }
 
-  const handleLogoRemove = () => {
+  const handleLogoRemove = async () => {
     setLogoBase64('')
-    localStorage.removeItem(`kdm_org_logo_${activeOrg.id}`)
-    setSuccessMsg("Company logo removed successfully.")
+    try {
+      const updated = await apiService.updateOrgSettings(activeOrg.id, { logo: '' })
+      if (onOrgUpdate) onOrgUpdate(updated)
+      setSuccessMsg("Company logo removed successfully.")
+    } catch {
+      setErrorMsg("Failed to remove logo.")
+    }
     setTimeout(() => setSuccessMsg(null), 3000)
   }
 
   // Save Bank Account Details
-  const handleSaveBankDetails = (e: React.FormEvent) => {
+  const handleSaveBankDetails = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsSaving(true)
     setErrorMsg(null)
     setSuccessMsg(null)
 
-    const bankPayload = {
-      bank_name: bankName,
-      account_name: bankAccName,
-      account_number: bankAccNo,
-      swift_code: bankSwift,
-      additional_instructions: bankNotes
-    }
-
     try {
-      localStorage.setItem(`kdm_bank_details_${activeOrg.id}`, JSON.stringify(bankPayload))
+      const updated = await apiService.updateOrgSettings(activeOrg.id, {
+        bank_name: bankName,
+        bank_account_name: bankAccName,
+        bank_account_number: bankAccNo,
+        bank_swift_code: bankSwift,
+        bank_additional_instructions: bankNotes,
+      })
+      if (onOrgUpdate) onOrgUpdate(updated)
       setSuccessMsg("Bank account details saved successfully! These will render in payment advice slips.")
     } catch (err: any) {
-      setErrorMsg("Failed to store bank details in local storage.")
+      setErrorMsg(err.message || "Failed to save bank details.")
     } finally {
       setIsSaving(false)
     }

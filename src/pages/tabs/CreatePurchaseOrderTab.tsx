@@ -4,6 +4,7 @@ import { apiService, API_BASE_URL, fetchWithAuth } from '../../services/api'
 import type { Organization, Contact, Item, Account, TaxRate, Project, SalesSetting } from '../../services/api'
 import { SearchableInput } from '../../components/SearchableInput'
 import { EmailModal } from '../../components/EmailModal'
+import { ShareModal } from '../../components/ShareModal'
 import { usePopup } from '../../components/PopupProvider'
 import { XeroDatePicker } from '../../components/XeroDatePicker'
 import type { TabId } from '../../types/tabs'
@@ -41,6 +42,7 @@ export function CreatePurchaseOrderTab({
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [isMoreDropdownOpen, setIsMoreDropdownOpen] = useState(false)
   const [isEmailModalOpen, setIsEmailModalOpen] = useState(false)
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false)
 
   // Form Fields
   const [selectedContactId, setSelectedContactId] = useState('')
@@ -789,26 +791,21 @@ export function CreatePurchaseOrderTab({
   const handlePrintPDF = async () => {
     setIsDownloadingPdf(true)
     try {
-      // Load logo, bank details, template settings, and org details
-      const logo = localStorage.getItem(`kdm_org_logo_${activeOrg.id}`) || ''
-      const bankDetails = JSON.parse(localStorage.getItem(`kdm_bank_details_${activeOrg.id}`) || '{}')
-      const templateSettings = JSON.parse(
-        localStorage.getItem(`kdm_purchase_template_settings_${activeOrg.id}`) ||
-        localStorage.getItem(`kdm_sales_template_settings_${activeOrg.id}`) ||
-        '{}'
-      )
-      const orgDetails = JSON.parse(localStorage.getItem(`kdm_org_extensions_${activeOrg.id}`) || '{}')
+      const logo = activeOrg.logo || ''
+      const bankDetails = {
+        bank_name: activeOrg.bank_name || '',
+        account_name: activeOrg.bank_account_name || '',
+        account_number: activeOrg.bank_account_number || '',
+        swift_code: activeOrg.bank_swift_code || '',
+        additional_instructions: activeOrg.bank_additional_instructions || '',
+      }
+      const templateSettings = activeOrg.purchase_template_settings || activeOrg.sales_template_settings || {}
+      const orgDetails = activeOrg.org_extensions || {}
 
       const supplierObj = contacts.find(c => c.id === selectedContactId)
       const projectObj = projects.find(p => p.id === selectedProjectId)
 
-      // Load purchases settings to send standard terms fallback
-      const savedPurchases = localStorage.getItem(`kdm_purchase_settings_${activeOrg.id}`)
-      let supplierTerms = '30 days'
-      if (savedPurchases) {
-        const parsed = JSON.parse(savedPurchases)
-        supplierTerms = parsed.supplier_terms || '30 days'
-      }
+      const supplierTerms = activeOrg.purchase_settings?.supplier_terms || '30 days'
 
       const postLines = lines.map(l => {
         const itemObj = catalogItems.find(i => i.id === l.itemId)
@@ -1216,6 +1213,15 @@ export function CreatePurchaseOrderTab({
                             </button>
                             <button
                               onClick={() => {
+                                setIsMoreDropdownOpen(false)
+                                setIsShareModalOpen(true)
+                              }}
+                              className="w-full text-left px-4 py-2 hover:bg-slate-50 transition cursor-pointer text-slate-700 font-normal rounded-[3px]"
+                            >
+                              Share
+                            </button>
+                            <button
+                              onClick={() => {
                                 handleDeletePO()
                                 setIsMoreDropdownOpen(false)
                               }}
@@ -1266,6 +1272,15 @@ export function CreatePurchaseOrderTab({
                               className="w-full text-left px-4 py-2 hover:bg-slate-50 transition cursor-pointer text-slate-700 font-normal rounded-[3px]"
                             >
                               Save PDF
+                            </button>
+                            <button
+                              onClick={() => {
+                                setIsMoreDropdownOpen(false)
+                                setIsShareModalOpen(true)
+                              }}
+                              className="w-full text-left px-4 py-2 hover:bg-slate-50 transition cursor-pointer text-slate-700 font-normal rounded-[3px]"
+                            >
+                              Share
                             </button>
                             <button
                               onClick={() => {
@@ -1348,6 +1363,15 @@ export function CreatePurchaseOrderTab({
                             </button>
                             <button
                               onClick={() => {
+                                setIsMoreDropdownOpen(false)
+                                setIsShareModalOpen(true)
+                              }}
+                              className="w-full text-left px-4 py-2 hover:bg-slate-50 transition cursor-pointer text-slate-700 font-normal rounded-[3px]"
+                            >
+                              Share
+                            </button>
+                            <button
+                              onClick={() => {
                                 handleDeletePO()
                                 setIsMoreDropdownOpen(false)
                               }}
@@ -1398,6 +1422,15 @@ export function CreatePurchaseOrderTab({
                           <div className="py-1 space-y-0.5">
                             <button
                               onClick={() => {
+                                setIsMoreDropdownOpen(false)
+                                setIsShareModalOpen(true)
+                              }}
+                              className="w-full text-left px-4 py-2 hover:bg-slate-50 transition cursor-pointer text-slate-700 font-normal rounded-[3px]"
+                            >
+                              Share
+                            </button>
+                            <button
+                              onClick={() => {
                                 handleDeletePO()
                                 setIsMoreDropdownOpen(false)
                               }}
@@ -1443,6 +1476,15 @@ export function CreatePurchaseOrderTab({
                               className="w-full text-left px-4 py-2 hover:bg-slate-50 transition cursor-pointer text-slate-700 font-normal rounded-[3px]"
                             >
                               Revert to Draft
+                            </button>
+                            <button
+                              onClick={() => {
+                                setIsMoreDropdownOpen(false)
+                                setIsShareModalOpen(true)
+                              }}
+                              className="w-full text-left px-4 py-2 hover:bg-slate-50 transition cursor-pointer text-slate-700 font-normal rounded-[3px]"
+                            >
+                              Share
                             </button>
                             <button
                               onClick={() => {
@@ -2181,6 +2223,20 @@ export function CreatePurchaseOrderTab({
           </form>
         </div>
       )}
+      {isShareModalOpen && editingPoId && (
+        <ShareModal
+          docType="purchase-order"
+          docId={editingPoId}
+          docNumber={poNumber}
+          contactName={contacts.find(c => c.id === selectedContactId)?.name ?? ''}
+          amount={getGrandTotal()}
+          currency={currency}
+          orgName={activeOrg.name}
+          dueLabel={expiryDate ? `expires ${expiryDate}` : ''}
+          onClose={() => setIsShareModalOpen(false)}
+        />
+      )}
+
       <EmailModal
         isOpen={isEmailModalOpen}
         onClose={() => setIsEmailModalOpen(false)}
@@ -2202,24 +2258,21 @@ export function CreatePurchaseOrderTab({
           }
 
           // Construct full payload for the backend to render the PDF on the fly
-          const logo = localStorage.getItem(`kdm_org_logo_${activeOrg.id}`) || ''
-          const bankDetails = JSON.parse(localStorage.getItem(`kdm_bank_details_${activeOrg.id}`) || '{}')
-          const templateSettings = JSON.parse(
-            localStorage.getItem(`kdm_purchase_template_settings_${activeOrg.id}`) ||
-            localStorage.getItem(`kdm_sales_template_settings_${activeOrg.id}`) ||
-            '{}'
-          )
-          const orgDetails = JSON.parse(localStorage.getItem(`kdm_org_extensions_${activeOrg.id}`) || '{}')
+          const logo = activeOrg.logo || ''
+          const bankDetails = {
+            bank_name: activeOrg.bank_name || '',
+            account_name: activeOrg.bank_account_name || '',
+            account_number: activeOrg.bank_account_number || '',
+            swift_code: activeOrg.bank_swift_code || '',
+            additional_instructions: activeOrg.bank_additional_instructions || '',
+          }
+          const templateSettings = activeOrg.purchase_template_settings || activeOrg.sales_template_settings || {}
+          const orgDetails = activeOrg.org_extensions || {}
 
           const supplierObj = contacts.find(c => c.id === selectedContactId)
           const projectObj = projects.find(p => p.id === selectedProjectId)
 
-          const savedPurchases = localStorage.getItem(`kdm_purchase_settings_${activeOrg.id}`)
-          let supplierTerms = '30 days'
-          if (savedPurchases) {
-            const parsed = JSON.parse(savedPurchases)
-            supplierTerms = parsed.supplier_terms || '30 days'
-          }
+          const supplierTerms = activeOrg.purchase_settings?.supplier_terms || '30 days'
 
           const postLines = lines.map(l => {
             const itemObj = catalogItems.find(i => i.id === l.itemId)
