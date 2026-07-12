@@ -320,8 +320,8 @@ function AssetForm({
         rate:              form.rate || null,
         useful_life_years: form.useful_life_years || null,
         asset_type:        form.asset_type || null,
-        cost:              parseFloat(form.cost) || 0,
-        residual_value:    parseFloat(form.residual_value) || 0,
+        cost:              String(parseFloat(form.cost) || 0),
+        residual_value:    String(parseFloat(form.residual_value) || 0),
       }
       if (initial) {
         await apiService.updateAsset(orgId, initial.id, payload)

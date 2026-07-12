@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import {
   Users, Plus, ChevronRight, CheckCircle, AlertCircle,
   Briefcase, Calendar, DollarSign, X, Check, Trash2,
-  UserCheck, UserX, Clock, Edit2, Send
+  UserCheck, UserX, Edit2, Send
 } from 'lucide-react'
 import { apiService } from '../../services/api'
 import type {

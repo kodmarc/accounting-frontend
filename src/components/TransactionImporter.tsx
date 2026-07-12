@@ -237,10 +237,6 @@ export function TransactionImporter({
         const ws  = wb.Sheets[wb.SheetNames[0]]
         const data: string[][] = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: '' })
         if (data.length) { h = data[0]; r = data.slice(1).filter(row => row.some(c => c)) }
-      } else {
-        const res = await bankImportApi.parseBankPdf(orgId, file)
-        h = res.headers
-        r = res.rows
       }
 
       setHeaders(h)

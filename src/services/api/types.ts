@@ -43,12 +43,15 @@ export interface Organization {
     showUEN?: boolean;
     showTerms?: boolean;
     theme_color?: string;
+    custom_layout?: unknown;
   };
   purchase_template_settings: {
     theme?: string;
     showLogo?: boolean;
     showUEN?: boolean;
     showTerms?: boolean;
+    theme_color?: string;
+    custom_layout?: unknown;
   };
 
   // Purchases config

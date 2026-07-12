@@ -2,9 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import {
   Receipt,
-  Users,
   TrendingUp,
-  Building,
   Sparkles
 } from 'lucide-react'
 import { apiService } from './services/api'
