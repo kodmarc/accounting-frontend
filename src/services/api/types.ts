@@ -317,6 +317,170 @@ export interface InvitationInfo {
   is_expired: boolean;
 }
 
+// ---------- Payroll ----------
+export interface Employee {
+  id: string;
+  employee_id: string;
+  full_name: string;
+  email: string;
+  phone: string;
+  address: string;
+  date_of_birth: string | null;
+  job_title: string;
+  department: string;
+  employment_type: 'Full-time' | 'Part-time' | 'Contract';
+  start_date: string;
+  end_date: string | null;
+  status: 'Active' | 'Terminated';
+  pay_frequency: 'Monthly' | 'Fortnightly' | 'Weekly';
+  gross_salary: number;
+  salary_account: string | null;
+  salary_account_name: string;
+  tax_id: string;
+  leave_balances: EmployeeLeaveBalance[];
+  created_at: string;
+}
+
+export interface LeaveType {
+  id: string;
+  name: string;
+  days_per_year: number;
+  is_paid: boolean;
+  is_active: boolean;
+}
+
+export interface EmployeeLeaveBalance {
+  id: string;
+  leave_type: string;
+  leave_type_name: string;
+  year: number;
+  entitled_days: number;
+  used_days: number;
+  remaining_days: number;
+}
+
+export interface LeaveRequest {
+  id: string;
+  employee: string;
+  employee_name: string;
+  leave_type: string;
+  leave_type_name: string;
+  from_date: string;
+  to_date: string;
+  days: number;
+  reason: string;
+  status: 'Pending' | 'Approved' | 'Rejected';
+  created_at: string;
+}
+
+export interface PaychequeDeductionLine {
+  id?: string;
+  label: string;
+  amount: number;
+  account: string;
+}
+
+export interface Paycheque {
+  id: string;
+  employee: string;
+  employee_name: string;
+  employee_id_code: string;
+  salary_account_id: string | null;
+  gross_salary: number;
+  net_pay: number;
+  notes: string;
+  deduction_lines: PaychequeDeductionLine[];
+}
+
+export interface PayRun {
+  id: string;
+  period_label: string;
+  period_start: string;
+  period_end: string;
+  pay_date: string;
+  bank_account: string;
+  status: 'Draft' | 'Posted';
+  total_gross: number;
+  total_deductions: number;
+  total_net: number;
+  paycheques: Paycheque[];
+  created_at: string;
+}
+
+// ---------- Fixed Assets ----------
+export interface AssetType {
+  id: string;
+  name: string;
+  asset_account: string;
+  asset_account_name: string;
+  accum_dep_account: string;
+  accum_dep_account_name: string;
+  dep_expense_account: string;
+  dep_expense_account_name: string;
+  dep_method: 'StraightLine' | 'DiminishingValue';
+  averaging_method: 'FullMonth' | 'ActualDays' | 'FullYear' | 'NoAveraging';
+  rate: string | null;
+  useful_life_years: string | null;
+  residual_value_pct: string;
+  is_active: boolean;
+}
+
+export interface DepRunLine {
+  id: string;
+  asset: string;
+  asset_name: string;
+  asset_number: string;
+  asset_type_name: string;
+  opening_nbv: string;
+  dep_amount: string;
+  closing_nbv: string;
+}
+
+export interface DepreciationRun {
+  id: string;
+  period_label: string;
+  period_start: string;
+  period_end: string;
+  status: 'Posted' | 'Undone';
+  lines?: DepRunLine[];
+  line_count?: number;
+  total_depreciation: string;
+  created_at: string;
+}
+
+export interface DepRunPreview {
+  period_label: string;
+  period_start: string;
+  period_end: string;
+  total_depreciation: string;
+  lines: Omit<DepRunLine, 'id' | 'asset'>[];
+}
+
+export interface FixedAsset {
+  id: string;
+  asset_number: string;
+  name: string;
+  description: string;
+  serial_number: string;
+  warranty_expiry: string | null;
+  asset_type: string | null;
+  asset_type_name: string;
+  purchase_date: string;
+  cost: string;
+  residual_value: string;
+  dep_start_date: string;
+  rate: string | null;
+  useful_life_years: string | null;
+  status: 'Draft' | 'Registered' | 'Disposed';
+  accumulated_depreciation: string;
+  net_book_value: string;
+  dep_lines: DepRunLine[];
+  from_bill: boolean;
+  disposed_date: string | null;
+  disposed_amount: string | null;
+  created_at: string;
+}
+
 // ---------- Email DTOs ----------
 export interface SendEmailPayload {
   to: string;

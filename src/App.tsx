@@ -47,6 +47,9 @@ import { CreateSpendReceiveMoney } from './pages/tabs/CreateSpendReceiveMoney'
 import { CreateManualJournal } from './pages/tabs/CreateManualJournal'
 import { UserProfileTab } from './pages/tabs/UserProfileTab'
 import { ProjectsTab } from './pages/tabs/ProjectsTab'
+import { PayrollTab } from './pages/tabs/PayrollTab'
+import { FixedAssetsTab } from './pages/tabs/FixedAssetsTab'
+import { BankTransactionImportPage } from './pages/tabs/BankTransactionImportPage'
 import { InvitePage } from './pages/InvitePage'
 import { LandingPage } from './pages/LandingPage'
 
@@ -61,7 +64,7 @@ const VALID_TABS: TabId[] = [
   'ContactsSettings', 'CreateInvoice', 'CreateQuote', 'EditInvoice', 'EditQuote',
   'CreateBill', 'EditBill', 'CreatePurchaseOrder', 'EditPurchaseOrder',
   'CreateTransferMoney', 'CreateSpendMoney', 'CreateReceiveMoney', 'CreateManualJournal',
-  'UserProfile', 'Projects', 'UsersSettings'
+  'UserProfile', 'Projects', 'UsersSettings', 'ImportBankTransactions'
 ]
 
 function isValidTabId(tab: string): tab is TabId {
@@ -98,7 +101,8 @@ const TAB_TO_PERMISSION_KEY: Partial<Record<TabId, string>> = {
   CreateSpendMoney:      'banking',
   CreateReceiveMoney:    'banking',
   ChartOfAccounts:       'chart_of_accounts',
-  CreateManualJournal:   'chart_of_accounts',
+  CreateManualJournal:      'chart_of_accounts',
+  ImportBankTransactions:   'banking',
   TaxRates:              'tax_rates',
   AccountingSettings:    'accounting_settings',
   AllReports:            'all_reports',
@@ -169,6 +173,21 @@ function App() {
   const [viewingProductItemId, setViewingProductItemId] = useState<string | null>(null)
   const [invoiceDrawerOpen, setInvoiceDrawerOpen] = useState(false)
   const [quoteDrawerOpen, setQuoteDrawerOpen] = useState(false)
+  const [importBankId, setImportBankId] = useState<string | null>(null)
+  const [importBankName, setImportBankName] = useState<string | null>(null)
+  const [importFile, setImportFile] = useState<File | null>(null)
+  const [importFileType, setImportFileType] = useState<'csv' | 'excel' | null>(null)
+
+  const handleStartImport = useCallback((
+    file: File, fileType: 'csv' | 'excel',
+    bankId: string, bankName: string,
+  ) => {
+    setImportFile(file)
+    setImportFileType(fileType)
+    setImportBankId(bankId)
+    setImportBankName(bankName)
+    setActiveTab('ImportBankTransactions')
+  }, [])
 
   const [countriesList, setCountriesList] = useState<SelectOption[]>([])
   const [currenciesList, setCurrenciesList] = useState<SelectOption[]>([])
@@ -665,6 +684,7 @@ function App() {
           activeOrg={activeOrg}
           onViewInvoice={handleViewInvoice}
           onViewBill={handleViewBill}
+          onStartImport={handleStartImport}
         />
       )}
 
@@ -858,6 +878,18 @@ function App() {
         />
       )}
 
+      {activeTab === 'ImportBankTransactions' && importFile && importFileType && importBankId && (
+        <BankTransactionImportPage
+          file={importFile}
+          fileType={importFileType}
+          bankAccountId={importBankId}
+          bankAccountName={importBankName || ''}
+          activeOrg={activeOrg}
+          onBack={() => setActiveTab('BankAccounts')}
+          onSuccess={() => { setActiveTab('BankAccounts'); setImportFile(null); setImportFileType(null) }}
+        />
+      )}
+
       {activeTab === 'CreateTransferMoney' && (
         <CreateTransferMoney activeOrg={activeOrg} setActiveTab={setActiveTab} />
       )}
@@ -905,22 +937,12 @@ function App() {
         />
       )}
 
-      {activeTab === 'FixedAssets' && (
-        <PlaceholderTab
-          title="Fixed Assets"
-          description="The Fixed Assets Directory is aligned. Track and audit asset acquisitions, depreciation indices, write-offs, and salvage book values."
-          icon={Building}
-          onReturnHome={() => setActiveTab('Home')}
-        />
+      {activeTab === 'FixedAssets' && activeOrg && (
+        <FixedAssetsTab activeOrg={activeOrg} />
       )}
 
-      {activeTab === 'Payroll' && (
-        <PlaceholderTab
-          title="Payroll Center"
-          description="The Payroll System is aligned. Run employee payouts, specify default hourly rates, calculate tax withholdings, and transmit pay slips."
-          icon={Users}
-          onReturnHome={() => setActiveTab('Home')}
-        />
+      {activeTab === 'Payroll' && activeOrg && (
+        <PayrollTab activeOrg={activeOrg} />
       )}
 
       {activeTab === 'AllReports' && (

@@ -15,6 +15,8 @@ import { paymentsApi } from './api/payments'
 import { reportsApi } from './api/reports'
 import { manualJournalsApi } from './api/manual-journals'
 import { spendReceiveApi } from './api/spend-receive'
+import { payrollApi } from './api/payroll'
+import { fixedAssetsApi } from './api/fixed-assets'
 export type { Payment } from './api/payments'
 export type { ManualJournal, ManualJournalLine, CreateManualJournalPayload } from './api/manual-journals'
 export type { SpendReceiveMoney, SpendReceiveMoneyLine, CreateSpendReceivePayload } from './api/spend-receive'
@@ -27,6 +29,9 @@ export type {
   Project, InventoryMovement,
   OrgMember, OrgInvitation, InvitationInfo,
   SendEmailPayload, SendBillEmailPayload, SendPurchaseOrderEmailPayload,
+  Employee, LeaveType, EmployeeLeaveBalance, LeaveRequest,
+  PayRun, Paycheque, PaychequeDeductionLine,
+  AssetType, FixedAsset, DepreciationRun, DepRunLine, DepRunPreview,
 } from './api/types'
 export { API_BASE_URL, request, fetchWithAuth } from './api/base'
 
@@ -48,4 +53,6 @@ export const apiService = {
   ...reportsApi,
   ...manualJournalsApi,
   ...spendReceiveApi,
+  ...payrollApi,
+  ...fixedAssetsApi,
 }

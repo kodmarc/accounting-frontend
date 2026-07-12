@@ -1,4 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, lazy, Suspense } from 'react'
+import type { CustomLayout } from '../../components/TemplateEditor'
+const TemplateEditor = lazy(() => import('../../components/TemplateEditor').then(m => ({ default: m.TemplateEditor })))
 import {
   Settings,
   Shield,
@@ -75,7 +77,8 @@ export function SettingsTab({
   const [defaultFooter, setDefaultFooter] = useState('Thank you for your business!')
 
   // Invoice Template Settings (Sales customizer)
-  const [templateTheme, setTemplateTheme] = useState<'Classic' | 'Emerald' | 'Sleek'>('Emerald')
+  const [templateTheme, setTemplateTheme] = useState<'Emerald' | 'Custom'>('Emerald')
+  const [showTemplateEditor, setShowTemplateEditor] = useState(false)
   const [showLogo, setShowLogo] = useState(true)
   const [showUEN, setShowUEN] = useState(true)
   const [showTerms, setShowTerms] = useState(true)
@@ -89,7 +92,7 @@ export function SettingsTab({
   const [nextBillNumber, setNextBillNumber] = useState(1)
 
   // Purchases Template Settings
-  const [purchaseTemplateTheme, setPurchaseTemplateTheme] = useState<'Classic' | 'Emerald' | 'Sleek'>('Emerald')
+  const [purchaseTemplateTheme, setPurchaseTemplateTheme] = useState<'Emerald' | 'Custom'>('Emerald')
   const [purchaseShowLogo, setPurchaseShowLogo] = useState(true)
   const [purchaseShowUEN, setPurchaseShowUEN] = useState(true)
   const [purchaseShowTerms, setPurchaseShowTerms] = useState(true)
@@ -148,7 +151,8 @@ export function SettingsTab({
 
       // Sales template settings
       const tmpl = activeOrg.sales_template_settings || {}
-      setTemplateTheme((tmpl.theme as any) || 'Emerald')
+      const rawTheme = tmpl.theme as string
+      setTemplateTheme(rawTheme === 'Custom' ? 'Custom' : 'Emerald')
       setShowLogo(tmpl.showLogo !== false)
       setShowUEN(tmpl.showUEN !== false)
       setShowTerms(tmpl.showTerms !== false)
@@ -164,7 +168,8 @@ export function SettingsTab({
 
       // Purchase template settings
       const pt = activeOrg.purchase_template_settings || {}
-      setPurchaseTemplateTheme((pt.theme as any) || 'Emerald')
+      const rawPurchaseTheme = pt.theme as string
+      setPurchaseTemplateTheme(rawPurchaseTheme === 'Custom' ? 'Custom' : 'Emerald')
       setPurchaseShowLogo(pt.showLogo !== false)
       setPurchaseShowUEN(pt.showUEN !== false)
       setPurchaseShowTerms(pt.showTerms !== false)
@@ -270,7 +275,8 @@ export function SettingsTab({
       theme: templateTheme,
       showLogo,
       showUEN,
-      showTerms
+      showTerms,
+      custom_layout: activeOrg.sales_template_settings?.custom_layout ?? null,
     }
 
     try {
@@ -435,6 +441,7 @@ export function SettingsTab({
   }
 
   return (
+    <>
     <div className="bg-white rounded-[3px] border border-emerald-100/50 shadow-sm p-6 sm:p-8 space-y-6 font-sans text-left">
       
       {/* Header Block */}
@@ -828,33 +835,13 @@ export function SettingsTab({
                   </div>
 
                   {/* Radio card selectors */}
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    {/* Theme A */}
-                    <div 
-                      onClick={() => setTemplateTheme('Classic')}
-                      className={`cursor-pointer rounded-[3px] border p-4 transition-all duration-200 relative overflow-hidden flex flex-col justify-between h-28 ${
-                        templateTheme === 'Classic' 
-                          ? 'border-[#0F5B38] bg-emerald-50/20 shadow-md ring-2 ring-emerald-500/10' 
-                          : 'border-slate-200 hover:border-slate-350 bg-white'
-                      }`}
-                    >
-                      <div className="space-y-1">
-                        <span className="text-xs font-extrabold text-slate-800 block">Classic Minimal</span>
-                        <p className="text-[9px] text-slate-400 font-semibold leading-tight">Conservative layout, classic tables and high black-and-white print compatibility.</p>
-                      </div>
-                      <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full inline-block self-start ${
-                        templateTheme === 'Classic' ? 'bg-[#0F5B38] text-white' : 'bg-slate-100 text-slate-500'
-                      }`}>
-                        Classic style
-                      </span>
-                    </div>
-
-                    {/* Theme B */}
-                    <div 
+                  <div className="grid grid-cols-2 gap-3">
+                    {/* Theme A — Modern Emerald */}
+                    <div
                       onClick={() => setTemplateTheme('Emerald')}
                       className={`cursor-pointer rounded-[3px] border p-4 transition-all duration-200 relative overflow-hidden flex flex-col justify-between h-28 ${
-                        templateTheme === 'Emerald' 
-                          ? 'border-[#0F5B38] bg-emerald-50/20 shadow-md ring-2 ring-emerald-500/10' 
+                        templateTheme === 'Emerald'
+                          ? 'border-[#0F5B38] bg-emerald-50/20 shadow-md ring-2 ring-emerald-500/10'
                           : 'border-slate-200 hover:border-slate-350 bg-white'
                       }`}
                     >
@@ -869,26 +856,43 @@ export function SettingsTab({
                       </span>
                     </div>
 
-                    {/* Theme C */}
-                    <div 
-                      onClick={() => setTemplateTheme('Sleek')}
+                    {/* Theme B — Custom drag-and-drop */}
+                    <div
+                      onClick={() => setTemplateTheme('Custom')}
                       className={`cursor-pointer rounded-[3px] border p-4 transition-all duration-200 relative overflow-hidden flex flex-col justify-between h-28 ${
-                        templateTheme === 'Sleek' 
-                          ? 'border-[#0F5B38] bg-emerald-50/20 shadow-md ring-2 ring-emerald-500/10' 
+                        templateTheme === 'Custom'
+                          ? 'border-[#0F5B38] bg-emerald-50/20 shadow-md ring-2 ring-emerald-500/10'
                           : 'border-slate-200 hover:border-slate-350 bg-white'
                       }`}
                     >
                       <div className="space-y-1">
-                        <span className="text-xs font-extrabold text-slate-800 block">Sleek Professional</span>
-                        <p className="text-[9px] text-slate-400 font-semibold leading-tight">Right-aligned invoice summary tables, thin indigo borders, dynamic grid spacing.</p>
+                        <span className="text-xs font-extrabold text-slate-800 block">Custom Layout</span>
+                        <p className="text-[9px] text-slate-400 font-semibold leading-tight">Drag, resize and position every element freely on an A4 canvas.</p>
                       </div>
                       <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full inline-block self-start ${
-                        templateTheme === 'Sleek' ? 'bg-[#0F5B38] text-white' : 'bg-slate-100 text-slate-500'
+                        templateTheme === 'Custom' ? 'bg-[#0F5B38] text-white' : 'bg-slate-100 text-slate-500'
                       }`}>
-                        Premium layout
+                        Your design
                       </span>
                     </div>
                   </div>
+
+                  {/* Open layout editor when Custom is selected */}
+                  {templateTheme === 'Custom' && (
+                    <div className="flex items-center gap-3 p-3 bg-emerald-50/40 border border-emerald-200 rounded-[3px]">
+                      <span className="text-[11px] text-emerald-800 font-medium flex-1">
+                        {activeOrg.sales_template_settings?.custom_layout
+                          ? 'Custom layout saved. Open the editor to make changes.'
+                          : 'No custom layout yet. Open the editor to design your template.'}
+                      </span>
+                      <button
+                        onClick={() => setShowTemplateEditor(true)}
+                        className="text-[11px] font-semibold text-white bg-[#0F5B38] hover:brightness-105 px-3 py-1.5 rounded-[3px]"
+                      >
+                        Open Layout Editor
+                      </button>
+                    </div>
+                  )}
 
                   {/* Settings toggles */}
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-slate-50/50 p-4 rounded-[3px] border border-slate-100">
@@ -944,10 +948,7 @@ export function SettingsTab({
                               </div>
                             ) : null}
                             {!(showLogo && logoBase64) && (
-                              <div className={`font-bold text-sm ${
-                                templateTheme === 'Classic' ? 'text-slate-800' :
-                                templateTheme === 'Sleek' ? 'text-blue-800' : 'text-emerald-800'
-                              }`}>
+                              <div className="font-bold text-sm text-emerald-800">
                                 {activeOrg.name}
                               </div>
                             )}
@@ -958,10 +959,7 @@ export function SettingsTab({
                           </div>
                           
                           <div className="text-right space-y-1">
-                            <div className={`text-base font-black tracking-wide ${
-                              templateTheme === 'Classic' ? 'text-slate-800' :
-                              templateTheme === 'Sleek' ? 'text-blue-800' : 'text-emerald-800'
-                            }`}>
+                            <div className="text-base font-black tracking-wide text-emerald-800">
                               INVOICE
                             </div>
                             <div className="text-[9px] font-bold text-slate-500">
@@ -971,10 +969,7 @@ export function SettingsTab({
                         </div>
 
                         {/* Mock Billing metadata */}
-                        <div className={`grid grid-cols-4 gap-2 p-2 rounded-[3px] ${
-                          templateTheme === 'Classic' ? 'bg-slate-100/50 border-t border-b border-slate-200' :
-                          templateTheme === 'Sleek' ? 'bg-blue-50/30' : 'bg-emerald-50/30'
-                        }`}>
+                        <div className="grid grid-cols-4 gap-2 p-2 rounded-[3px] bg-emerald-50/30">
                           <div>
                             <div className="text-[8px] text-slate-400 font-bold uppercase">Date</div>
                             <div className="text-[9px] font-extrabold text-slate-700">01 Jun 2026</div>
@@ -1013,10 +1008,7 @@ export function SettingsTab({
                         <div className="overflow-hidden rounded-[3px] border border-slate-100">
                           <table className="w-full text-[9px] border-collapse">
                             <thead>
-                              <tr className={`text-[8px] font-bold uppercase tracking-wider text-white ${
-                                templateTheme === 'Classic' ? 'bg-slate-800' :
-                                templateTheme === 'Sleek' ? 'bg-blue-800' : 'bg-emerald-800'
-                              }`}>
+                              <tr className="text-[8px] font-bold uppercase tracking-wider text-white bg-emerald-800">
                                 <th className="px-3 py-1.5 text-left">Item</th>
                                 <th className="px-3 py-1.5 text-left">Description</th>
                                 <th className="px-3 py-1.5 text-center">Qty</th>
@@ -1048,10 +1040,7 @@ export function SettingsTab({
                                 <td className="py-1 text-slate-400 text-right pr-2">Tax (GST 8%)</td>
                                 <td className="py-1 text-right font-semibold text-slate-700">$120.00</td>
                               </tr>
-                              <tr className={`font-bold ${
-                                templateTheme === 'Classic' ? 'border-b-2 border-slate-800 text-slate-800' :
-                                templateTheme === 'Sleek' ? 'border-b-2 border-blue-800 text-blue-800' : 'border-b-2 border-emerald-800 text-emerald-800'
-                              }`}>
+                              <tr className="font-bold border-b-2 border-emerald-800 text-emerald-800">
                                 <td className="py-1.5 text-right pr-2">Total Due</td>
                                 <td className="py-1.5 text-right text-xs font-black">$1,620.00</td>
                               </tr>
@@ -1069,10 +1058,7 @@ export function SettingsTab({
 
                           <div className="grid grid-cols-2 gap-4 text-left pt-2 font-sans bg-slate-50/50 p-2.5 rounded-[3px] border border-dashed border-slate-200">
                             <div className="border-r border-slate-200 border-dashed pr-2">
-                              <div className={`text-[8px] font-bold tracking-wide uppercase ${
-                                templateTheme === 'Classic' ? 'text-slate-800' :
-                                templateTheme === 'Sleek' ? 'text-blue-800' : 'text-emerald-800'
-                              }`}>
+                              <div className="text-[8px] font-bold tracking-wide uppercase text-emerald-800">
                                 PAYMENT ADVICE
                               </div>
                               <div className="text-[7.5px] mt-1 space-y-0.5 leading-tight text-slate-500 text-left">
@@ -1084,10 +1070,7 @@ export function SettingsTab({
                             </div>
 
                             <div className="pl-1">
-                              <div className={`text-[8px] font-bold tracking-wide uppercase ${
-                                templateTheme === 'Classic' ? 'text-slate-800' :
-                                templateTheme === 'Sleek' ? 'text-blue-800' : 'text-emerald-800'
-                              }`}>
+                              <div className="text-[8px] font-bold tracking-wide uppercase text-emerald-800">
                                 HOW TO PAY
                               </div>
                               <div className="text-[7.5px] mt-1 space-y-0.5 leading-tight text-slate-500 text-left">
@@ -1298,33 +1281,13 @@ export function SettingsTab({
                   </div>
 
                   {/* Radio card selectors */}
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    {/* Theme A */}
-                    <div 
-                      onClick={() => setPurchaseTemplateTheme('Classic')}
-                      className={`cursor-pointer rounded-[3px] border p-4 transition-all duration-200 relative overflow-hidden flex flex-col justify-between h-28 ${
-                        purchaseTemplateTheme === 'Classic' 
-                          ? 'border-[#0F5B38] bg-emerald-50/20 shadow-md ring-2 ring-emerald-500/10' 
-                          : 'border-slate-200 hover:border-slate-350 bg-white'
-                      }`}
-                    >
-                      <div className="space-y-1">
-                        <span className="text-xs font-extrabold text-slate-800 block">Classic Minimal</span>
-                        <p className="text-[9px] text-slate-400 font-semibold leading-tight">Conservative layout, classic tables and high black-and-white print compatibility.</p>
-                      </div>
-                      <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full inline-block self-start ${
-                        purchaseTemplateTheme === 'Classic' ? 'bg-[#0F5B38] text-white' : 'bg-slate-100 text-slate-500'
-                      }`}>
-                        Classic style
-                      </span>
-                    </div>
-
-                    {/* Theme B */}
-                    <div 
+                  <div className="grid grid-cols-2 gap-3">
+                    {/* Theme A — Modern Emerald */}
+                    <div
                       onClick={() => setPurchaseTemplateTheme('Emerald')}
                       className={`cursor-pointer rounded-[3px] border p-4 transition-all duration-200 relative overflow-hidden flex flex-col justify-between h-28 ${
-                        purchaseTemplateTheme === 'Emerald' 
-                          ? 'border-[#0F5B38] bg-emerald-50/20 shadow-md ring-2 ring-emerald-500/10' 
+                        purchaseTemplateTheme === 'Emerald'
+                          ? 'border-[#0F5B38] bg-emerald-50/20 shadow-md ring-2 ring-emerald-500/10'
                           : 'border-slate-200 hover:border-slate-350 bg-white'
                       }`}
                     >
@@ -1339,26 +1302,43 @@ export function SettingsTab({
                       </span>
                     </div>
 
-                    {/* Theme C */}
-                    <div 
-                      onClick={() => setPurchaseTemplateTheme('Sleek')}
+                    {/* Theme B — Custom drag-and-drop */}
+                    <div
+                      onClick={() => setPurchaseTemplateTheme('Custom')}
                       className={`cursor-pointer rounded-[3px] border p-4 transition-all duration-200 relative overflow-hidden flex flex-col justify-between h-28 ${
-                        purchaseTemplateTheme === 'Sleek' 
-                          ? 'border-[#0F5B38] bg-emerald-50/20 shadow-md ring-2 ring-emerald-500/10' 
+                        purchaseTemplateTheme === 'Custom'
+                          ? 'border-[#0F5B38] bg-emerald-50/20 shadow-md ring-2 ring-emerald-500/10'
                           : 'border-slate-200 hover:border-slate-350 bg-white'
                       }`}
                     >
                       <div className="space-y-1">
-                        <span className="text-xs font-extrabold text-slate-800 block">Sleek Professional</span>
-                        <p className="text-[9px] text-slate-400 font-semibold leading-tight">Right-aligned invoice summary tables, thin indigo borders, dynamic grid spacing.</p>
+                        <span className="text-xs font-extrabold text-slate-800 block">Custom Layout</span>
+                        <p className="text-[9px] text-slate-400 font-semibold leading-tight">Drag, resize and position every element freely on an A4 canvas.</p>
                       </div>
                       <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full inline-block self-start ${
-                        purchaseTemplateTheme === 'Sleek' ? 'bg-[#0F5B38] text-white' : 'bg-slate-100 text-slate-500'
+                        purchaseTemplateTheme === 'Custom' ? 'bg-[#0F5B38] text-white' : 'bg-slate-100 text-slate-500'
                       }`}>
-                        Premium layout
+                        Your design
                       </span>
                     </div>
                   </div>
+
+                  {/* Open layout editor when Custom is selected */}
+                  {purchaseTemplateTheme === 'Custom' && (
+                    <div className="flex items-center gap-3 p-3 bg-emerald-50/40 border border-emerald-200 rounded-[3px]">
+                      <span className="text-[11px] text-emerald-800 font-medium flex-1">
+                        {activeOrg.purchase_template_settings?.custom_layout
+                          ? 'Custom layout saved. Open the editor to make changes.'
+                          : 'No custom layout yet. Open the editor to design your template.'}
+                      </span>
+                      <button
+                        onClick={() => setShowTemplateEditor(true)}
+                        className="text-[11px] font-semibold text-white bg-[#0F5B38] hover:brightness-105 px-3 py-1.5 rounded-[3px]"
+                      >
+                        Open Layout Editor
+                      </button>
+                    </div>
+                  )}
 
                   {/* Settings toggles */}
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-slate-50/55 p-4 rounded-[3px] border border-slate-100">
@@ -1414,10 +1394,7 @@ export function SettingsTab({
                               </div>
                             ) : null}
                             {!(purchaseShowLogo && logoBase64) && (
-                              <div className={`font-bold text-sm ${
-                                purchaseTemplateTheme === 'Classic' ? 'text-slate-800' :
-                                purchaseTemplateTheme === 'Sleek' ? 'text-blue-800' : 'text-emerald-800'
-                              }`}>
+                              <div className="font-bold text-sm text-emerald-800">
                                 {activeOrg.name}
                               </div>
                             )}
@@ -1428,10 +1405,7 @@ export function SettingsTab({
                           </div>
                           
                           <div className="text-right space-y-1">
-                            <div className={`text-base font-black tracking-wide ${
-                              purchaseTemplateTheme === 'Classic' ? 'text-slate-800' :
-                              purchaseTemplateTheme === 'Sleek' ? 'text-blue-800' : 'text-emerald-800'
-                            }`}>
+                            <div className="text-base font-black tracking-wide text-emerald-800">
                               PURCHASE ORDER
                             </div>
                             <div className="text-[9px] font-bold text-slate-500">
@@ -1441,10 +1415,7 @@ export function SettingsTab({
                         </div>
 
                         {/* Mock Billing metadata */}
-                        <div className={`grid grid-cols-4 gap-2 p-2 rounded-[3px] ${
-                          purchaseTemplateTheme === 'Classic' ? 'bg-slate-100/50 border-t border-b border-slate-200' :
-                          purchaseTemplateTheme === 'Sleek' ? 'bg-blue-50/30' : 'bg-emerald-50/30'
-                        }`}>
+                        <div className="grid grid-cols-4 gap-2 p-2 rounded-[3px] bg-emerald-50/30">
                           <div>
                             <div className="text-[8px] text-slate-400 font-bold uppercase">Date</div>
                             <div className="text-[9px] font-extrabold text-slate-700">01 Jun 2026</div>
@@ -1483,10 +1454,7 @@ export function SettingsTab({
                         <div className="overflow-hidden rounded-[3px] border border-slate-100">
                           <table className="w-full text-[9px] border-collapse">
                             <thead>
-                              <tr className={`text-[8px] font-bold uppercase tracking-wider text-white ${
-                                purchaseTemplateTheme === 'Classic' ? 'bg-slate-800' :
-                                purchaseTemplateTheme === 'Sleek' ? 'bg-blue-800' : 'bg-emerald-800'
-                              }`}>
+                              <tr className="text-[8px] font-bold uppercase tracking-wider text-white bg-emerald-800">
                                 <th className="px-3 py-1.5 text-left">Item</th>
                                 <th className="px-3 py-1.5 text-left">Description</th>
                                 <th className="px-3 py-1.5 text-center">Qty</th>
@@ -1518,10 +1486,7 @@ export function SettingsTab({
                                 <td className="py-1 text-slate-400 text-right pr-2">Tax (GST 9%)</td>
                                 <td className="py-1 text-right font-semibold text-slate-700">$27.00</td>
                               </tr>
-                              <tr className={`font-bold ${
-                                purchaseTemplateTheme === 'Classic' ? 'border-b-2 border-slate-800 text-slate-800' :
-                                purchaseTemplateTheme === 'Sleek' ? 'border-b-2 border-blue-800 text-blue-800' : 'border-b-2 border-emerald-800 text-emerald-800'
-                              }`}>
+                              <tr className="font-bold border-b-2 border-emerald-800 text-emerald-800">
                                 <td className="py-1.5 text-right pr-2">Total Amount</td>
                                 <td className="py-1.5 text-right text-xs font-black">$327.00</td>
                               </tr>
@@ -1660,5 +1625,34 @@ export function SettingsTab({
       </div>
 
     </div>
+
+    {/* Template Designer modal (full-screen overlay) */}
+    {showTemplateEditor && activeOrg && (
+      <Suspense fallback={null}>
+        <TemplateEditor
+          initialLayout={(activeOrg.sales_template_settings?.custom_layout as CustomLayout | null) ?? null}
+          org={activeOrg}
+          onClose={() => setShowTemplateEditor(false)}
+          onSave={async (layout: CustomLayout) => {
+            const updated = await apiService.updateOrgSettings(activeOrg.id, {
+              sales_template_settings: {
+                ...(activeOrg.sales_template_settings || {}),
+                theme: 'Custom',
+                custom_layout: layout,
+              },
+              purchase_template_settings: {
+                ...(activeOrg.purchase_template_settings || {}),
+                theme: 'Custom',
+                custom_layout: layout,
+              },
+            })
+            if (onOrgUpdate) onOrgUpdate(updated)
+            setTemplateTheme('Custom')
+            setShowTemplateEditor(false)
+          }}
+        />
+      </Suspense>
+    )}
+    </>
   )
 }

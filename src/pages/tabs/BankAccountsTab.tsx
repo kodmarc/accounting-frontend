@@ -3,14 +3,16 @@ import { Plus, CreditCard, ArrowLeft, Search, Pencil, Archive, ArchiveRestore } 
 import { apiService } from '../../services/api'
 import type { Organization, Account, Invoice, Payment } from '../../services/api'
 import { usePopup } from '../../components/PopupProvider'
+import { ImportDropdown } from '../../components/ImportDropdown'
 
 interface BankAccountsTabProps {
   activeOrg: Organization
   onViewInvoice?: (id: string) => void
   onViewBill?: (id: string) => void
+  onStartImport?: (file: File, fileType: 'csv' | 'excel', bankId: string, bankName: string) => void
 }
 
-export function BankAccountsTab({ activeOrg, onViewInvoice, onViewBill }: BankAccountsTabProps) {
+export function BankAccountsTab({ activeOrg, onViewInvoice, onViewBill, onStartImport }: BankAccountsTabProps) {
   const { showConfirm, showAlert } = usePopup()
   const [bankAccounts, setBankAccounts] = useState<Account[]>([])
   const [invoices, setInvoices] = useState<Invoice[]>([])
@@ -238,6 +240,10 @@ export function BankAccountsTab({ activeOrg, onViewInvoice, onViewBill }: BankAc
           </div>
 
           <div className="flex space-x-2">
+            <ImportDropdown
+              onCsv={file => onStartImport?.(file, 'csv', viewingBankAcc.id, viewingBankAcc.name)}
+              onExcel={file => onStartImport?.(file, 'excel', viewingBankAcc.id, viewingBankAcc.name)}
+            />
             <button
               onClick={() => handleEditClick(viewingBankAcc)}
               className="flex items-center space-x-1.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 text-xs font-bold px-3 py-1.5 rounded-[3px] transition cursor-pointer select-none shadow-sm"
@@ -377,6 +383,7 @@ export function BankAccountsTab({ activeOrg, onViewInvoice, onViewBill }: BankAc
             </div>
           </div>
         )}
+
       </div>
     )
   }

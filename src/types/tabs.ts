@@ -46,6 +46,7 @@ export type TabId =
   | 'Projects'
   | 'UserProfile'
   | 'UsersSettings'
+  | 'ImportBankTransactions'
 
 export type SettingsTabId =
   | 'SalesSettings'
