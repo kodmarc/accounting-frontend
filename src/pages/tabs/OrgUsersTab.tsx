@@ -194,10 +194,12 @@ function PermissionToggles({ perms, onChange }: { perms: Permissions; onChange: 
 }
 
 // ── Role badge ──────────────────────────────────────────────────────────────
-function RoleBadge({ role }: { role: 'Admin' | 'User' }) {
-  return role === 'Admin'
-    ? <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-[3px] bg-[#0F5B38]/10 text-[#0F5B38]"><ShieldCheck className="h-3 w-3" />Admin</span>
-    : <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-[3px] bg-slate-100 text-slate-500"><Shield className="h-3 w-3" />User</span>
+function RoleBadge({ role }: { role: 'Admin' | 'User' | 'ReadOnly' }) {
+  if (role === 'Admin')
+    return <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-[3px] bg-[#0F5B38]/10 text-[#0F5B38]"><ShieldCheck className="h-3 w-3" />Admin</span>
+  if (role === 'ReadOnly')
+    return <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-[3px] bg-blue-50 text-blue-600"><Shield className="h-3 w-3" />Read Only</span>
+  return <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-[3px] bg-slate-100 text-slate-500"><Shield className="h-3 w-3" />User</span>
 }
 
 // ── Main component ──────────────────────────────────────────────────────────
@@ -210,14 +212,14 @@ export function OrgUsersTab({ activeOrg, currentUserId }: OrgUsersTabProps) {
   // Invite form
   const [showInvitePanel, setShowInvitePanel] = useState(false)
   const [inviteEmail,     setInviteEmail]     = useState('')
-  const [inviteRole,      setInviteRole]      = useState<'Admin' | 'User'>('User')
+  const [inviteRole,      setInviteRole]      = useState<'Admin' | 'User' | 'ReadOnly'>('User')
   const [invitePerms,     setInvitePerms]     = useState<Permissions>({ ...DEFAULT_PERMISSIONS })
   const [inviteSaving,    setInviteSaving]    = useState(false)
   const [inviteMsg,       setInviteMsg]       = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
 
   // Edit member
   const [editingMemberId, setEditingMemberId] = useState<string | null>(null)
-  const [editRole,        setEditRole]        = useState<'Admin' | 'User'>('User')
+  const [editRole,        setEditRole]        = useState<'Admin' | 'User' | 'ReadOnly'>('User')
   const [editPerms,       setEditPerms]       = useState<Permissions>({})
   const [editSaving,      setEditSaving]      = useState(false)
   const [editMsg,         setEditMsg]         = useState<string | null>(null)
@@ -363,18 +365,27 @@ export function OrgUsersTab({ activeOrg, currentUserId }: OrgUsersTabProps) {
               <div className="space-y-1.5">
                 <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wider">Role</label>
                 <select
-                  value={inviteRole} onChange={e => setInviteRole(e.target.value as 'Admin' | 'User')}
+                  value={inviteRole} onChange={e => setInviteRole(e.target.value as 'Admin' | 'User' | 'ReadOnly')}
                   className="w-full bg-slate-50 border border-slate-200 rounded-[3px] px-3 py-2 text-[15px] text-slate-800 focus:bg-white focus:border-[#0F5B38] focus:outline-none transition cursor-pointer"
                 >
                   <option value="User">User — custom permissions</option>
+                  <option value="ReadOnly">Read Only — view access only</option>
                   <option value="Admin">Admin — full access</option>
                 </select>
               </div>
             </div>
 
-            {inviteRole === 'User' && (
-              <div className="bg-slate-50 border border-slate-200 rounded-[3px] p-4">
-                <PermissionToggles perms={invitePerms} onChange={setInvitePerms} />
+            {(inviteRole === 'User' || inviteRole === 'ReadOnly') && (
+              <div className="space-y-2">
+                {inviteRole === 'ReadOnly' && (
+                  <div className="bg-blue-50 border border-blue-100 rounded-[3px] px-4 py-3 text-xs text-blue-700 font-semibold flex items-center gap-2">
+                    <Shield className="h-4 w-4 shrink-0" />
+                    Read Only users can view the selected modules but cannot create, edit, or delete any data.
+                  </div>
+                )}
+                <div className="bg-slate-50 border border-slate-200 rounded-[3px] p-4">
+                  <PermissionToggles perms={invitePerms} onChange={setInvitePerms} />
+                </div>
               </div>
             )}
 
@@ -449,17 +460,26 @@ export function OrgUsersTab({ activeOrg, currentUserId }: OrgUsersTabProps) {
                     <div className="space-y-1.5 max-w-xs">
                       <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wider">Role</label>
                       <select
-                        value={editRole} onChange={e => setEditRole(e.target.value as 'Admin' | 'User')}
+                        value={editRole} onChange={e => setEditRole(e.target.value as 'Admin' | 'User' | 'ReadOnly')}
                         className="w-full bg-slate-50 border border-slate-200 rounded-[3px] px-3 py-2 text-[15px] text-slate-800 focus:bg-white focus:border-[#0F5B38] focus:outline-none transition cursor-pointer"
                       >
                         <option value="User">User — custom permissions</option>
+                        <option value="ReadOnly">Read Only — view access only</option>
                         <option value="Admin">Admin — full access</option>
                       </select>
                     </div>
 
-                    {editRole === 'User' && (
-                      <div className="bg-slate-50 border border-slate-200 rounded-[3px] p-4 max-w-sm">
-                        <PermissionToggles perms={editPerms} onChange={setEditPerms} />
+                    {(editRole === 'User' || editRole === 'ReadOnly') && (
+                      <div className="space-y-2 max-w-sm">
+                        {editRole === 'ReadOnly' && (
+                          <div className="bg-blue-50 border border-blue-100 rounded-[3px] px-4 py-3 text-xs text-blue-700 font-semibold flex items-center gap-2">
+                            <Shield className="h-4 w-4 shrink-0" />
+                            Read Only users can view the selected modules but cannot create, edit, or delete any data.
+                          </div>
+                        )}
+                        <div className="bg-slate-50 border border-slate-200 rounded-[3px] p-4">
+                          <PermissionToggles perms={editPerms} onChange={setEditPerms} />
+                        </div>
                       </div>
                     )}
 

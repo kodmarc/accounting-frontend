@@ -5,6 +5,7 @@ import {
   UserCheck, UserX, Edit2, Send
 } from 'lucide-react'
 import { apiService } from '../../services/api'
+import { useReadOnly } from '../../context/ReadOnlyContext'
 import type {
   Organization, Account, Employee, LeaveType,
   LeaveRequest, PayRun, Paycheque, PaychequeDeductionLine
@@ -176,6 +177,7 @@ function EmployeeForm({
 
 // ── Employees Section ────────────────────────────────────────────────
 function EmployeesSection({ orgId, accounts, currency }: { orgId: string; accounts: Account[]; currency: string }) {
+  const isReadOnly = useReadOnly()
   const [employees, setEmployees] = useState<Employee[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
@@ -233,10 +235,12 @@ function EmployeesSection({ orgId, accounts, currency }: { orgId: string; accoun
             </button>
           ))}
         </div>
-        <button onClick={() => { setEditing(null); setShowForm(true) }}
-          className="flex items-center gap-2 px-4 py-2 text-xs font-bold text-white bg-[#0F5B38] rounded-[3px] hover:bg-[#0a4229]">
-          <Plus className="h-3.5 w-3.5" /> Add Employee
-        </button>
+        {!isReadOnly && (
+          <button onClick={() => { setEditing(null); setShowForm(true) }}
+            className="flex items-center gap-2 px-4 py-2 text-xs font-bold text-white bg-[#0F5B38] rounded-[3px] hover:bg-[#0a4229]">
+            <Plus className="h-3.5 w-3.5" /> Add Employee
+          </button>
+        )}
       </div>
 
       {loading ? (
@@ -265,18 +269,20 @@ function EmployeesSection({ orgId, accounts, currency }: { orgId: string; accoun
                   <td className="px-3 py-3 text-xs text-slate-500">{emp.pay_frequency}</td>
                   <td className="px-3 py-3">{statusPill(emp.status)}</td>
                   <td className="px-3 py-3">
-                    <div className="flex items-center gap-1">
-                      <button onClick={() => { setEditing(emp); setShowForm(true) }}
-                        className="p-1.5 text-slate-400 hover:text-[#0F5B38] rounded" title="Edit">
-                        <Edit2 className="h-3.5 w-3.5" />
-                      </button>
-                      {emp.status === 'Active' && (
-                        <button onClick={() => handleTerminate(emp)}
-                          className="p-1.5 text-slate-400 hover:text-rose-500 rounded" title="Terminate">
-                          <UserX className="h-3.5 w-3.5" />
+                    {!isReadOnly && (
+                      <div className="flex items-center gap-1">
+                        <button onClick={() => { setEditing(emp); setShowForm(true) }}
+                          className="p-1.5 text-slate-400 hover:text-[#0F5B38] rounded" title="Edit">
+                          <Edit2 className="h-3.5 w-3.5" />
                         </button>
-                      )}
-                    </div>
+                        {emp.status === 'Active' && (
+                          <button onClick={() => handleTerminate(emp)}
+                            className="p-1.5 text-slate-400 hover:text-rose-500 rounded" title="Terminate">
+                            <UserX className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -473,6 +479,7 @@ function PayRunEditor({
 
 // ── Pay Runs Section ─────────────────────────────────────────────────
 function PayRunsSection({ orgId, accounts, currency }: { orgId: string; accounts: Account[]; currency: string }) {
+  const isReadOnly = useReadOnly()
   const bankAccounts = accounts.filter(a => a.type === 'Bank' && a.is_active)
   const [payRuns, setPayRuns] = useState<PayRun[]>([])
   const [loading, setLoading] = useState(true)
@@ -526,12 +533,14 @@ function PayRunsSection({ orgId, accounts, currency }: { orgId: string; accounts
       {successMsg && <div className="bg-emerald-50 border border-emerald-100 text-[#0F5B38] px-4 py-3 rounded-[3px] flex items-center gap-2 text-xs font-bold"><CheckCircle className="h-4 w-4" />{successMsg}</div>}
       {errorMsg && <div className="bg-rose-50 border border-rose-100 text-rose-600 px-4 py-3 rounded-[3px] flex items-center gap-2 text-xs font-bold"><AlertCircle className="h-4 w-4" />{errorMsg}</div>}
 
-      <div className="flex justify-end">
-        <button onClick={() => setShowNew(true)}
-          className="flex items-center gap-2 px-4 py-2 text-xs font-bold text-white bg-[#0F5B38] rounded-[3px] hover:bg-[#0a4229]">
-          <Plus className="h-3.5 w-3.5" /> New Pay Run
-        </button>
-      </div>
+      {!isReadOnly && (
+        <div className="flex justify-end">
+          <button onClick={() => setShowNew(true)}
+            className="flex items-center gap-2 px-4 py-2 text-xs font-bold text-white bg-[#0F5B38] rounded-[3px] hover:bg-[#0a4229]">
+            <Plus className="h-3.5 w-3.5" /> New Pay Run
+          </button>
+        </div>
+      )}
 
       {showNew && (
         <div className="border border-slate-100 rounded-[3px] p-5 bg-slate-50/50">
@@ -634,6 +643,7 @@ function PayRunsSection({ orgId, accounts, currency }: { orgId: string; accounts
 
 // ── Leave Section ─────────────────────────────────────────────────────
 function LeaveSection({ orgId }: { orgId: string }) {
+  const isReadOnly = useReadOnly()
   const [tab, setTab] = useState<'requests' | 'types'>('requests')
   const [requests, setRequests] = useState<LeaveRequest[]>([])
   const [employees, setEmployees] = useState<Employee[]>([])
@@ -736,10 +746,12 @@ function LeaveSection({ orgId }: { orgId: string }) {
             </button>
           ))}
         </div>
-        <button onClick={() => tab === 'requests' ? setShowNew(true) : setShowTypeForm(true)}
-          className="flex items-center gap-2 px-4 py-2 text-xs font-bold text-white bg-[#0F5B38] rounded-[3px] hover:bg-[#0a4229]">
-          <Plus className="h-3.5 w-3.5" /> {tab === 'requests' ? 'New Request' : 'Add Type'}
-        </button>
+        {!isReadOnly && (
+          <button onClick={() => tab === 'requests' ? setShowNew(true) : setShowTypeForm(true)}
+            className="flex items-center gap-2 px-4 py-2 text-xs font-bold text-white bg-[#0F5B38] rounded-[3px] hover:bg-[#0a4229]">
+            <Plus className="h-3.5 w-3.5" /> {tab === 'requests' ? 'New Request' : 'Add Type'}
+          </button>
+        )}
       </div>
 
       {tab === 'requests' && (
@@ -827,7 +839,7 @@ function LeaveSection({ orgId }: { orgId: string }) {
                       <td className="px-3 py-3 text-xs text-slate-500 max-w-[160px] truncate">{req.reason || '—'}</td>
                       <td className="px-3 py-3">{statusPill(req.status)}</td>
                       <td className="px-3 py-3">
-                        {req.status === 'Pending' && (
+                        {!isReadOnly && req.status === 'Pending' && (
                           <div className="flex items-center gap-1">
                             <button onClick={() => handleApprove(req)} title="Approve"
                               className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded"><Check className="h-3.5 w-3.5" /></button>

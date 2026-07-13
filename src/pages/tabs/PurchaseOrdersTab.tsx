@@ -4,6 +4,7 @@ import { apiService } from '../../services/api'
 import type { Organization, PurchaseOrder } from '../../services/api'
 import { usePopup } from '../../components/PopupProvider'
 import type { TabId } from '../../types/tabs'
+import { useReadOnly } from '../../context/ReadOnlyContext'
 
 interface PurchaseOrdersTabProps {
   activeOrg: Organization
@@ -20,6 +21,7 @@ export function PurchaseOrdersTab({
   onCreateNewPO,
   onConvertToBill
 }: PurchaseOrdersTabProps) {
+  const isReadOnly = useReadOnly()
   const { showConfirm, showAlert } = usePopup()
   // Database states
   const [purchaseOrders, setPurchaseOrders] = useState<any[]>([])
@@ -160,13 +162,15 @@ export function PurchaseOrdersTab({
           <FileText className="h-5 w-5 text-[#0F5B38]" />
           <span>Purchase orders</span>
         </h2>
-        <button
-          onClick={onCreateNewPO}
-          className="flex items-center space-x-2 bg-[#0F5B38] hover:brightness-105 text-white font-medium text-xs px-4.5 py-2.5 rounded-[3px] shadow-md transition duration-200 cursor-pointer w-fit self-end sm:self-center"
-        >
-          <Plus className="h-4 w-4" />
-          <span>New Purchase Order</span>
-        </button>
+        {!isReadOnly && (
+          <button
+            onClick={onCreateNewPO}
+            className="flex items-center space-x-2 bg-[#0F5B38] hover:brightness-105 text-white font-medium text-xs px-4.5 py-2.5 rounded-[3px] shadow-md transition duration-200 cursor-pointer w-fit self-end sm:self-center"
+          >
+            <Plus className="h-4 w-4" />
+            <span>New Purchase Order</span>
+          </button>
+        )}
       </div>
 
       {/* 2. Filter tabs */}
@@ -199,7 +203,7 @@ export function PurchaseOrdersTab({
 
         {/* Right side search & sorting & bulk actions */}
         <div className="flex flex-row items-center justify-end gap-2.5 flex-grow mb-[2px] w-full xl:w-auto ml-auto">
-          {selectedIds.size > 0 && (
+          {!isReadOnly && selectedIds.size > 0 && (
             <div className="flex items-center space-x-1.5 animate-fadeIn text-xs font-semibold">
               <button
                 onClick={handleBulkDelete}

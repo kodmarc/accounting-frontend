@@ -14,6 +14,7 @@ import {
 import { apiService } from '../../services/api'
 import type { Organization, Account, Invoice, Bill, Item } from '../../services/api'
 import type { TabId } from '../../types/tabs'
+import { useReadOnly } from '../../context/ReadOnlyContext'
 
 interface HomeTabProps {
   activeOrg: Organization | null
@@ -22,6 +23,7 @@ interface HomeTabProps {
 }
 
 export function HomeTab({ activeOrg, setActiveTab, setViewingProductItemId }: HomeTabProps) {
+  const isReadOnly = useReadOnly()
   const [bankAccounts, setBankAccounts] = useState<Account[]>([])
   const [invoices, setInvoices] = useState<Invoice[]>([])
   const [bills, setBills] = useState<Bill[]>([])
@@ -185,13 +187,15 @@ export function HomeTab({ activeOrg, setActiveTab, setViewingProductItemId }: Ho
             <ArrowRightLeft className="h-4 w-4" />
             <span>Bank Accounts</span>
           </button>
-          <button
-            onClick={() => setActiveTab('CreateInvoice')}
-            className="flex items-center space-x-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 font-semibold text-xs px-4 py-2.5 rounded-[3px] transition-all duration-300 active:scale-95 cursor-pointer"
-          >
-            <Plus className="h-4 w-4" />
-            <span>New Invoice</span>
-          </button>
+          {!isReadOnly && (
+            <button
+              onClick={() => setActiveTab('CreateInvoice')}
+              className="flex items-center space-x-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 font-semibold text-xs px-4 py-2.5 rounded-[3px] transition-all duration-300 active:scale-95 cursor-pointer"
+            >
+              <Plus className="h-4 w-4" />
+              <span>New Invoice</span>
+            </button>
+          )}
         </div>
       </div>
 

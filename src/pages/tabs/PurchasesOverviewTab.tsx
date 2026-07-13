@@ -3,6 +3,7 @@ import { Plus, Settings, Receipt, FileText, ArrowUpRight, ShoppingBag } from 'lu
 import { apiService } from '../../services/api'
 import type { Organization } from '../../services/api'
 import type { TabId } from '../../types/tabs'
+import { useReadOnly } from '../../context/ReadOnlyContext'
 
 interface PurchasesOverviewTabProps {
   activeOrg: Organization
@@ -17,6 +18,7 @@ export function PurchasesOverviewTab({
   onCreateBillClick,
   onCreatePOClick
 }: PurchasesOverviewTabProps) {
+  const isReadOnly = useReadOnly()
   const [bills, setBills] = useState<any[]>([])
   const [purchaseOrders, setPurchaseOrders] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
@@ -288,36 +290,40 @@ export function PurchasesOverviewTab({
             
             <div className="space-y-3">
               {/* New Bill */}
-              <button 
-                onClick={onCreateBillClick}
-                className="w-full flex items-center justify-between p-3.5 bg-slate-50 hover:bg-emerald-50/50 border border-slate-100 hover:border-emerald-100 rounded-[3px] transition duration-300 group cursor-pointer"
-              >
-                <div className="flex items-center space-x-3">
-                  <div className="p-2 bg-emerald-50 rounded-[3px] group-hover:bg-[#0F5B38] group-hover:text-white transition duration-300">
-                    <Plus className="h-4 w-4 text-[#0F5B38] group-hover:text-white" />
+              {!isReadOnly && (
+                <button
+                  onClick={onCreateBillClick}
+                  className="w-full flex items-center justify-between p-3.5 bg-slate-50 hover:bg-emerald-50/50 border border-slate-100 hover:border-emerald-100 rounded-[3px] transition duration-300 group cursor-pointer"
+                >
+                  <div className="flex items-center space-x-3">
+                    <div className="p-2 bg-emerald-50 rounded-[3px] group-hover:bg-[#0F5B38] group-hover:text-white transition duration-300">
+                      <Plus className="h-4 w-4 text-[#0F5B38] group-hover:text-white" />
+                    </div>
+                    <div className="text-left">
+                      <p className="text-xs font-bold text-slate-750">New purchases bill</p>
+                      <p className="text-[10px] text-slate-400 font-semibold">Record vendor billing claim statements</p>
+                    </div>
                   </div>
-                  <div className="text-left">
-                    <p className="text-xs font-bold text-slate-750">New purchases bill</p>
-                    <p className="text-[10px] text-slate-400 font-semibold">Record vendor billing claim statements</p>
-                  </div>
-                </div>
-              </button>
+                </button>
+              )}
 
               {/* New PO */}
-              <button 
-                onClick={onCreatePOClick}
-                className="w-full flex items-center justify-between p-3.5 bg-slate-50 hover:bg-emerald-50/50 border border-slate-100 hover:border-emerald-100 rounded-[3px] transition duration-300 group cursor-pointer"
-              >
-                <div className="flex items-center space-x-3">
-                  <div className="p-2 bg-emerald-50 rounded-[3px] group-hover:bg-[#0F5B38] group-hover:text-white transition duration-300">
-                    <Plus className="h-4 w-4 text-[#0F5B38] group-hover:text-white" />
+              {!isReadOnly && (
+                <button
+                  onClick={onCreatePOClick}
+                  className="w-full flex items-center justify-between p-3.5 bg-slate-50 hover:bg-emerald-50/50 border border-slate-100 hover:border-emerald-100 rounded-[3px] transition duration-300 group cursor-pointer"
+                >
+                  <div className="flex items-center space-x-3">
+                    <div className="p-2 bg-emerald-50 rounded-[3px] group-hover:bg-[#0F5B38] group-hover:text-white transition duration-300">
+                      <Plus className="h-4 w-4 text-[#0F5B38] group-hover:text-white" />
+                    </div>
+                    <div className="text-left">
+                      <p className="text-xs font-bold text-slate-750">New purchase order</p>
+                      <p className="text-[10px] text-slate-400 font-semibold">Draft pricing list requests for suppliers</p>
+                    </div>
                   </div>
-                  <div className="text-left">
-                    <p className="text-xs font-bold text-slate-750">New purchase order</p>
-                    <p className="text-[10px] text-slate-400 font-semibold">Draft pricing list requests for suppliers</p>
-                  </div>
-                </div>
-              </button>
+                </button>
+              )}
 
               {/* Settings */}
               <button 

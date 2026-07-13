@@ -3,6 +3,7 @@ import { Plus, Users, Mail, Phone, MapPin, Search, ArrowLeft, Edit3, FileText, A
 import { apiService } from '../../services/api'
 import type { Organization, Contact, Invoice } from '../../services/api'
 import { usePopup } from '../../components/PopupProvider'
+import { useReadOnly } from '../../context/ReadOnlyContext'
 
 interface ContactsTabProps {
   activeOrg: Organization
@@ -17,6 +18,7 @@ export function ContactsTab({
   onViewInvoice,
   onViewBill
 }: ContactsTabProps) {
+  const isReadOnly = useReadOnly()
   const { showConfirm, showAlert } = usePopup()
   const [contacts, setContacts] = useState<Contact[]>([])
   const [invoices, setInvoices] = useState<Invoice[]>([])
@@ -332,29 +334,33 @@ export function ContactsTab({
           </div>
 
           <div className="flex space-x-2">
-            <button
-              onClick={() => handleEditClick(viewingContact)}
-              className="flex items-center space-x-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold text-xs px-4.5 py-2 rounded-[3px] shadow-sm transition cursor-pointer"
-            >
-              <Edit3 className="h-3.5 w-3.5" />
-              <span>Edit Details</span>
-            </button>
-            {viewingContact.is_active !== false ? (
-              <button
-                onClick={() => handleDeactivate(viewingContact)}
-                className="flex items-center space-x-1.5 bg-amber-50 border border-amber-200/50 hover:bg-amber-100/60 text-amber-700 font-bold text-xs px-4.5 py-2 rounded-[3px] shadow-sm transition cursor-pointer"
-              >
-                <Archive className="h-3.5 w-3.5" />
-                <span>Deactivate</span>
-              </button>
-            ) : (
-              <button
-                onClick={() => handleReactivate(viewingContact)}
-                className="flex items-center space-x-1.5 bg-emerald-50 border border-emerald-200/50 hover:bg-emerald-100/60 text-emerald-700 font-bold text-xs px-4.5 py-2 rounded-[3px] shadow-sm transition cursor-pointer"
-              >
-                <ArchiveRestore className="h-3.5 w-3.5" />
-                <span>Reactivate</span>
-              </button>
+            {!isReadOnly && (
+              <>
+                <button
+                  onClick={() => handleEditClick(viewingContact)}
+                  className="flex items-center space-x-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold text-xs px-4.5 py-2 rounded-[3px] shadow-sm transition cursor-pointer"
+                >
+                  <Edit3 className="h-3.5 w-3.5" />
+                  <span>Edit Details</span>
+                </button>
+                {viewingContact.is_active !== false ? (
+                  <button
+                    onClick={() => handleDeactivate(viewingContact)}
+                    className="flex items-center space-x-1.5 bg-amber-50 border border-amber-200/50 hover:bg-amber-100/60 text-amber-700 font-bold text-xs px-4.5 py-2 rounded-[3px] shadow-sm transition cursor-pointer"
+                  >
+                    <Archive className="h-3.5 w-3.5" />
+                    <span>Deactivate</span>
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => handleReactivate(viewingContact)}
+                    className="flex items-center space-x-1.5 bg-emerald-50 border border-emerald-200/50 hover:bg-emerald-100/60 text-emerald-700 font-bold text-xs px-4.5 py-2 rounded-[3px] shadow-sm transition cursor-pointer"
+                  >
+                    <ArchiveRestore className="h-3.5 w-3.5" />
+                    <span>Reactivate</span>
+                  </button>
+                )}
+              </>
             )}
           </div>
         </div>
@@ -523,13 +529,15 @@ export function ContactsTab({
             <Users className="h-5 w-5 text-[#0F5B38]" />
             <span>Contacts Directory</span>
           </h2>
-          <button
-            onClick={handleOpenAdd}
-            className="flex items-center justify-center space-x-2 bg-[#0F5B38] hover:brightness-105 text-white font-medium text-xs px-4.5 py-2.5 rounded-[3px] transition cursor-pointer shadow-md shadow-emerald-955/10 self-start sm:self-center"
-          >
-            <Plus className="h-4 w-4" />
-            <span>Add Contact</span>
-          </button>
+          {!isReadOnly && (
+            <button
+              onClick={handleOpenAdd}
+              className="flex items-center justify-center space-x-2 bg-[#0F5B38] hover:brightness-105 text-white font-medium text-xs px-4.5 py-2.5 rounded-[3px] transition cursor-pointer shadow-md shadow-emerald-955/10 self-start sm:self-center"
+            >
+              <Plus className="h-4 w-4" />
+              <span>Add Contact</span>
+            </button>
+          )}
         </div>
 
         <div className="flex flex-col sm:flex-row sm:items-end justify-between border-b border-slate-200 pb-0 gap-4">
