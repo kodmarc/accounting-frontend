@@ -1,12 +1,5 @@
-import * as pdfjsLib from 'pdfjs-dist'
 import { useEffect, useRef, useState } from 'react'
 import type { Organization } from '../services/api/types'
-
-// Set worker once (TemplateEditor is lazy-loaded so this runs only when editor opens)
-pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
-  'pdfjs-dist/build/pdf.worker.min.mjs',
-  import.meta.url
-).href
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -36,8 +29,6 @@ export interface CustomLayout {
   footerHeight: number   // kept for backward-compat
   accentColor: string
   blocks: LayoutBlock[]
-  bgPages?: string[]     // base64 JPEG per page — editor canvas backgrounds
-  bgPdfData?: string     // base64 of original uploaded PDF — backend compositing
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -70,8 +61,6 @@ export const DEFAULT_LAYOUT: CustomLayout = {
   headerHeight: 300,
   footerHeight: 260,
   accentColor: '#0F5B38',
-  bgPages: [],
-  bgPdfData: undefined,
   blocks: [
     { id: 'logo',         type: 'logo',         zone: 'header', page: 0, x: 20,  y: 20,  width: 130, height: 70,  fontSize: 16, color: '#0F5B38', bgColor: 'transparent', align: 'left',  bold: true,  visible: true },
     { id: 'company_info', type: 'company_info', zone: 'header', page: 0, x: 20,  y: 95,  width: 240, height: 90,  fontSize: 8,  color: '#64748b', bgColor: 'transparent', align: 'left',  bold: false, visible: true },
@@ -95,7 +84,6 @@ function migrateLegacyLayout(layout: CustomLayout): CustomLayout {
   const itemsPH = 155
   return {
     ...layout,
-    bgPages: layout.bgPages ?? [],
     blocks: layout.blocks.map(b => ({
       ...b,
       page: 0,
@@ -281,37 +269,32 @@ function CanvasBlock({
 // ── Properties panel ──────────────────────────────────────────────────────────
 
 function PropsPanel({
-  block, layout, pageCount, onUpdate, onDelete, onLayoutChange,
+  block, layout, onUpdate, onDelete, onLayoutChange,
 }: {
   block: LayoutBlock | null
   layout: CustomLayout
-  pageCount: number
   onUpdate: (id: string, patch: Partial<LayoutBlock>) => void
   onDelete: (id: string) => void
   onLayoutChange: (patch: Partial<CustomLayout>) => void
 }) {
-  const isPdfMode = (layout.bgPages?.length ?? 0) > 0
-
   if (!block) {
     return (
       <div className="w-56 border-l border-slate-200 bg-white p-4 flex flex-col gap-4 shrink-0">
         <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">Canvas Settings</p>
-        {!isPdfMode && (
-          <>
-            <div>
-              <label className="block text-[10px] font-semibold text-slate-500 mb-1">Header Height (px)</label>
-              <input type="number" className="w-full text-xs border border-slate-200 rounded px-2 py-1"
-                value={layout.headerHeight}
-                onChange={e => onLayoutChange({ headerHeight: Math.max(100, +e.target.value) })} />
-            </div>
-            <div>
-              <label className="block text-[10px] font-semibold text-slate-500 mb-1">Footer Height (px)</label>
-              <input type="number" className="w-full text-xs border border-slate-200 rounded px-2 py-1"
-                value={layout.footerHeight}
-                onChange={e => onLayoutChange({ footerHeight: Math.max(80, +e.target.value) })} />
-            </div>
-          </>
-        )}
+        <>
+          <div>
+            <label className="block text-[10px] font-semibold text-slate-500 mb-1">Header Height (px)</label>
+            <input type="number" className="w-full text-xs border border-slate-200 rounded px-2 py-1"
+              value={layout.headerHeight}
+              onChange={e => onLayoutChange({ headerHeight: Math.max(100, +e.target.value) })} />
+          </div>
+          <div>
+            <label className="block text-[10px] font-semibold text-slate-500 mb-1">Footer Height (px)</label>
+            <input type="number" className="w-full text-xs border border-slate-200 rounded px-2 py-1"
+              value={layout.footerHeight}
+              onChange={e => onLayoutChange({ footerHeight: Math.max(80, +e.target.value) })} />
+          </div>
+        </>
         <div>
           <label className="block text-[10px] font-semibold text-slate-500 mb-1">Accent Color</label>
           <div className="flex items-center gap-2">
@@ -333,19 +316,6 @@ function PropsPanel({
         <p className="text-[11px] font-bold text-slate-700">{BLOCK_META[block.type]?.label}</p>
         <button onClick={() => onDelete(block.id)} className="text-red-400 hover:text-red-600 text-[10px] font-semibold">Delete</button>
       </div>
-
-      {/* Page selector (multi-page only) */}
-      {pageCount > 1 && (
-        <div>
-          <label className="text-[9px] font-semibold text-slate-400 block mb-1">Page</label>
-          <select className="w-full text-xs border border-slate-200 rounded px-2 py-1"
-            value={block.page} onChange={e => u({ page: +e.target.value })}>
-            {Array.from({ length: pageCount }, (_, i) => (
-              <option key={i} value={i}>Page {i + 1}</option>
-            ))}
-          </select>
-        </div>
-      )}
 
       {/* Position */}
       <div className="grid grid-cols-2 gap-2">
@@ -431,11 +401,6 @@ export function TemplateEditor({
   const [layout, setLayout] = useState<CustomLayout>(() => migrateLegacyLayout(raw))
   const [selected, setSelected] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
-  const [uploading, setUploading] = useState(false)
-  const pdfInputRef = useRef<HTMLInputElement>(null)
-
-  const isPdfMode = (layout.bgPages?.length ?? 0) > 0
-  const pageCount = isPdfMode ? layout.bgPages!.length : 1
   const selectedBlock = layout.blocks.find(b => b.id === selected) ?? null
 
   // Drag ref stores the starting context
@@ -475,61 +440,6 @@ export function TemplateEditor({
     setSelected(newBlock.id)
   }
 
-  // ── PDF upload ─────────────────────────────────────────────────────────────
-
-  const handlePdfUpload = async (file: File) => {
-    setUploading(true)
-    try {
-      const arrayBuffer = await file.arrayBuffer()
-      const uint8Array = new Uint8Array(arrayBuffer)
-
-      // Store original PDF as base64 for backend compositing
-      const bgPdfData = btoa(
-        Array.from(uint8Array, byte => String.fromCharCode(byte)).join('')
-      )
-
-      // Render each page to JPEG via PDF.js
-      const pdf = await pdfjsLib.getDocument({ data: uint8Array }).promise
-      const pageImages: string[] = []
-
-      for (let i = 1; i <= pdf.numPages; i++) {
-        const page = await pdf.getPage(i)
-        const viewport = page.getViewport({ scale: CANVAS_W / page.getViewport({ scale: 1 }).width })
-        const canvas = document.createElement('canvas')
-        canvas.width = Math.round(viewport.width)
-        canvas.height = Math.round(viewport.height)
-        const ctx = canvas.getContext('2d')!
-        await page.render({ canvasContext: ctx, canvas, viewport }).promise
-        pageImages.push(canvas.toDataURL('image/jpeg', 0.82))
-      }
-
-      // Migrate all existing blocks to page 0, add items_table if not present
-      const migratedBlocks = layout.blocks.map(b => ({ ...b, page: 0 }))
-      const hasItems = migratedBlocks.some(b => b.type === 'items_table')
-      const finalBlocks: LayoutBlock[] = hasItems ? migratedBlocks : [
-        ...migratedBlocks,
-        {
-          id: `items_table_${Date.now()}`, type: 'items_table',
-          zone: 'header' as const, page: 0,
-          x: 20, y: 320, width: 754, height: 180,
-          fontSize: 9, color: '#334155', bgColor: 'transparent',
-          align: 'left' as const, bold: false, visible: true,
-        },
-      ]
-
-      setLayout(prev => ({ ...prev, bgPages: pageImages, bgPdfData, blocks: finalBlocks }))
-    } catch (err) {
-      console.error('PDF upload failed', err)
-      alert('Failed to process the PDF. Please try a different file.')
-    } finally {
-      setUploading(false)
-    }
-  }
-
-  const removePdfBackground = () => {
-    setLayout(prev => ({ ...prev, bgPages: [], bgPdfData: undefined }))
-  }
-
   // ── Global mouse handlers for drag + resize ────────────────────────────────
 
   useEffect(() => {
@@ -539,27 +449,14 @@ export function TemplateEditor({
         const dx = (e.clientX - startMX) / SCALE
         const dy = (e.clientY - startMY) / SCALE
 
-        if (isPdfMode && pageCount > 1) {
-          const STEP = PAGE_H + PAGE_GAP
-          const newAbsY = startAbsY + dy
-          const newPage = Math.max(0, Math.min(pageCount - 1, Math.floor(newAbsY / STEP)))
-          const newY = Math.max(0, Math.round(newAbsY - newPage * STEP))
-          setLayout(prev => ({
-            ...prev,
-            blocks: prev.blocks.map(b =>
-              b.id === blockId ? { ...b, x: Math.max(0, Math.round(startX + dx)), y: newY, page: newPage } : b
-            ),
-          }))
-        } else {
-          setLayout(prev => ({
-            ...prev,
-            blocks: prev.blocks.map(b =>
-              b.id === blockId
-                ? { ...b, x: Math.max(0, Math.round(startX + dx)), y: Math.max(0, Math.round(startAbsY + dy)) }
-                : b
-            ),
-          }))
-        }
+        setLayout(prev => ({
+          ...prev,
+          blocks: prev.blocks.map(b =>
+            b.id === blockId
+              ? { ...b, x: Math.max(0, Math.round(startX + dx)), y: Math.max(0, Math.round(startAbsY + dy)) }
+              : b
+          ),
+        }))
       }
 
       if (resizeRef.current) {
@@ -580,7 +477,7 @@ export function TemplateEditor({
     window.addEventListener('mousemove', onMove)
     window.addEventListener('mouseup', onUp)
     return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
-  }, [isPdfMode, pageCount])
+  }, [])
 
   // Delete/Escape keys
   useEffect(() => {
@@ -600,10 +497,7 @@ export function TemplateEditor({
     try { await onSave(layout) } finally { setSaving(false) }
   }
 
-  // Page zones: array of bg images (null = blank white page)
-  const pageZones: (string | null)[] = isPdfMode
-    ? layout.bgPages!
-    : [null]
+  const pageZones = [null]
 
   const canvasPageH = PAGE_H * SCALE
   const canvasPageW = CANVAS_W * SCALE
@@ -621,31 +515,6 @@ export function TemplateEditor({
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
-          {/* PDF background controls */}
-          <input
-            ref={pdfInputRef}
-            type="file"
-            accept=".pdf"
-            className="hidden"
-            onChange={e => { const f = e.target.files?.[0]; if (f) handlePdfUpload(f); e.target.value = '' }}
-          />
-          {isPdfMode ? (
-            <button
-              onClick={removePdfBackground}
-              className="text-[11px] font-semibold text-red-500 hover:text-red-700 px-3 py-1.5 border border-red-200 rounded hover:bg-red-50"
-            >
-              Remove PDF Background
-            </button>
-          ) : (
-            <button
-              onClick={() => pdfInputRef.current?.click()}
-              disabled={uploading}
-              className="text-[11px] font-semibold text-[#0F5B38] hover:bg-emerald-50 px-3 py-1.5 border border-emerald-300 rounded disabled:opacity-50"
-            >
-              {uploading ? 'Processing PDF…' : '↑ Upload PDF Background'}
-            </button>
-          )}
-
           <button onClick={() => { setLayout(migrateLegacyLayout(DEFAULT_LAYOUT)); setSelected(null) }}
             className="text-[11px] font-semibold text-slate-500 hover:text-slate-700 px-3 py-1.5 border border-slate-200 rounded hover:bg-slate-50">
             Reset
@@ -676,11 +545,6 @@ export function TemplateEditor({
               </button>
             ))}
           </div>
-          {isPdfMode && (
-            <div className="mt-4 p-2 bg-emerald-50 rounded border border-emerald-100 text-[9px] text-emerald-700 leading-relaxed">
-              PDF: {pageCount} page{pageCount > 1 ? 's' : ''}. Drag blocks across pages — they'll snap to whichever page their center falls on.
-            </div>
-          )}
         </div>
 
         {/* Center: Canvas */}
@@ -693,9 +557,7 @@ export function TemplateEditor({
               <div key={pageIdx} className="relative">
                 {/* Page label */}
                 <div className="absolute -top-5 left-0 flex items-center gap-2 select-none">
-                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wide">
-                    {isPdfMode ? `Page ${pageIdx + 1} of ${pageCount}` : 'Canvas'}
-                  </span>
+                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wide">Canvas</span>
                 </div>
 
                 {/* Page surface */}
@@ -752,7 +614,6 @@ export function TemplateEditor({
         <PropsPanel
           block={selectedBlock}
           layout={layout}
-          pageCount={pageCount}
           onUpdate={updateBlock}
           onDelete={deleteBlock}
           onLayoutChange={patch => setLayout(prev => ({ ...prev, ...patch }))}
