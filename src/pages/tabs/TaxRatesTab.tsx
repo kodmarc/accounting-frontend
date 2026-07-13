@@ -3,12 +3,14 @@ import { Plus, Percent, Trash2, Search } from 'lucide-react'
 import { apiService } from '../../services/api'
 import type { Organization, TaxRate } from '../../services/api'
 import { usePopup } from '../../components/PopupProvider'
+import { useReadOnly } from '../../context/ReadOnlyContext'
 
 interface TaxRatesTabProps {
   activeOrg: Organization
 }
 
 export function TaxRatesTab({ activeOrg }: TaxRatesTabProps) {
+  const isReadOnly = useReadOnly()
   const { showConfirm, showAlert } = usePopup()
   const [taxRates, setTaxRates] = useState<TaxRate[]>([])
   const [loading, setLoading] = useState(true)
@@ -265,13 +267,15 @@ export function TaxRatesTab({ activeOrg }: TaxRatesTabProps) {
           <Percent className="h-5 w-5 text-[#0F5B38]" />
           <span>Tax Rates Setup</span>
         </h2>
-        <button
-          onClick={handleOpenAdd}
-          className="flex items-center space-x-2 bg-[#0F5B38] hover:brightness-105 text-white font-medium text-xs px-4.5 py-2.5 rounded-[3px] transition cursor-pointer shadow-md shadow-emerald-955/10"
-        >
-          <Plus className="h-4 w-4" />
-          <span>Add Tax Rate</span>
-        </button>
+        {!isReadOnly && (
+          <button
+            onClick={handleOpenAdd}
+            className="flex items-center space-x-2 bg-[#0F5B38] hover:brightness-105 text-white font-medium text-xs px-4.5 py-2.5 rounded-[3px] transition cursor-pointer shadow-md shadow-emerald-955/10"
+          >
+            <Plus className="h-4 w-4" />
+            <span>Add Tax Rate</span>
+          </button>
+        )}
       </div>
 
       {/* Type B Filter & Search Header Row */}
@@ -401,13 +405,15 @@ export function TaxRatesTab({ activeOrg }: TaxRatesTabProps) {
                     {tr.is_active ? 'Active' : 'Inactive'}
                   </td>
                   <td className="px-6 py-2.5 text-right">
-                    <button
-                      onClick={() => handleDeleteTaxRate(tr.id!)}
-                      className="p-1.5 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-[3px] transition-all cursor-pointer"
-                      title="Delete Tax Rate"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
+                    {!isReadOnly && (
+                      <button
+                        onClick={() => handleDeleteTaxRate(tr.id!)}
+                        className="p-1.5 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-[3px] transition-all cursor-pointer"
+                        title="Delete Tax Rate"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}

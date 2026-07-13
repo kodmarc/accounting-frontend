@@ -3,6 +3,7 @@ import { Plus, Briefcase, Trash2, Search, BarChart3, Edit3, CheckCircle, ArrowLe
 import { apiService } from '../../services/api'
 import type { Organization, Project, Invoice, Contact } from '../../services/api'
 import { usePopup } from '../../components/PopupProvider'
+import { useReadOnly } from '../../context/ReadOnlyContext'
 
 interface ProjectsTabProps {
   activeOrg: Organization
@@ -15,6 +16,7 @@ export function ProjectsTab({
   onViewInvoice,
   onViewBill
 }: ProjectsTabProps) {
+  const isReadOnly = useReadOnly()
   const { showConfirm, showAlert } = usePopup()
   
   // Data States
@@ -252,20 +254,24 @@ export function ProjectsTab({
           </div>
 
           <div className="flex space-x-2">
-            <button
-              onClick={() => handleEditClick(viewingProject)}
-              className="flex items-center space-x-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold text-xs px-4.5 py-2 rounded-[3px] shadow-sm transition cursor-pointer"
-            >
-              <Edit3 className="h-3.5 w-3.5" />
-              <span>Edit Details</span>
-            </button>
-            <button
-              onClick={() => handleDeleteProject(viewingProject.id, viewingProject.name)}
-              className="flex items-center space-x-1.5 bg-rose-50 border border-rose-200/30 hover:bg-rose-100/50 text-rose-600 font-bold text-xs px-4.5 py-2 rounded-[3px] shadow-sm transition cursor-pointer"
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-              <span>Delete Project</span>
-            </button>
+            {!isReadOnly && (
+              <>
+                <button
+                  onClick={() => handleEditClick(viewingProject)}
+                  className="flex items-center space-x-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold text-xs px-4.5 py-2 rounded-[3px] shadow-sm transition cursor-pointer"
+                >
+                  <Edit3 className="h-3.5 w-3.5" />
+                  <span>Edit Details</span>
+                </button>
+                <button
+                  onClick={() => handleDeleteProject(viewingProject.id, viewingProject.name)}
+                  className="flex items-center space-x-1.5 bg-rose-50 border border-rose-200/30 hover:bg-rose-100/50 text-rose-600 font-bold text-xs px-4.5 py-2 rounded-[3px] shadow-sm transition cursor-pointer"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  <span>Delete Project</span>
+                </button>
+              </>
+            )}
           </div>
         </div>
 
@@ -419,13 +425,15 @@ export function ProjectsTab({
           <Briefcase className="h-5 w-5 text-[#0F5B38]" />
           <span>Projects & Costing Ledger</span>
         </h2>
-        <button
-          onClick={handleOpenAdd}
-          className="flex items-center space-x-2 bg-[#0F5B38] hover:brightness-105 text-white font-medium text-xs px-4.5 py-2.5 rounded-[3px] transition cursor-pointer shadow-md shadow-emerald-950/10"
-        >
-          <Plus className="h-4 w-4" />
-          <span>New Project</span>
-        </button>
+        {!isReadOnly && (
+          <button
+            onClick={handleOpenAdd}
+            className="flex items-center space-x-2 bg-[#0F5B38] hover:brightness-105 text-white font-medium text-xs px-4.5 py-2.5 rounded-[3px] transition cursor-pointer shadow-md shadow-emerald-950/10"
+          >
+            <Plus className="h-4 w-4" />
+            <span>New Project</span>
+          </button>
+        )}
       </div>
 
       {/* Dynamic Summary Metric Cards */}
@@ -540,20 +548,24 @@ export function ProjectsTab({
                       {stats.margin < 0 ? '-' : ''}{currencySymbol}{Math.abs(stats.margin).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </td>
                     <td className="px-6 py-3 text-right flex items-center justify-end space-x-1" onClick={e => e.stopPropagation()}>
-                      <button
-                        onClick={() => handleEditClick(proj)}
-                        className="p-1.5 hover:bg-emerald-50 text-slate-400 hover:text-[#0F5B38] rounded-[3px] transition cursor-pointer"
-                        title="Edit Project"
-                      >
-                        <Edit3 className="h-3.5 w-3.5" />
-                      </button>
-                      <button
-                        onClick={() => handleDeleteProject(proj.id, proj.name)}
-                        className="p-1.5 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-[3px] transition cursor-pointer"
-                        title="Delete Project"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
+                      {!isReadOnly && (
+                        <>
+                          <button
+                            onClick={() => handleEditClick(proj)}
+                            className="p-1.5 hover:bg-emerald-50 text-slate-400 hover:text-[#0F5B38] rounded-[3px] transition cursor-pointer"
+                            title="Edit Project"
+                          >
+                            <Edit3 className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteProject(proj.id, proj.name)}
+                            className="p-1.5 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-[3px] transition cursor-pointer"
+                            title="Delete Project"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </>
+                      )}
                     </td>
                   </tr>
                 )

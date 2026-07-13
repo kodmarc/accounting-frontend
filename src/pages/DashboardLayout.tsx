@@ -11,6 +11,7 @@ import {
 } from 'lucide-react'
 import type { User, Membership, Organization } from '../services/api'
 import type { TabId } from '../types/tabs'
+import { useReadOnly } from '../context/ReadOnlyContext'
 
 const cleanOrgNameForUrl = (name: string) => name.replace(/\s+/g, '')
 
@@ -82,6 +83,7 @@ export function DashboardLayout({
   handleLogout,
   children
 }: DashboardLayoutProps) {
+  const isReadOnly = useReadOnly()
   const [activeDropdown, setActiveDropdown] = useState<'sales' | 'purchases' | 'reports' | 'accounting' | 'contacts' | null>(null)
   const [quickAddOpen, setQuickAddOpen] = useState(false)
 
@@ -622,18 +624,20 @@ export function DashboardLayout({
             {/* Right Section */}
             <div className="flex items-center space-x-3 shrink-0 z-10 pl-4">
               <div className="relative">
-                <button
-                  onClick={() => {
-                    setQuickAddOpen(!quickAddOpen)
-                    setOrgDropdownOpen(false)
-                    setActiveDropdown(null)
-                    setProfileDropdownOpen(false)
-                  }}
-                  className="p-1.5 bg-white/10 hover:bg-white/15 text-emerald-200 hover:text-white rounded-full transition cursor-pointer flex items-center justify-center"
-                  title="Create new"
-                >
-                  <Plus className="h-4.5 w-4.5" />
-                </button>
+                {!isReadOnly && (
+                  <button
+                    onClick={() => {
+                      setQuickAddOpen(!quickAddOpen)
+                      setOrgDropdownOpen(false)
+                      setActiveDropdown(null)
+                      setProfileDropdownOpen(false)
+                    }}
+                    className="p-1.5 bg-white/10 hover:bg-white/15 text-emerald-200 hover:text-white rounded-full transition cursor-pointer flex items-center justify-center"
+                    title="Create new"
+                  >
+                    <Plus className="h-4.5 w-4.5" />
+                  </button>
+                )}
 
                 {quickAddOpen && (
                   <>

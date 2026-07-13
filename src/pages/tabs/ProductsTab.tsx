@@ -3,6 +3,7 @@ import { Plus, Minus, Tag, ShoppingBag, Search, ArrowLeft, Edit3, Archive, Archi
 import { apiService } from '../../services/api'
 import type { Organization, Item, Account, TaxRate, Invoice, InventoryMovement } from '../../services/api'
 import { usePopup } from '../../components/PopupProvider'
+import { useReadOnly } from '../../context/ReadOnlyContext'
 
 interface ProductsTabProps {
   activeOrg: Organization
@@ -12,6 +13,7 @@ interface ProductsTabProps {
 }
 
 export function ProductsTab({ activeOrg, onViewInvoice, onViewBill, initialViewingItemId }: ProductsTabProps) {
+  const isReadOnly = useReadOnly()
   const { showConfirm, showAlert } = usePopup()
   const [items, setItems] = useState<Item[]>([])
   const [accounts, setAccounts] = useState<Account[]>([])
@@ -434,29 +436,33 @@ export function ProductsTab({ activeOrg, onViewInvoice, onViewBill, initialViewi
           </div>
 
           <div className="flex space-x-2">
-            <button
-              onClick={() => handleEditClick(viewingItem)}
-              className="flex items-center space-x-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold text-xs px-4.5 py-2 rounded-[3px] shadow-sm transition cursor-pointer"
-            >
-              <Edit3 className="h-3.5 w-3.5" />
-              <span>Edit Item</span>
-            </button>
-            {viewingItem.is_active !== false ? (
-              <button
-                onClick={() => handleDeactivate(viewingItem)}
-                className="flex items-center space-x-1.5 bg-amber-50 border border-amber-200/50 hover:bg-amber-100/60 text-amber-700 font-bold text-xs px-4.5 py-2 rounded-[3px] shadow-sm transition cursor-pointer"
-              >
-                <Archive className="h-3.5 w-3.5" />
-                <span>Deactivate</span>
-              </button>
-            ) : (
-              <button
-                onClick={() => handleReactivate(viewingItem)}
-                className="flex items-center space-x-1.5 bg-emerald-50 border border-emerald-200/50 hover:bg-emerald-100/60 text-emerald-700 font-bold text-xs px-4.5 py-2 rounded-[3px] shadow-sm transition cursor-pointer"
-              >
-                <ArchiveRestore className="h-3.5 w-3.5" />
-                <span>Reactivate</span>
-              </button>
+            {!isReadOnly && (
+              <>
+                <button
+                  onClick={() => handleEditClick(viewingItem)}
+                  className="flex items-center space-x-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold text-xs px-4.5 py-2 rounded-[3px] shadow-sm transition cursor-pointer"
+                >
+                  <Edit3 className="h-3.5 w-3.5" />
+                  <span>Edit Item</span>
+                </button>
+                {viewingItem.is_active !== false ? (
+                  <button
+                    onClick={() => handleDeactivate(viewingItem)}
+                    className="flex items-center space-x-1.5 bg-amber-50 border border-amber-200/50 hover:bg-amber-100/60 text-amber-700 font-bold text-xs px-4.5 py-2 rounded-[3px] shadow-sm transition cursor-pointer"
+                  >
+                    <Archive className="h-3.5 w-3.5" />
+                    <span>Deactivate</span>
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => handleReactivate(viewingItem)}
+                    className="flex items-center space-x-1.5 bg-emerald-50 border border-emerald-200/50 hover:bg-emerald-100/60 text-emerald-700 font-bold text-xs px-4.5 py-2 rounded-[3px] shadow-sm transition cursor-pointer"
+                  >
+                    <ArchiveRestore className="h-3.5 w-3.5" />
+                    <span>Reactivate</span>
+                  </button>
+                )}
+              </>
             )}
           </div>
         </div>
@@ -1045,13 +1051,15 @@ export function ProductsTab({ activeOrg, onViewInvoice, onViewBill, initialViewi
           <Tag className="h-5 w-5 text-[#0F5B38]" />
           <span>Products & Services</span>
         </h2>
-        <button
-          onClick={handleOpenAdd}
-          className="flex items-center space-x-2 bg-[#0F5B38] hover:brightness-105 text-white font-medium text-xs px-4.5 py-2.5 rounded-[3px] transition cursor-pointer shadow-md shadow-emerald-950/10"
-        >
-          <Plus className="h-4 w-4" />
-          <span>New Product / Service</span>
-        </button>
+        {!isReadOnly && (
+          <button
+            onClick={handleOpenAdd}
+            className="flex items-center space-x-2 bg-[#0F5B38] hover:brightness-105 text-white font-medium text-xs px-4.5 py-2.5 rounded-[3px] transition cursor-pointer shadow-md shadow-emerald-950/10"
+          >
+            <Plus className="h-4 w-4" />
+            <span>New Product / Service</span>
+          </button>
+        )}
       </div>
 
       {/* Filter & Search Header */}
