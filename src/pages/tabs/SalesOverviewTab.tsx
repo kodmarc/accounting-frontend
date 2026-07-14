@@ -3,6 +3,7 @@ import { TrendingUp, Plus, Settings, Receipt, FileText, ArrowUpRight } from 'luc
 import { apiService } from '../../services/api'
 import type { Organization, Invoice, Quote } from '../../services/api'
 import type { TabId } from '../../types/tabs'
+import { useReadOnly } from '../../context/ReadOnlyContext'
 
 interface SalesOverviewTabProps {
   activeOrg: Organization
@@ -17,6 +18,7 @@ export function SalesOverviewTab({
   onCreateInvoiceClick,
   onCreateQuoteClick
 }: SalesOverviewTabProps) {
+  const isReadOnly = useReadOnly()
   const [invoices, setInvoices] = useState<Invoice[]>([])
   const [quotes, setQuotes] = useState<Quote[]>([])
   const [loading, setLoading] = useState(true)
@@ -288,36 +290,40 @@ export function SalesOverviewTab({
             
             <div className="space-y-3">
               {/* New Invoice */}
-              <button 
-                onClick={onCreateInvoiceClick}
-                className="w-full flex items-center justify-between p-3.5 bg-slate-50 hover:bg-emerald-50/50 border border-slate-100 hover:border-emerald-100 rounded-[3px] transition duration-300 group cursor-pointer"
-              >
-                <div className="flex items-center space-x-3">
-                  <div className="p-2 bg-emerald-50 rounded-[3px] group-hover:bg-[#0F5B38] group-hover:text-white transition duration-300">
-                    <Plus className="h-4 w-4 text-[#0F5B38] group-hover:text-white" />
+              {!isReadOnly && (
+                <button
+                  onClick={onCreateInvoiceClick}
+                  className="w-full flex items-center justify-between p-3.5 bg-slate-50 hover:bg-emerald-50/50 border border-slate-100 hover:border-emerald-100 rounded-[3px] transition duration-300 group cursor-pointer"
+                >
+                  <div className="flex items-center space-x-3">
+                    <div className="p-2 bg-emerald-50 rounded-[3px] group-hover:bg-[#0F5B38] group-hover:text-white transition duration-300">
+                      <Plus className="h-4 w-4 text-[#0F5B38] group-hover:text-white" />
+                    </div>
+                    <div className="text-left">
+                      <p className="text-xs font-bold text-slate-750">New sales invoice</p>
+                      <p className="text-[10px] text-slate-400 font-semibold">Issue client billing statements</p>
+                    </div>
                   </div>
-                  <div className="text-left">
-                    <p className="text-xs font-bold text-slate-750">New sales invoice</p>
-                    <p className="text-[10px] text-slate-400 font-semibold">Issue client billing statements</p>
-                  </div>
-                </div>
-              </button>
+                </button>
+              )}
 
               {/* New Quote */}
-              <button 
-                onClick={onCreateQuoteClick}
-                className="w-full flex items-center justify-between p-3.5 bg-slate-50 hover:bg-emerald-50/50 border border-slate-100 hover:border-emerald-100 rounded-[3px] transition duration-300 group cursor-pointer"
-              >
-                <div className="flex items-center space-x-3">
-                  <div className="p-2 bg-emerald-50 rounded-[3px] group-hover:bg-[#0F5B38] group-hover:text-white transition duration-300">
-                    <Plus className="h-4 w-4 text-[#0F5B38] group-hover:text-white" />
+              {!isReadOnly && (
+                <button
+                  onClick={onCreateQuoteClick}
+                  className="w-full flex items-center justify-between p-3.5 bg-slate-50 hover:bg-emerald-50/50 border border-slate-100 hover:border-emerald-100 rounded-[3px] transition duration-300 group cursor-pointer"
+                >
+                  <div className="flex items-center space-x-3">
+                    <div className="p-2 bg-emerald-50 rounded-[3px] group-hover:bg-[#0F5B38] group-hover:text-white transition duration-300">
+                      <Plus className="h-4 w-4 text-[#0F5B38] group-hover:text-white" />
+                    </div>
+                    <div className="text-left">
+                      <p className="text-xs font-bold text-slate-750">New sales quote</p>
+                      <p className="text-[10px] text-slate-400 font-semibold">Draft offers and pricing pitches</p>
+                    </div>
                   </div>
-                  <div className="text-left">
-                    <p className="text-xs font-bold text-slate-750">New sales quote</p>
-                    <p className="text-[10px] text-slate-400 font-semibold">Draft offers and pricing pitches</p>
-                  </div>
-                </div>
-              </button>
+                </button>
+              )}
 
               {/* Settings */}
               <button 

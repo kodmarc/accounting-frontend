@@ -74,7 +74,7 @@ export interface Organization {
 export interface Membership {
   id: string;
   organization: Organization;
-  role: 'Admin' | 'User';
+  role: 'Admin' | 'User' | 'ReadOnly';
   permissions: Record<string, boolean>;
   joined_at: string;
 }
@@ -296,7 +296,7 @@ export interface PurchaseOrder {
 export interface OrgMember {
   id: string;
   user: User;
-  role: 'Admin' | 'User';
+  role: 'Admin' | 'User' | 'ReadOnly';
   permissions: Record<string, boolean>;
   joined_at: string;
 }
@@ -304,7 +304,7 @@ export interface OrgMember {
 export interface OrgInvitation {
   id: string;
   email: string;
-  role: 'Admin' | 'User';
+  role: 'Admin' | 'User' | 'ReadOnly';
   permissions: Record<string, boolean>;
   status: 'pending' | 'accepted';
   created_at: string;

@@ -5,6 +5,7 @@ import {
   TrendingDown, DollarSign, Calendar, Tag,
 } from 'lucide-react'
 import { apiService } from '../../services/api'
+import { useReadOnly } from '../../context/ReadOnlyContext'
 import type {
   Organization, Account,
   AssetType, FixedAsset, DepreciationRun, DepRunPreview,
@@ -185,6 +186,7 @@ function AssetTypeForm({
 // ── Asset Types Section ───────────────────────────────────────────────────────
 
 function AssetTypesSection({ orgId, accounts }: { orgId: string; accounts: Account[] }) {
+  const isReadOnly = useReadOnly()
   const [types, setTypes]       = useState<AssetType[]>([])
   const [loading, setLoading]   = useState(true)
   const [showForm, setShowForm] = useState(false)
@@ -212,10 +214,12 @@ function AssetTypesSection({ orgId, accounts }: { orgId: string; accounts: Accou
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <p className="text-xs text-slate-500">Define templates that set which accounts and depreciation method to use per asset category.</p>
-        <button onClick={() => { setEditing(null); setShowForm(true) }}
-          className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-[#0F5B38] rounded-[3px] hover:bg-[#0a4229]">
-          <Plus className="h-3.5 w-3.5" /> New Asset Type
-        </button>
+        {!isReadOnly && (
+          <button onClick={() => { setEditing(null); setShowForm(true) }}
+            className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-[#0F5B38] rounded-[3px] hover:bg-[#0a4229]">
+            <Plus className="h-3.5 w-3.5" /> New Asset Type
+          </button>
+        )}
       </div>
 
       {error && <div className="bg-rose-50 text-rose-700 text-xs font-bold px-4 py-3 rounded-[3px] border border-rose-100">{error}</div>}
@@ -254,12 +258,14 @@ function AssetTypesSection({ orgId, accounts }: { orgId: string; accounts: Accou
                     {at.residual_value_pct ? `${(parseFloat(at.residual_value_pct) * 100).toFixed(0)}%` : '0%'}
                   </td>
                   <td className="px-3 py-3">
-                    <div className="flex items-center gap-2 justify-end">
-                      <button onClick={() => { setEditing(at); setShowForm(true) }}
-                        className="text-slate-400 hover:text-[#0F5B38]"><Edit3 className="h-3.5 w-3.5" /></button>
-                      <button onClick={() => handleDelete(at)}
-                        className="text-slate-400 hover:text-rose-600"><Trash2 className="h-3.5 w-3.5" /></button>
-                    </div>
+                    {!isReadOnly && (
+                      <div className="flex items-center gap-2 justify-end">
+                        <button onClick={() => { setEditing(at); setShowForm(true) }}
+                          className="text-slate-400 hover:text-[#0F5B38]"><Edit3 className="h-3.5 w-3.5" /></button>
+                        <button onClick={() => handleDelete(at)}
+                          className="text-slate-400 hover:text-rose-600"><Trash2 className="h-3.5 w-3.5" /></button>
+                      </div>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -593,6 +599,7 @@ function AssetRegisterSection({
   assetTypes: AssetType[]
   currency: string
 }) {
+  const isReadOnly = useReadOnly()
   const [assets, setAssets]         = useState<FixedAsset[]>([])
   const [loading, setLoading]       = useState(true)
   const [statusFilter, setFilter]   = useState<string>('')
@@ -645,10 +652,12 @@ function AssetRegisterSection({
             </button>
           ))}
         </div>
-        <button onClick={() => { setEditing(null); setShowForm(true) }}
-          className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-[#0F5B38] rounded-[3px] hover:bg-[#0a4229]">
-          <Plus className="h-3.5 w-3.5" /> Add Asset
-        </button>
+        {!isReadOnly && (
+          <button onClick={() => { setEditing(null); setShowForm(true) }}
+            className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-[#0F5B38] rounded-[3px] hover:bg-[#0a4229]">
+            <Plus className="h-3.5 w-3.5" /> Add Asset
+          </button>
+        )}
       </div>
 
       {error && <div className="bg-rose-50 text-rose-700 text-xs font-bold px-4 py-3 rounded-[3px] border border-rose-100">{error}</div>}
@@ -693,22 +702,24 @@ function AssetRegisterSection({
                     <td className="px-3 py-3 tabular-nums font-bold text-slate-800">{fmt(asset.net_book_value, currency)}</td>
                     <td className="px-3 py-3"><Badge status={asset.status} /></td>
                     <td className="px-3 py-3">
-                      <div className="flex items-center gap-2">
-                        {asset.status === 'Draft' && <>
-                          <button onClick={() => { setEditing(asset); setShowForm(true) }}
-                            title="Edit" className="text-slate-400 hover:text-[#0F5B38]"><Edit3 className="h-3.5 w-3.5" /></button>
-                          <button onClick={() => setRegistering(asset)}
-                            title="Register" className="text-slate-400 hover:text-[#0F5B38]"><PackageCheck className="h-3.5 w-3.5" /></button>
-                          <button onClick={() => handleDelete(asset)}
-                            title="Delete" className="text-slate-400 hover:text-rose-600"><Trash2 className="h-3.5 w-3.5" /></button>
-                        </>}
-                        {asset.status === 'Registered' && <>
-                          <button onClick={() => setDisposing(asset)}
-                            title="Dispose" className="text-slate-400 hover:text-rose-600"><DollarSign className="h-3.5 w-3.5" /></button>
-                          <button onClick={() => handleRollback(asset)}
-                            title="Rollback to Draft" className="text-slate-400 hover:text-amber-600"><RotateCcw className="h-3.5 w-3.5" /></button>
-                        </>}
-                      </div>
+                      {!isReadOnly && (
+                        <div className="flex items-center gap-2">
+                          {asset.status === 'Draft' && <>
+                            <button onClick={() => { setEditing(asset); setShowForm(true) }}
+                              title="Edit" className="text-slate-400 hover:text-[#0F5B38]"><Edit3 className="h-3.5 w-3.5" /></button>
+                            <button onClick={() => setRegistering(asset)}
+                              title="Register" className="text-slate-400 hover:text-[#0F5B38]"><PackageCheck className="h-3.5 w-3.5" /></button>
+                            <button onClick={() => handleDelete(asset)}
+                              title="Delete" className="text-slate-400 hover:text-rose-600"><Trash2 className="h-3.5 w-3.5" /></button>
+                          </>}
+                          {asset.status === 'Registered' && <>
+                            <button onClick={() => setDisposing(asset)}
+                              title="Dispose" className="text-slate-400 hover:text-rose-600"><DollarSign className="h-3.5 w-3.5" /></button>
+                            <button onClick={() => handleRollback(asset)}
+                              title="Rollback to Draft" className="text-slate-400 hover:text-amber-600"><RotateCcw className="h-3.5 w-3.5" /></button>
+                          </>}
+                        </div>
+                      )}
                     </td>
                   </tr>
                   {expanded === asset.id && asset.dep_lines?.length > 0 && (
@@ -766,6 +777,7 @@ function AssetRegisterSection({
 // ── Depreciation Section ──────────────────────────────────────────────────────
 
 function DepreciationSection({ orgId, currency }: { orgId: string; currency: string }) {
+  const isReadOnly = useReadOnly()
   const [runs, setRuns]             = useState<DepreciationRun[]>([])
   const [loading, setLoading]       = useState(true)
   const [showNew, setShowNew]       = useState(false)
@@ -840,10 +852,12 @@ function DepreciationSection({ orgId, currency }: { orgId: string; currency: str
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <p className="text-xs text-slate-500">Run depreciation monthly. Runs must be posted in sequence and can only be undone in reverse order.</p>
-        <button onClick={() => { setShowNew(true); setPreview(null); setError('') }}
-          className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-[#0F5B38] rounded-[3px] hover:bg-[#0a4229]">
-          <Plus className="h-3.5 w-3.5" /> New Run
-        </button>
+        {!isReadOnly && (
+          <button onClick={() => { setShowNew(true); setPreview(null); setError('') }}
+            className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-[#0F5B38] rounded-[3px] hover:bg-[#0a4229]">
+            <Plus className="h-3.5 w-3.5" /> New Run
+          </button>
+        )}
       </div>
 
       {error && <div className="bg-rose-50 text-rose-700 text-xs font-bold px-4 py-3 rounded-[3px] border border-rose-100">{error}</div>}
@@ -945,7 +959,7 @@ function DepreciationSection({ orgId, currency }: { orgId: string; currency: str
                   <td className="px-3 py-3"><Badge status={run.status} /></td>
                   <td className="px-3 py-3 text-slate-500 whitespace-nowrap">{fmtDate(run.created_at?.slice(0, 10))}</td>
                   <td className="px-3 py-3">
-                    {run.status === 'Posted' && (
+                    {!isReadOnly && run.status === 'Posted' && (
                       <button onClick={() => handleUndo(run)}
                         title="Undo this run" className="flex items-center gap-1 text-[11px] font-bold text-slate-400 hover:text-amber-600">
                         <RotateCcw className="h-3 w-3" /> Undo

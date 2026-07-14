@@ -52,6 +52,7 @@ import { InvitePage } from './pages/InvitePage'
 import { LandingPage } from './pages/LandingPage'
 
 import type { SelectOption } from './components/SearchableSelect'
+import { ReadOnlyProvider } from './context/ReadOnlyContext'
 
 const VALID_TABS: TabId[] = [
   'Home', 'SalesOverview', 'Invoices', 'OnlinePayments', 'Quotes', 'Products',
@@ -191,11 +192,12 @@ function App() {
   const [currenciesList, setCurrenciesList] = useState<SelectOption[]>([])
 
   // Returns true if the current org member can access the given tab.
-  // Admins always can; Users are checked against their permissions JSON.
+  // Admins always can; Users and ReadOnly are checked against their permissions JSON.
   const canAccess = useCallback((tab: TabId): boolean => {
     if (!activeOrg) return false
     const memb = organizations.find(m => m.organization.id === activeOrg.id)
-    if (!memb || memb.role !== 'User') return true
+    if (!memb) return false
+    if (memb.role === 'Admin') return true
     const key = TAB_TO_PERMISSION_KEY[tab]
     if (!key) return true
     return memb.permissions[key] !== false
@@ -309,7 +311,7 @@ function App() {
           }
           if (tabPart && isValidTabId(tabPart)) {
             const permKey = TAB_TO_PERMISSION_KEY[tabPart as TabId]
-            const isAdmin = found.role !== 'User'
+            const isAdmin = found.role === 'Admin'
             const allowed = isAdmin || !permKey || found.permissions[permKey] !== false
             if (allowed) {
               if (activeTab !== tabPart) setActiveTab(tabPart)
@@ -655,7 +657,13 @@ function App() {
     )
   }
 
+  const isReadOnly = (() => {
+    const memb = organizations.find(m => m.organization.id === activeOrg?.id)
+    return memb?.role === 'ReadOnly'
+  })()
+
   return (
+    <ReadOnlyProvider value={isReadOnly}>
     <DashboardLayout
       currentUser={currentUser}
       organizations={organizations}
@@ -765,7 +773,7 @@ function App() {
 
       {(['SalesSettings', 'PurchasesSettings', 'AccountingSettings', 'ContactsSettings', 'UsersSettings'] as TabId[]).includes(activeTab) && (() => {
         const memb = organizations.find(m => m.organization.id === activeOrg?.id)
-        const isAdmin = memb?.role !== 'User'
+        const isAdmin = memb?.role === 'Admin'
         return (
           <SettingsTab
             activeOrg={activeOrg}
@@ -973,6 +981,7 @@ function App() {
       )}
 
     </DashboardLayout>
+    </ReadOnlyProvider>
   )
 }
 

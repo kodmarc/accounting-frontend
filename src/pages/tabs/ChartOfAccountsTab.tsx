@@ -3,6 +3,7 @@ import { Plus, Calculator, Search, ArrowLeft, Edit3, Archive, ArchiveRestore, Fi
 import { apiService } from '../../services/api'
 import type { Organization, Account, TaxRate, Invoice } from '../../services/api'
 import { usePopup } from '../../components/PopupProvider'
+import { useReadOnly } from '../../context/ReadOnlyContext'
 
 interface ChartOfAccountsTabProps {
   activeOrg: Organization
@@ -11,6 +12,7 @@ interface ChartOfAccountsTabProps {
 }
 
 export function ChartOfAccountsTab({ activeOrg, onViewInvoice, onViewBill }: ChartOfAccountsTabProps) {
+  const isReadOnly = useReadOnly()
   const { showConfirm, showAlert } = usePopup()
   const [accounts, setAccounts] = useState<Account[]>([])
   const [taxRates, setTaxRates] = useState<TaxRate[]>([])
@@ -347,29 +349,33 @@ export function ChartOfAccountsTab({ activeOrg, onViewInvoice, onViewBill }: Cha
           </div>
 
           <div className="flex space-x-2">
-            <button
-              onClick={() => handleEditClick(viewingAccount)}
-              className="flex items-center space-x-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold text-xs px-4.5 py-2 rounded-[3px] shadow-sm transition cursor-pointer"
-            >
-              <Edit3 className="h-3.5 w-3.5" />
-              <span>Edit Account</span>
-            </button>
-            {viewingAccount.is_active !== false ? (
-              <button
-                onClick={() => handleDeactivate(viewingAccount)}
-                className="flex items-center space-x-1.5 bg-amber-50 border border-amber-200/50 hover:bg-amber-100/60 text-amber-700 font-bold text-xs px-4.5 py-2 rounded-[3px] shadow-sm transition cursor-pointer"
-              >
-                <Archive className="h-3.5 w-3.5" />
-                <span>Deactivate</span>
-              </button>
-            ) : (
-              <button
-                onClick={() => handleReactivate(viewingAccount)}
-                className="flex items-center space-x-1.5 bg-emerald-50 border border-emerald-200/50 hover:bg-emerald-100/60 text-emerald-700 font-bold text-xs px-4.5 py-2 rounded-[3px] shadow-sm transition cursor-pointer"
-              >
-                <ArchiveRestore className="h-3.5 w-3.5" />
-                <span>Reactivate</span>
-              </button>
+            {!isReadOnly && (
+              <>
+                <button
+                  onClick={() => handleEditClick(viewingAccount)}
+                  className="flex items-center space-x-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold text-xs px-4.5 py-2 rounded-[3px] shadow-sm transition cursor-pointer"
+                >
+                  <Edit3 className="h-3.5 w-3.5" />
+                  <span>Edit Account</span>
+                </button>
+                {viewingAccount.is_active !== false ? (
+                  <button
+                    onClick={() => handleDeactivate(viewingAccount)}
+                    className="flex items-center space-x-1.5 bg-amber-50 border border-amber-200/50 hover:bg-amber-100/60 text-amber-700 font-bold text-xs px-4.5 py-2 rounded-[3px] shadow-sm transition cursor-pointer"
+                  >
+                    <Archive className="h-3.5 w-3.5" />
+                    <span>Deactivate</span>
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => handleReactivate(viewingAccount)}
+                    className="flex items-center space-x-1.5 bg-emerald-50 border border-emerald-200/50 hover:bg-emerald-100/60 text-emerald-700 font-bold text-xs px-4.5 py-2 rounded-[3px] shadow-sm transition cursor-pointer"
+                  >
+                    <ArchiveRestore className="h-3.5 w-3.5" />
+                    <span>Reactivate</span>
+                  </button>
+                )}
+              </>
             )}
           </div>
         </div>
@@ -711,13 +717,15 @@ export function ChartOfAccountsTab({ activeOrg, onViewInvoice, onViewBill }: Cha
           >
             <span>{isImporting ? 'Importing...' : 'Import Default Accounts'}</span>
           </button>
-          <button
-            onClick={handleOpenAdd}
-            className="flex items-center space-x-2 bg-[#0F5B38] hover:brightness-105 text-white font-medium text-xs px-4.5 py-2.5 rounded-[3px] transition cursor-pointer shadow-md shadow-emerald-950/10"
-          >
-            <Plus className="h-4 w-4" />
-            <span>Add Account</span>
-          </button>
+          {!isReadOnly && (
+            <button
+              onClick={handleOpenAdd}
+              className="flex items-center space-x-2 bg-[#0F5B38] hover:brightness-105 text-white font-medium text-xs px-4.5 py-2.5 rounded-[3px] transition cursor-pointer shadow-md shadow-emerald-950/10"
+            >
+              <Plus className="h-4 w-4" />
+              <span>Add Account</span>
+            </button>
+          )}
         </div>
       </div>
 

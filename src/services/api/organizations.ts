@@ -37,14 +37,14 @@ export const organizationsApi = {
     return request(`/organizations/${orgId}/members/`)
   },
 
-  async inviteOrgMember(orgId: string, email: string, role: 'Admin' | 'User', permissions: Record<string, boolean>): Promise<{ message: string; member?: OrgMember }> {
+  async inviteOrgMember(orgId: string, email: string, role: 'Admin' | 'User' | 'ReadOnly', permissions: Record<string, boolean>): Promise<{ message: string; member?: OrgMember }> {
     return request(`/organizations/${orgId}/members/`, {
       method: 'POST',
       body: JSON.stringify({ email, role, permissions }),
     })
   },
 
-  async updateOrgMember(orgId: string, membershipId: string, role: 'Admin' | 'User', permissions: Record<string, boolean>): Promise<OrgMember> {
+  async updateOrgMember(orgId: string, membershipId: string, role: 'Admin' | 'User' | 'ReadOnly', permissions: Record<string, boolean>): Promise<OrgMember> {
     return request(`/organizations/${orgId}/members/${membershipId}/`, {
       method: 'PUT',
       body: JSON.stringify({ role, permissions }),
