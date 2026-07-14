@@ -15,6 +15,9 @@ This folder explains the frontend modules of the accounting software in a simple
 - [Organization](organization.md) — members, roles, permissions, and company team operations.
 - [Settings](settings.md) — company configuration, documents, bank setup, and account preferences.
 - [Profile](profile.md) — personal user profile and account-owned details.
+- [Payroll](payroll/README.md) — employees, leave management, and pay run processing.
+- [Fixed Asset Management](fixed-assets/README.md) — asset types, asset registration, and depreciation runs.
+- [PDF Customization](pdf-customization.md) — custom PDF layout design for invoices, quotes, bills, and purchase orders.
 
 ## How to read these docs
 
