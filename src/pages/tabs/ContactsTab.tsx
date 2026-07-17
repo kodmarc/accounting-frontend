@@ -30,7 +30,7 @@ export function ContactsTab({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [editingContact, setEditingContact] = useState<Contact | null>(null)
   const [sortOption, setSortOption] = useState<'name-asc' | 'name-desc'>('name-asc')
-  const [filterType, setFilterType] = useState<'All' | 'Customer' | 'Supplier' | 'Deactivated'>(initialFilter)
+  const [filterType, setFilterType] = useState<'All' | 'Customer' | 'Supplier' | 'Owner' | 'Deactivated'>(initialFilter)
 
   const [isModalOpen, setIsModalOpen] = useState(() => {
     const autoOpen = localStorage.getItem('kdm_auto_open_contact_modal')
@@ -48,6 +48,7 @@ export function ContactsTab({
   const [address, setAddress] = useState('')
   const [isCustomerCheckbox, setIsCustomerCheckbox] = useState(true)
   const [isSupplierCheckbox, setIsSupplierCheckbox] = useState(true)
+  const [isOwnerCheckbox, setIsOwnerCheckbox] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
 
@@ -79,6 +80,7 @@ export function ContactsTab({
   const handleSupplierCheckboxChange = (checked: boolean) => {
     if (!checked && !isCustomerCheckbox) return
     setIsSupplierCheckbox(checked)
+    
   }
 
   const loadData = async () => {
@@ -165,6 +167,7 @@ export function ContactsTab({
     setAddress(contact.billing_address || '')
     setIsCustomerCheckbox(contact.contact_type === 'Customer' || contact.contact_type === 'Both')
     setIsSupplierCheckbox(contact.contact_type === 'Supplier' || contact.contact_type === 'Both')
+    setIsOwnerCheckbox(contact.is_owner || false)
     lastActiveElementRef.current = document.activeElement as HTMLElement
     setIsModalOpen(true)
   }
@@ -190,7 +193,18 @@ export function ContactsTab({
       showAlert({ title: 'Validation Warning', message: 'Please select at least one contact role (Customer or Supplier).', type: 'warning' })
       return
     }
+    const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (email && !EMAIL_REGEX.test(email.trim())) {
+      showAlert({ title: 'Validation Warning', message: 'Please enter a valid email address.', type: 'warning' })
+      return
+    }
 
+    const PHONE_REGEX = /^(92\d{10}|0\d{10})$/
+    const cleanedPhone = phone.replace(/[\s-]/g, '')
+    if (phone && !PHONE_REGEX.test(cleanedPhone)) {
+      showAlert({ title: 'Validation Warning', message: 'Enter a valid phone number: 923XXXXXXXXX (country code) or 03XXXXXXXXX (starting with 0).', type: 'warning' })
+      return
+    }
     setIsSubmitting(true)
 
     let contact_type: 'Customer' | 'Supplier' | 'Both' = 'Both'
@@ -203,7 +217,8 @@ export function ContactsTab({
       email,
       phone,
       billing_address: address,
-      contact_type
+      contact_type,
+      is_owner: isOwnerCheckbox,
     }
 
     try {
@@ -267,6 +282,7 @@ export function ContactsTab({
     setAddress('')
     setIsCustomerCheckbox(true)
     setIsSupplierCheckbox(true)
+    
   }
 
   const filteredContacts = contacts.filter(contact => {
@@ -285,6 +301,7 @@ export function ContactsTab({
 
     if (filterType === 'Customer') return contact.contact_type === 'Customer' || contact.contact_type === 'Both'
     if (filterType === 'Supplier') return contact.contact_type === 'Supplier' || contact.contact_type === 'Both'
+    if (filterType === 'Owner') return contact.is_owner === true
     return true
   })
 
@@ -542,7 +559,7 @@ export function ContactsTab({
 
         <div className="flex flex-col sm:flex-row sm:items-end justify-between border-b border-slate-200 pb-0 gap-4">
           <div className="flex space-x-1 select-none text-xs font-semibold -mb-[1px] relative z-10">
-            {(['All', 'Customer', 'Supplier', 'Deactivated'] as const).map(f => {
+            {(['All', 'Customer', 'Supplier', 'Owner', 'Deactivated'] as const).map(f => {
               const isActive = filterType === f
               return (
                 <button
@@ -734,7 +751,7 @@ export function ContactsTab({
                 </div>
                 <div className="space-y-1">
                   <label className="text-slate-500 uppercase tracking-wide text-[9px] font-bold">Contact (Phone)</label>
-                  <input type="text" placeholder="e.g. +65 6789 0123" value={phone} onChange={e => setPhone(e.target.value)}
+                  <input type="text" placeholder="e.g. 923042487232 or 03042487232" value={phone} onChange={e => setPhone(e.target.value)}
                     className="w-full bg-slate-50 border border-slate-200/80 rounded-[3px] px-4 py-3 font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500/10 focus:border-[#0F5B38] transition placeholder:text-slate-350" />
                 </div>
               </div>
@@ -753,7 +770,12 @@ export function ContactsTab({
                   <input type="checkbox" id="isSupplier" checked={isSupplierCheckbox} onChange={e => handleSupplierCheckboxChange(e.target.checked)} className="h-4 w-4 text-emerald-600 focus:ring-emerald-450 border-slate-300 rounded-[3px] cursor-pointer" />
                   <label htmlFor="isSupplier" className="text-slate-800 font-bold text-xs cursor-pointer">Supplier</label>
                 </div>
+                <div className="flex items-center space-x-2">
+  <input type="checkbox" id="isOwner" checked={isOwnerCheckbox} onChange={e => setIsOwnerCheckbox(e.target.checked)} className="h-4 w-4 text-emerald-600 focus:ring-emerald-450 border-slate-300 rounded-[3px] cursor-pointer" />
+  <label htmlFor="isOwner" className="text-xs font-semibold text-slate-700 cursor-pointer">Owner</label>
+</div>
               </div>
+                 
               <div className="flex space-x-3 pt-4 justify-end border-t border-slate-100">
                 <button type="button" onClick={() => setIsModalOpen(false)} className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200/50 text-slate-650 rounded-[3px] transition cursor-pointer text-xs font-semibold">Cancel</button>
                 <button type="submit" disabled={isSubmitting} className="px-5 py-2.5 bg-[#0F5B38] hover:brightness-105 text-white rounded-[3px] shadow-lg shadow-emerald-950/15 cursor-pointer disabled:opacity-50 transition text-xs font-medium">
