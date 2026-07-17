@@ -15,7 +15,7 @@ export const bankImportApi = {
     currency: string,
     transactions: BulkImportTransaction[],
   ): Promise<{ created: number }> {
-    return request(`/ledger/bulk-import-transactions/?org_id=${orgId}`, {
+    return request(`/bulk-import-transactions/?org_id=${orgId}`, {
       method: 'POST',
       body: JSON.stringify({ bank_account_id: bankAccountId, currency, transactions }),
     })

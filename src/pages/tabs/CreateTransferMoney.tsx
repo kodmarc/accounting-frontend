@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { ArrowLeft, Save, Loader2 } from 'lucide-react'
 import { apiService } from '../../services/api'
 import type { Organization, Account } from '../../services/api'
+import { spendReceiveApi } from '../../services/api/spend-receive'
 import { usePopup } from '../../components/PopupProvider'
 import { XeroDatePicker } from '../../components/XeroDatePicker'
 import type { TabId } from '../../types/tabs'
@@ -74,10 +75,18 @@ export function CreateTransferMoney({
 
     setIsSubmitting(true)
     try {
+      await spendReceiveApi.transferMoney(activeOrg.id, {
+        from_account_id: fromAccountId,
+        to_account_id: toAccountId,
+        amount: amountVal,
+        date,
+        reference: reference.trim() || undefined,
+        currency: activeOrg.currency || 'USD',
+      })
       showAlert({ title: 'Success', message: `Successfully transferred ${activeOrg.currency || 'USD'} ${amountVal.toLocaleString(undefined, { minimumFractionDigits: 2 })}.`, type: 'success' })
       setActiveTab('BankAccounts')
     } catch (err: any) {
-      showAlert({ title: 'Error', message: 'Failed to record bank transfer: ' + err.message, type: 'error' })
+      showAlert({ title: 'Error', message: err?.message || 'Failed to record bank transfer.', type: 'error' })
     } finally {
       setIsSubmitting(false)
     }

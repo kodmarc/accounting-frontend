@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from 'react'
 import { Plus, CreditCard, ArrowLeft, Search, Pencil, Archive, ArchiveRestore } from 'lucide-react'
 import { apiService } from '../../services/api'
 import type { Organization, Account, Invoice, Payment } from '../../services/api'
+import { spendReceiveApi } from '../../services/api/spend-receive'
+import type { SpendReceiveMoney } from '../../services/api/spend-receive'
 import { usePopup } from '../../components/PopupProvider'
 import { ImportDropdown } from '../../components/ImportDropdown'
 import { useReadOnly } from '../../context/ReadOnlyContext'
@@ -20,6 +22,7 @@ export function BankAccountsTab({ activeOrg, onViewInvoice, onViewBill, onStartI
   const [invoices, setInvoices] = useState<Invoice[]>([])
   const [bills, setBills] = useState<any[]>([])
   const [payments, setPayments] = useState<Payment[]>([])
+  const [spendReceive, setSpendReceive] = useState<SpendReceiveMoney[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
   const [sortOption, setSortOption] = useState<'name-asc' | 'name-desc'>('name-asc')
@@ -35,17 +38,19 @@ export function BankAccountsTab({ activeOrg, onViewInvoice, onViewBill, onStartI
 
   const loadData = async () => {
     setLoading(true)
-    const [accountsRes, invoicesRes, billsRes, paymentsRes] = await Promise.allSettled([
+    const [accountsRes, invoicesRes, billsRes, paymentsRes, srRes] = await Promise.allSettled([
       apiService.getAccounts(activeOrg.id),
       apiService.getInvoices(activeOrg.id),
       apiService.getBills(activeOrg.id),
       apiService.getPayments(activeOrg.id),
+      spendReceiveApi.listSpendReceive(activeOrg.id),
     ])
     if (accountsRes.status === 'fulfilled') setBankAccounts(accountsRes.value.filter((a: Account) => a.type === 'Bank'))
     else setBankAccounts([])
     if (invoicesRes.status === 'fulfilled') setInvoices(invoicesRes.value)
     if (billsRes.status === 'fulfilled') setBills(billsRes.value)
     if (paymentsRes.status === 'fulfilled') setPayments(paymentsRes.value)
+    if (srRes.status === 'fulfilled') setSpendReceive(srRes.value)
     setLoading(false)
   }
 
@@ -219,8 +224,12 @@ export function BankAccountsTab({ activeOrg, onViewInvoice, onViewBill, onStartI
 
   if (viewingBankAcc) {
     const accountPayments = payments.filter(p => p.bank_account === viewingBankAcc.id)
+    const accountSR = spendReceive.filter(sr => sr.bank_account_id === viewingBankAcc.id)
+
     const totalInc = accountPayments.filter(p => p.invoice !== null).reduce((sum, p) => sum + Number(p.amount), 0)
+      + accountSR.filter(sr => sr.type === 'Receive').reduce((sum, sr) => sum + Number(sr.total), 0)
     const totalExp = accountPayments.filter(p => p.bill !== null).reduce((sum, p) => sum + Number(p.amount), 0)
+      + accountSR.filter(sr => sr.type === 'Spend').reduce((sum, sr) => sum + Number(sr.total), 0)
     const runningBal = totalInc - totalExp
 
     return (
@@ -320,67 +329,93 @@ export function BankAccountsTab({ activeOrg, onViewInvoice, onViewBill, onStartI
         <div className="bg-white rounded-[3px] border border-slate-200 p-6 shadow-sm space-y-4">
           <div className="border-b border-slate-100 pb-2">
             <h3 className="text-sm font-bold text-slate-800">Account Transaction History</h3>
-            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mt-0.5">Payments recorded against this bank account.</p>
+            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mt-0.5">All transactions recorded against this bank account.</p>
           </div>
-          {accountPayments.length > 0 ? (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs border-collapse">
-                <thead>
-                  <tr className="bg-slate-50 border-b border-slate-200 select-none text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
-                    <th className="p-3">Date</th>
-                    <th className="p-3">Document</th>
-                    <th className="p-3">Type</th>
-                    <th className="p-3 text-right">Amount</th>
-                    <th className="p-3 text-center">Flow</th>
-                    <th className="p-3 text-center w-12">Action</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 font-medium">
-                  {[...accountPayments].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(p => {
-                    const isInvoicePayment = p.invoice !== null
-                    const linkedInvoice = isInvoicePayment ? invoices.find(i => i.id === p.invoice) : null
-                    const linkedBill = !isInvoicePayment ? bills.find(b => b.id === p.bill) : null
-                    const docNumber = linkedInvoice?.invoice_number ?? linkedBill?.bill_number ?? '—'
-                    return (
+          {(() => {
+            const paymentRows = accountPayments.map(p => {
+              const isInvoicePayment = p.invoice !== null
+              const linkedInvoice = isInvoicePayment ? invoices.find(i => i.id === p.invoice) : null
+              const linkedBill = !isInvoicePayment ? bills.find(b => b.id === p.bill) : null
+              return {
+                key: p.id,
+                date: p.date,
+                docNumber: linkedInvoice?.invoice_number ?? linkedBill?.bill_number ?? '—',
+                type: isInvoicePayment ? 'Invoice Payment' : 'Bill Payment',
+                amount: Number(p.amount),
+                isInflow: isInvoicePayment,
+                onClick: () => {
+                  if (isInvoicePayment && onViewInvoice && p.invoice) onViewInvoice(p.invoice)
+                  else if (!isInvoicePayment && onViewBill && p.bill) onViewBill(p.bill)
+                },
+                navigable: true,
+              }
+            })
+            const srRows = accountSR.map(sr => ({
+              key: sr.id,
+              date: sr.date,
+              docNumber: sr.reference || sr.id.slice(0, 8).toUpperCase(),
+              type: sr.type === 'Receive' ? 'Receive Money' : 'Spend Money',
+              amount: Number(sr.total),
+              isInflow: sr.type === 'Receive',
+              onClick: () => {},
+              navigable: false,
+            }))
+            const allRows = [...paymentRows, ...srRows].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+            if (allRows.length === 0) {
+              return (
+                <div className="text-center py-12 text-slate-400 text-xs font-semibold">
+                  No transactions have been recorded against this bank account yet.
+                </div>
+              )
+            }
+            return (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-slate-200 select-none text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
+                      <th className="p-3">Date</th>
+                      <th className="p-3">Document</th>
+                      <th className="p-3">Type</th>
+                      <th className="p-3 text-right">Amount</th>
+                      <th className="p-3 text-center">Flow</th>
+                      {allRows.some(r => r.navigable) && <th className="p-3 text-center w-12">Action</th>}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 font-medium">
+                    {allRows.map(row => (
                       <tr
-                        key={p.id}
-                        onClick={() => {
-                          if (isInvoicePayment && onViewInvoice && p.invoice) onViewInvoice(p.invoice)
-                          else if (!isInvoicePayment && onViewBill && p.bill) onViewBill(p.bill)
-                        }}
-                        className="hover:bg-emerald-50/25 transition-colors duration-150 cursor-pointer"
+                        key={row.key}
+                        onClick={row.navigable ? row.onClick : undefined}
+                        className={`transition-colors duration-150 ${row.navigable ? 'hover:bg-emerald-50/25 cursor-pointer' : ''}`}
                       >
-                        <td className="p-3 whitespace-nowrap">{p.date}</td>
-                        <td className="p-3 font-bold text-[#0F5B38]">{docNumber}</td>
-                        <td className="p-3 text-slate-600">{isInvoicePayment ? 'Invoice Payment' : 'Bill Payment'}</td>
+                        <td className="p-3 whitespace-nowrap">{row.date}</td>
+                        <td className="p-3 font-bold text-[#0F5B38]">{row.docNumber}</td>
+                        <td className="p-3 text-slate-600">{row.type}</td>
                         <td className="p-3 text-right font-bold text-slate-800">
-                          {currencySymbol}{Number(p.amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          {currencySymbol}{row.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </td>
                         <td className="p-3 text-center">
-                          <span className={`text-[9px] font-extrabold px-2 py-0.5 rounded-full border ${isInvoicePayment ? 'bg-emerald-50 text-emerald-600 border-emerald-100/30' : 'bg-rose-50 text-rose-600 border-rose-100/30'}`}>
-                            {isInvoicePayment ? 'Inflow' : 'Outflow'}
+                          <span className={`text-[9px] font-extrabold px-2 py-0.5 rounded-full border ${row.isInflow ? 'bg-emerald-50 text-emerald-600 border-emerald-100/30' : 'bg-rose-50 text-rose-600 border-rose-100/30'}`}>
+                            {row.isInflow ? 'Inflow' : 'Outflow'}
                           </span>
                         </td>
-                        <td className="p-3 text-center" onClick={e => e.stopPropagation()}>
-                          <button
-                            onClick={() => {
-                              if (isInvoicePayment && onViewInvoice && p.invoice) onViewInvoice(p.invoice)
-                              else if (!isInvoicePayment && onViewBill && p.bill) onViewBill(p.bill)
-                            }}
-                            className="hover:bg-emerald-50 text-[#0F5B38] rounded-[3px] transition cursor-pointer text-[10px] font-extrabold uppercase tracking-wide px-2.5 py-1"
-                          >View</button>
-                        </td>
+                        {allRows.some(r => r.navigable) && (
+                          <td className="p-3 text-center" onClick={e => e.stopPropagation()}>
+                            {row.navigable && (
+                              <button
+                                onClick={row.onClick}
+                                className="hover:bg-emerald-50 text-[#0F5B38] rounded-[3px] transition cursor-pointer text-[10px] font-extrabold uppercase tracking-wide px-2.5 py-1"
+                              >View</button>
+                            )}
+                          </td>
+                        )}
                       </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <div className="text-center py-12 text-slate-400 text-xs font-semibold">
-              No payments have been recorded against this bank account yet.
-            </div>
-          )}
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )
+          })()}
         </div>
 
         {isModalOpen && (
@@ -596,8 +631,11 @@ export function BankAccountsTab({ activeOrg, onViewInvoice, onViewBill, onStartI
                   <td className="px-6 py-2.5 font-black text-slate-800">
                     {(() => {
                       const acctPayments = payments.filter(p => p.bank_account === bank.id)
+                      const acctSR = spendReceive.filter(sr => sr.bank_account_id === bank.id)
                       const bal = acctPayments.filter(p => p.invoice !== null).reduce((s, p) => s + Number(p.amount), 0)
                                - acctPayments.filter(p => p.bill !== null).reduce((s, p) => s + Number(p.amount), 0)
+                               + acctSR.filter(sr => sr.type === 'Receive').reduce((s, sr) => s + Number(sr.total), 0)
+                               - acctSR.filter(sr => sr.type === 'Spend').reduce((s, sr) => s + Number(sr.total), 0)
                       return `${currencySymbol}${bal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                     })()}
                   </td>
