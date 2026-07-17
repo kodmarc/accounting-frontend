@@ -31,6 +31,7 @@ export function BankAccountsTab({ activeOrg, onViewInvoice, onViewBill, onStartI
   const [code, setCode] = useState('')
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
+  const [iban, setIban] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   const loadData = async () => {
@@ -123,7 +124,7 @@ export function BankAccountsTab({ activeOrg, onViewInvoice, onViewBill, onStartI
       return
     }
     setIsSubmitting(true)
-    const payload: Partial<Account> = { code, name, class_type: 'Asset', type: 'Bank', description }
+    const payload: Partial<Account> = { code, name, class_type: 'Asset', type: 'Bank', description, iban }
     try {
       if (editingBankAcc) {
         const updated = await apiService.updateAccount(editingBankAcc.id, payload, activeOrg.id)
@@ -143,7 +144,7 @@ export function BankAccountsTab({ activeOrg, onViewInvoice, onViewBill, onStartI
     }
   }
 
-  const resetForm = () => { setCode(''); setName(''); setDescription('') }
+  const resetForm = () => { setCode(''); setName(''); setDescription(''); setIban('') }
 
   const handleOpenAdd = () => {
     setEditingBankAcc(null)
@@ -157,6 +158,7 @@ export function BankAccountsTab({ activeOrg, onViewInvoice, onViewBill, onStartI
     setCode(bankAcc.code)
     setName(bankAcc.name)
     setDescription(bankAcc.description || '')
+    setIban(bankAcc.iban || '')
     lastActiveElementRef.current = document.activeElement as HTMLElement
     setIsModalOpen(true)
   }
@@ -447,7 +449,17 @@ export function BankAccountsTab({ activeOrg, onViewInvoice, onViewBill, onStartI
               className="w-full bg-slate-50 border border-slate-200/80 rounded-[3px] px-4 py-3 font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-400/20 focus:border-[#0F5B38] resize-none"
             ></textarea>
           </div>
-
+            
+          <div className="space-y-1">
+  <label className="text-slate-500 uppercase tracking-wide text-[10px]">IBAN No.</label>
+  <input
+    type="text"
+    placeholder="e.g. PK36SCBL0000001123456702"
+    value={iban}
+    onChange={e => setIban(e.target.value.toUpperCase())}
+    className="w-full bg-slate-50 border border-slate-200/80 rounded-[3px] px-4 py-3 font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-400/20 focus:border-[#0F5B38]"
+  />
+</div>
           <div className="flex space-x-3 pt-4 justify-end border-t border-slate-100">
             <button
               type="button"
@@ -568,6 +580,7 @@ export function BankAccountsTab({ activeOrg, onViewInvoice, onViewBill, onStartI
                 </th>
                 <th className="px-6 py-2.5">Bank / Account Name</th>
                 <th className="px-6 py-2.5">Code</th>
+                <th className="px-6 py-2.5">IBAN No.</th>
                 <th className="px-6 py-2.5">Type</th>
                 <th className="px-6 py-2.5">Statement Balance</th>
                 <th className="px-6 py-2.5">Status</th>
@@ -592,6 +605,7 @@ export function BankAccountsTab({ activeOrg, onViewInvoice, onViewBill, onStartI
                     <span className="font-bold text-[#0F5B38] hover:underline">{bank.name}</span>
                   </td>
                   <td className="px-6 py-2.5 font-bold text-[#0F5B38] text-[13px]">{bank.code}</td>
+                  <td className="px-6 py-2.5 font-semibold text-slate-600 text-[13px]">{bank.iban || '—'}</td>
                   <td className="px-6 py-2.5 font-semibold text-slate-500">Bank Feed</td>
                   <td className="px-6 py-2.5 font-black text-slate-800">
                     {(() => {

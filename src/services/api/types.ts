@@ -95,6 +95,7 @@ export interface Account {
   type: string;
   default_tax_rate?: string | null;
   description: string;
+  iban?: string;  
   is_system_account: boolean;
   is_active?: boolean;
   created_at: string;
@@ -110,6 +111,7 @@ export interface Contact {
   billing_address: string;
   default_sales_account?: string | null;
   default_purchase_account?: string | null;
+  is_owner?: boolean;  
   is_active?: boolean;
   created_at: string;
 }
