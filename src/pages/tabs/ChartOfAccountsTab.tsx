@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from 'react'
 import { Plus, Calculator, Search, ArrowLeft, Edit3, Archive, ArchiveRestore, FileText } from 'lucide-react'
 import { apiService } from '../../services/api'
 import type { Organization, Account, TaxRate, Invoice } from '../../services/api'
+import { spendReceiveApi } from '../../services/api/spend-receive'
+import type { SpendReceiveMoney } from '../../services/api/spend-receive'
 import { usePopup } from '../../components/PopupProvider'
 import { useReadOnly } from '../../context/ReadOnlyContext'
 
@@ -18,6 +20,7 @@ export function ChartOfAccountsTab({ activeOrg, onViewInvoice, onViewBill }: Cha
   const [taxRates, setTaxRates] = useState<TaxRate[]>([])
   const [invoices, setInvoices] = useState<Invoice[]>([])
   const [bills, setBills] = useState<any[]>([])
+  const [spendReceive, setSpendReceive] = useState<SpendReceiveMoney[]>([])
   const [loading, setLoading] = useState(true)
   const [, setErrorMsg] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
@@ -53,16 +56,18 @@ export function ChartOfAccountsTab({ activeOrg, onViewInvoice, onViewBill }: Cha
     setLoading(true)
     setErrorMsg(null)
     try {
-      const [accountsData, taxRatesData, loadedInvoices, loadedBills] = await Promise.all([
+      const [accountsData, taxRatesData, loadedInvoices, loadedBills, loadedSR] = await Promise.all([
         apiService.getAccounts(activeOrg.id),
         apiService.getTaxRates(activeOrg.id),
         apiService.getInvoices(activeOrg.id),
         apiService.getBills(activeOrg.id),
+        spendReceiveApi.listSpendReceive(activeOrg.id).catch(() => [] as SpendReceiveMoney[]),
       ])
       setAccounts(accountsData)
       setTaxRates(taxRatesData)
       setInvoices(loadedInvoices)
       setBills(loadedBills)
+      setSpendReceive(loadedSR)
     } catch (e: any) {
       setErrorMsg(e.message || 'Failed to load accounts.')
       setAccounts([])
@@ -315,19 +320,31 @@ export function ChartOfAccountsTab({ activeOrg, onViewInvoice, onViewBill }: Cha
     const matchStatus = accountingMethod === 'cash'
       ? (s: string) => s === 'Paid'
       : (s: string) => s !== 'Draft'
+    const isBank = viewingAccount.type === 'Bank'
     const accountInvoices = invoices.filter(inv =>
       matchStatus(inv.status) && inv.lines?.some((line: any) => line.account === viewingAccount.id)
     )
     const accountBills = bills.filter(bill =>
       matchStatus(bill.status) && bill.lines?.some((line: any) => line.account === viewingAccount.id)
     )
+    const accountSR = spendReceive.filter(sr =>
+      isBank
+        ? sr.bank_account_id === viewingAccount.id
+        : sr.lines.some(l => l.account_id === viewingAccount.id)
+    )
 
     const totalDebits = accountInvoices.reduce((sum, inv) => sum + Number(inv.total), 0)
     const totalCredits = accountBills.reduce((sum, b) => sum + Number(b.total), 0)
 
     const transactions = [
-      ...accountInvoices.map((i: any) => ({ id: i.id, date: i.date, number: i.invoice_number, reference: i.reference, type: 'Invoice', amount: Number(i.total), status: i.status })),
-      ...accountBills.map((b: any) => ({ id: b.id, date: b.date, number: b.bill_number, reference: b.reference, type: 'Bill', amount: Number(b.total), status: b.status }))
+      ...accountInvoices.map((i: any) => ({ id: i.id, date: i.date, number: i.invoice_number, reference: i.reference, type: 'Invoice', amount: Number(i.total), status: i.status, navigable: true })),
+      ...accountBills.map((b: any) => ({ id: b.id, date: b.date, number: b.bill_number, reference: b.reference, type: 'Bill', amount: Number(b.total), status: b.status, navigable: true })),
+      ...accountSR.map(sr => {
+        const amount = isBank
+          ? Number(sr.total)
+          : sr.lines.filter(l => l.account_id === viewingAccount.id).reduce((s, l) => s + Number(l.total), 0)
+        return { id: sr.id, date: sr.date, number: sr.reference || sr.id.slice(0, 8).toUpperCase(), reference: sr.reference, type: sr.type === 'Receive' ? 'Receive Money' : 'Spend Money', amount, status: sr.status, navigable: false }
+      }),
     ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
 
     return (
@@ -484,14 +501,17 @@ export function ChartOfAccountsTab({ activeOrg, onViewInvoice, onViewBill }: Cha
                 <tbody className="divide-y divide-slate-100 font-medium">
                   {transactions.map(tx => {
                     const isInvoice = tx.type === 'Invoice'
+                    const isBill = tx.type === 'Bill'
+                    const typeLabel = isInvoice ? 'Sales Invoice' : isBill ? 'Vendor Bill' : tx.type
+                    const handleOpen = () => {
+                      if (isInvoice && onViewInvoice) onViewInvoice(tx.id)
+                      else if (isBill && onViewBill) onViewBill(tx.id)
+                    }
                     return (
                       <tr
                         key={tx.id}
-                        onClick={() => {
-                          if (isInvoice && onViewInvoice) onViewInvoice(tx.id)
-                          else if (!isInvoice && onViewBill) onViewBill(tx.id)
-                        }}
-                        className="hover:bg-emerald-50/25 transition-colors duration-150 cursor-pointer"
+                        onClick={tx.navigable ? handleOpen : undefined}
+                        className={`transition-colors duration-150 ${tx.navigable ? 'cursor-pointer hover:bg-emerald-50/25' : ''}`}
                       >
                         <td className="p-3 whitespace-nowrap text-slate-600">{tx.date}</td>
                         <td className="p-3 font-bold text-[#0F5B38]">{tx.number}</td>
@@ -499,7 +519,7 @@ export function ChartOfAccountsTab({ activeOrg, onViewInvoice, onViewBill }: Cha
                         <td className="p-3">
                           <span className="flex items-center space-x-1.5 text-slate-600">
                             <FileText className="h-3.5 w-3.5 text-slate-400" />
-                            <span>{isInvoice ? 'Sales Invoice' : 'Vendor Bill'}</span>
+                            <span>{typeLabel}</span>
                           </span>
                         </td>
                         <td className="p-3 text-right font-bold text-slate-800">
@@ -515,15 +535,14 @@ export function ChartOfAccountsTab({ activeOrg, onViewInvoice, onViewBill }: Cha
                           </span>
                         </td>
                         <td className="p-3 text-center" onClick={e => e.stopPropagation()}>
-                          <button
-                            onClick={() => {
-                              if (isInvoice && onViewInvoice) onViewInvoice(tx.id)
-                              else if (!isInvoice && onViewBill) onViewBill(tx.id)
-                            }}
-                            className="hover:bg-emerald-50 text-[#0F5B38] rounded-[3px] transition cursor-pointer text-[10px] font-extrabold uppercase tracking-wide px-2.5 py-1"
-                          >
-                            Open
-                          </button>
+                          {tx.navigable && (
+                            <button
+                              onClick={handleOpen}
+                              className="hover:bg-emerald-50 text-[#0F5B38] rounded-[3px] transition cursor-pointer text-[10px] font-extrabold uppercase tracking-wide px-2.5 py-1"
+                            >
+                              Open
+                            </button>
+                          )}
                         </td>
                       </tr>
                     )

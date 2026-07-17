@@ -51,19 +51,33 @@ export const spendReceiveApi = {
   async listSpendReceive(orgId: string, type?: 'Spend' | 'Receive'): Promise<SpendReceiveMoney[]> {
     const params = new URLSearchParams({ org_id: orgId })
     if (type) params.set('type', type)
-    return request(`/ledger/spend-receive/?${params}`)
+    return request(`/spend-receive/?${params}`)
   },
 
   async createSpendReceive(orgId: string, payload: CreateSpendReceivePayload): Promise<SpendReceiveMoney> {
-    return request(`/ledger/spend-receive/?org_id=${orgId}`, {
+    return request(`/spend-receive/?org_id=${orgId}`, {
       method: 'POST',
       body: JSON.stringify(payload),
     })
   },
 
   async deleteSpendReceive(orgId: string, id: string): Promise<void> {
-    return request(`/ledger/spend-receive/${id}/?org_id=${orgId}`, {
+    return request(`/spend-receive/${id}/?org_id=${orgId}`, {
       method: 'DELETE',
+    })
+  },
+
+  async transferMoney(orgId: string, payload: {
+    from_account_id: string
+    to_account_id: string
+    amount: number
+    date: string
+    reference?: string
+    currency?: string
+  }): Promise<{ from_account: string; to_account: string; amount: number }> {
+    return request(`/transfer-money/?org_id=${orgId}`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
     })
   },
 }
