@@ -8,6 +8,7 @@ import { ShareModal } from '../../components/ShareModal'
 import { usePopup } from '../../components/PopupProvider'
 import { XeroDatePicker } from '../../components/XeroDatePicker'
 import type { TabId } from '../../types/tabs'
+import { TransactionCurrencyModal } from '../../components/TransactionCurrencyModal'
 
 // PDF generation is processed via backend Django endpoints
 
@@ -71,6 +72,21 @@ export function CreateInvoiceTab({
   const [status, setStatus] = useState<'Draft' | 'Awaiting Approval' | 'Awaiting Payment' | 'Paid'>('Draft')
   const [currency, setCurrency] = useState(activeOrg.currency || 'USD')
   const [taxType, setTaxType] = useState<'Inclusive' | 'Exclusive' | 'No Tax'>('Exclusive')
+  const [pendingCurrency, setPendingCurrency] = useState<string | null>(null)
+  const [pendingSaveParams, setPendingSaveParams] = useState<{
+    statusUpdate?: 'Draft' | 'Awaiting Approval' | 'Awaiting Payment' | 'Paid'
+    isEmailing?: boolean
+    silent?: boolean
+  } | null>(null)
+
+  const handleCurrencyChangeConfirm = async (rate: number) => {
+    if (!pendingSaveParams || !pendingCurrency) return
+    const { statusUpdate, isEmailing, silent } = pendingSaveParams
+    const saveCurrency = pendingCurrency
+    setPendingSaveParams(null)
+    setPendingCurrency(null)
+    await executeSaveInvoice(statusUpdate, isEmailing || false, silent || false, rate, saveCurrency)
+  }
   const [selectedProjectId, setSelectedProjectId] = useState('')
   const [notes, setNotes] = useState('')
   const [attachmentName, setAttachmentName] = useState('')
@@ -676,6 +692,7 @@ export function CreateInvoiceTab({
   }
 
   // Save / Update invoice
+  // Save / Update invoice
   const handleSaveInvoice = async (
     statusUpdate?: 'Draft' | 'Awaiting Approval' | 'Awaiting Payment' | 'Paid',
     isEmailing: boolean = false,
@@ -685,11 +702,31 @@ export function CreateInvoiceTab({
       return null
     }
 
+    const finalStatus = statusUpdate || status
+
+    // If saving as Draft, or selected currency is the default currency, save immediately in default currency (no conversion)
+    if (finalStatus === 'Draft' || currency === activeOrg.currency) {
+      return executeSaveInvoice(finalStatus, isEmailing, silent, 1, activeOrg.currency)
+    }
+
+    // Otherwise, we are posting a transaction in a different currency! Intercept and show the popup modal.
+    setPendingSaveParams({ statusUpdate: finalStatus, isEmailing, silent })
+    setPendingCurrency(currency)
+    return null
+  }
+
+  const executeSaveInvoice = async (
+    statusUpdate: 'Draft' | 'Awaiting Approval' | 'Awaiting Payment' | 'Paid',
+    isEmailing: boolean,
+    silent: boolean,
+    rate: number,
+    saveCurrency: string
+  ): Promise<string | null> => {
     setIsSubmitting(true)
 
     const postLines = lines.map(l => {
       const q = Number(l.quantity) || 0
-      const u = Number(l.unitPrice) || 0
+      const u = (Number(l.unitPrice) || 0) / rate
       const d = Number(l.discount) || 0
       const lineTotal = q * u * (1 - d / 100)
 
@@ -702,28 +739,27 @@ export function CreateInvoiceTab({
         item: l.itemId ? l.itemId : null,
         description: l.description,
         quantity: q,
-        unit_price: u,
+        unit_price: Number(u.toFixed(2)),
         discount: d,
         account: l.accountId || fallbackAcc,
         tax_rate: l.taxRateId || fallbackTax,
-        total: lineTotal
+        total: Number(lineTotal.toFixed(2))
       }
     })
 
-    const finalStatus = statusUpdate || status
     const payload: Partial<Invoice> = {
       contact: selectedContactId,
       invoice_number: invoiceNumber,
       reference,
       date,
       due_date: dueDate,
-      status: finalStatus,
-      currency,
+      status: statusUpdate,
+      currency: activeOrg.currency || 'USD',
       tax_type: taxType,
       project: selectedProjectId || null,
-      subtotal: getSubtotal(),
-      tax_total: getTaxTotal(),
-      total: getGrandTotal(),
+      subtotal: Number((getSubtotal() / rate).toFixed(2)),
+      tax_total: Number((getTaxTotal() / rate).toFixed(2)),
+      total: Number((getGrandTotal() / rate).toFixed(2)),
       lines: postLines as any
     }
 
@@ -759,17 +795,17 @@ export function CreateInvoiceTab({
       
       if (!silent) {
         showAlert({ title: 'Invoice Created', message: `Invoice ${invoiceNumber} has been created successfully.`, type: 'success' })
-        if (isEmailing) {
-          setInvoiceDbId(created.id || null)
+        if (isEmailing && created && created.id) {
+          setInvoiceDbId(created.id)
           setIsEmailModalOpen(true)
         } else {
           if (setEditingInvoiceId) setEditingInvoiceId(null)
           setActiveTab('Invoices')
         }
       } else {
-        setInvoiceDbId(created.id || null)
+        setInvoiceDbId(created?.id || null)
       }
-      return created.id || null
+      return created?.id || null
     } catch (err: any) {
       showAlert({ title: 'Save Error', message: "An error occurred while saving the invoice: " + (err.message || "Please check if the invoice number is unique."), type: 'error' })
       return null
@@ -1015,7 +1051,7 @@ export function CreateInvoiceTab({
     }
   }
 
-  const currencySymbol = getCurrencySymbol(currency)
+  const currencySymbol = getCurrencySymbol(activeOrg.currency || 'USD')
 
   // Map choices for searchable select inputs
   const clientOptions = contacts.map(c => ({
@@ -2582,6 +2618,14 @@ export function CreateInvoiceTab({
             </div>
           </div>
         </div>
+      )}
+      {pendingCurrency && (
+        <TransactionCurrencyModal
+          baseCurrency={activeOrg.currency || 'USD'}
+          newCurrency={pendingCurrency}
+          onClose={() => setPendingCurrency(null)}
+          onConfirm={handleCurrencyChangeConfirm}
+        />
       )}
     </div>
   )

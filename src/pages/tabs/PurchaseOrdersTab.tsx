@@ -132,7 +132,18 @@ export function PurchaseOrdersTab({
   }
 
   // Filter & Sort
-  const currencySymbol = activeOrg.currency === 'PKR' ? '₨' : '$'
+  const getCurrencySymbol = (curr: string) => {
+    switch (curr) {
+      case 'PKR': return '₨'
+      case 'USD': return '$'
+      case 'EUR': return '€'
+      case 'GBP': return '£'
+      case 'AUD': return 'A$'
+      case 'CAD': return 'C$'
+      case 'SGD': return 'S$'
+      default: return '$'
+    }
+  }
 
   const filteredPOs = purchaseOrders.filter(po => {
     const matchesSearch =
@@ -317,7 +328,7 @@ export function PurchaseOrdersTab({
                       <td className="p-3 text-slate-400 italic max-w-[100px] truncate">{po.reference || "-"}</td>
                       <td className="p-3 whitespace-nowrap">{po.date}</td>
                       <td className="p-3 whitespace-nowrap">{po.expiry_date}</td>
-                      <td className="p-3 text-right font-bold text-slate-800">{currencySymbol}{Number(po.total).toFixed(2)}</td>
+                      <td className="p-3 text-right font-bold text-slate-800">{getCurrencySymbol(po.currency || activeOrg.currency || 'USD')}{Number(po.total).toFixed(2)}</td>
                       <td className="p-3 text-center whitespace-nowrap">
                         <span className={`text-[9px] font-extrabold px-2 py-0.5 rounded-full ${po.status === 'Approved' ? 'bg-emerald-50 text-emerald-600 border border-emerald-100/30' :
                             po.status === 'Awaiting Approval' ? 'bg-amber-50 text-amber-600 border border-amber-100/30' :

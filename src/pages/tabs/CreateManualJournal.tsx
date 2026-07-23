@@ -6,6 +6,7 @@ import { usePopup } from '../../components/PopupProvider'
 import { XeroDatePicker } from '../../components/XeroDatePicker'
 import { SearchableInput } from '../../components/SearchableInput'
 import type { TabId } from '../../types/tabs'
+import { TransactionCurrencyModal } from '../../components/TransactionCurrencyModal'
 
 interface CreateManualJournalProps {
   activeOrg: Organization
@@ -36,6 +37,14 @@ export function CreateManualJournal({
   const [date, setDate] = useState(new Date().toISOString().split('T')[0])
   const [reference, setReference] = useState('')
   const [currency, setCurrency] = useState(activeOrg.currency || 'USD')
+  const [pendingCurrency, setPendingCurrency] = useState<string | null>(null)
+
+  const handleCurrencyChangeConfirm = async (rate: number) => {
+    if (!pendingCurrency) return
+    const saveCurrency = pendingCurrency
+    setPendingCurrency(null)
+    await executePostJournal(rate, saveCurrency)
+  }
   
   const [lines, setLines] = useState<JournalLineItem[]>([
     { id: '1', description: '', accountId: '', debit: '', credit: '' },
@@ -130,18 +139,27 @@ export function CreateManualJournal({
       return
     }
 
+    if (currency !== activeOrg.currency) {
+      setPendingCurrency(currency)
+      return
+    }
+
+    await executePostJournal(1, activeOrg.currency)
+  }
+
+  const executePostJournal = async (rate: number, saveCurrency: string) => {
     setIsSubmitting(true)
     try {
       await apiService.createManualJournal(activeOrg.id, {
         narration,
         date,
         reference,
-        currency,
+        currency: saveCurrency,
         lines: lines.map(l => ({
           account_id: l.accountId,
           description: l.description || narration,
-          debit: l.debit === '' ? 0 : Number(l.debit),
-          credit: l.credit === '' ? 0 : Number(l.credit),
+          debit: l.debit === '' ? 0 : Number((Number(l.debit) * rate).toFixed(2)),
+          credit: l.credit === '' ? 0 : Number((Number(l.credit) * rate).toFixed(2)),
         })),
       })
       showAlert({
@@ -157,7 +175,17 @@ export function CreateManualJournal({
     }
   }
 
-  const currencySymbol = activeOrg.currency === 'PKR' ? '₨' : '$'
+  const getCurrencySymbol = (code: string) => {
+    switch (code) {
+      case 'PKR': return '₨'
+      case 'EUR': return '€'
+      case 'GBP': return '£'
+      case 'SGD': return 'S$'
+      case 'AUD': return 'A$'
+      default: return '$'
+    }
+  }
+  const currencySymbol = getCurrencySymbol(activeOrg.currency || 'USD')
   const getCategorizedAccountOptions = (accountsList: Account[]) => {
     const sales = accountsList.filter(a => a.type !== 'Bank' && a.class_type === 'Revenue')
     const directCosts = accountsList.filter(a => a.type !== 'Bank' && a.type === 'Direct Costs')
@@ -450,6 +478,14 @@ export function CreateManualJournal({
           </div>
         </div>
       </form>
+      {pendingCurrency && (
+        <TransactionCurrencyModal
+          baseCurrency={activeOrg.currency || 'USD'}
+          newCurrency={pendingCurrency}
+          onClose={() => setPendingCurrency(null)}
+          onConfirm={handleCurrencyChangeConfirm}
+        />
+      )}
     </div>
   )
 }

@@ -374,7 +374,18 @@ export function InvoicesTab({
   }
 
   // Filter & Sort Application
-  const currencySymbol = activeOrg.currency === 'PKR' ? '₨' : '$'
+  const getCurrencySymbol = (curr: string) => {
+    switch (curr) {
+      case 'PKR': return '₨'
+      case 'USD': return '$'
+      case 'EUR': return '€'
+      case 'GBP': return '£'
+      case 'AUD': return 'A$'
+      case 'CAD': return 'C$'
+      case 'SGD': return 'S$'
+      default: return '$'
+    }
+  }
 
   const filteredInvoices = invoices.filter(inv => {
     const matchesSearch = 
@@ -574,7 +585,7 @@ export function InvoicesTab({
                        <td className="p-3 text-slate-400 italic max-w-[100px] truncate">{inv.reference || "-"}</td>
                        <td className="p-3 whitespace-nowrap">{inv.date}</td>
                        <td className="p-3 whitespace-nowrap">{inv.due_date}</td>
-                       <td className="p-3 text-right font-bold text-slate-800">{currencySymbol}{Number(inv.total).toFixed(2)}</td>
+                       <td className="p-3 text-right font-bold text-slate-800">{getCurrencySymbol(inv.currency || activeOrg.currency || 'USD')}{Number(inv.total).toFixed(2)}</td>
                        <td className="p-3 text-center whitespace-nowrap">
                          <span className={`text-[9px] font-extrabold px-2 py-0.5 rounded-full ${
                            inv.status === 'Paid' ? 'bg-emerald-50 text-emerald-600 border border-emerald-100/30' :

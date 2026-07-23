@@ -5,6 +5,7 @@ import type { Organization, Account, Contact, TaxRate, Item } from '../../servic
 import { SearchableInput } from '../../components/SearchableInput'
 import { usePopup } from '../../components/PopupProvider'
 import { XeroDatePicker } from '../../components/XeroDatePicker'
+import { TransactionCurrencyModal } from '../../components/TransactionCurrencyModal'
 import type { TabId } from '../../types/tabs'
 
 interface CreateSpendReceiveMoneyProps {
@@ -53,6 +54,14 @@ export function CreateSpendReceiveMoney({
   const [lines, setLines] = useState<LineFormItem[]>([
     { id: '1', itemId: '', description: '', quantity: '', unitPrice: '', accountId: '', taxRateId: '' }
   ])
+  const [pendingCurrency, setPendingCurrency] = useState<string | null>(null)
+
+  const handleCurrencyChangeConfirm = async (rate: number) => {
+    if (!pendingCurrency) return
+    const saveCurrency = pendingCurrency
+    setPendingCurrency(null)
+    await executeSaveTransaction(rate, saveCurrency)
+  }
 
   const loadData = async () => {
     setLoading(true)
@@ -194,6 +203,15 @@ export function CreateSpendReceiveMoney({
       return
     }
 
+    if (currency !== activeOrg.currency) {
+      setPendingCurrency(currency)
+      return
+    }
+
+    await executeSaveTransaction(1, activeOrg.currency)
+  }
+
+  const executeSaveTransaction = async (rate: number, saveCurrency: string) => {
     setIsSubmitting(true)
     try {
       const payload = {
@@ -202,12 +220,12 @@ export function CreateSpendReceiveMoney({
         contact_id: selectedContactId || null,
         date,
         reference,
-        currency,
+        currency: activeOrg.currency || 'USD',
         tax_type: taxType,
         lines: lines.map(l => ({
           description: l.description,
           quantity: Number(l.quantity),
-          unit_price: Number(l.unitPrice),
+          unit_price: Number((Number(l.unitPrice) / rate).toFixed(2)),
           account_id: l.accountId,
           tax_rate_id: l.taxRateId || null,
         })),
@@ -227,7 +245,17 @@ export function CreateSpendReceiveMoney({
   }
 
   const selectedBank = bankAccounts.find(b => b.id === selectedBankId)
-  const currencySymbol = activeOrg.currency === 'PKR' ? '₨' : '$'
+  const getCurrencySymbol = (code: string) => {
+    switch (code) {
+      case 'PKR': return '₨'
+      case 'EUR': return '€'
+      case 'GBP': return '£'
+      case 'SGD': return 'S$'
+      case 'AUD': return 'A$'
+      default: return '$'
+    }
+  }
+  const currencySymbol = getCurrencySymbol(activeOrg.currency || 'USD')
 
   const contactOptions = contacts.map(c => ({
     value: c.id,
@@ -616,6 +644,14 @@ export function CreateSpendReceiveMoney({
             </div>
           </div>
         </form>
+      )}
+      {pendingCurrency && (
+        <TransactionCurrencyModal
+          baseCurrency={activeOrg.currency || 'USD'}
+          newCurrency={pendingCurrency}
+          onClose={() => setPendingCurrency(null)}
+          onConfirm={handleCurrencyChangeConfirm}
+        />
       )}
     </div>
   )

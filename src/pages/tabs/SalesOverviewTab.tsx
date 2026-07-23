@@ -45,7 +45,19 @@ export function SalesOverviewTab({
     loadOverviewData()
   }, [activeOrg.id])
 
-  const currencySymbol = activeOrg.currency === 'PKR' ? '₨' : '$'
+  const getCurrencySymbol = (curr: string) => {
+    switch (curr) {
+      case 'PKR': return '₨'
+      case 'USD': return '$'
+      case 'EUR': return '€'
+      case 'GBP': return '£'
+      case 'AUD': return 'A$'
+      case 'CAD': return 'C$'
+      case 'SGD': return 'S$'
+      default: return '$'
+    }
+  }
+  const currencySymbol = getCurrencySymbol(activeOrg.currency || 'USD')
 
   // Calculations
   const draftInvoices = invoices.filter(i => i.status === 'Draft')
@@ -224,7 +236,7 @@ export function SalesOverviewTab({
                         <p className="text-slate-400 text-[10px] font-semibold">{inv.invoice_number} • Due {inv.due_date}</p>
                       </div>
                       <div className="text-right shrink-0">
-                        <p className="font-bold text-slate-800">{currencySymbol}{Number(inv.total).toFixed(2)}</p>
+                        <p className="font-bold text-slate-800">{getCurrencySymbol(inv.currency || activeOrg.currency || 'USD')}{Number(inv.total).toFixed(2)}</p>
                         <span className={`text-[9px] font-extrabold px-2 py-0.5 rounded-full ${
                           inv.status === 'Paid' ? 'bg-emerald-50 text-emerald-600' :
                           inv.status === 'Draft' ? 'bg-slate-100 text-slate-500' : 'bg-amber-50 text-amber-600'
@@ -264,7 +276,7 @@ export function SalesOverviewTab({
                         <p className="text-slate-400 text-[10px] font-semibold">{q.quote_number} • Exp {q.expiry_date}</p>
                       </div>
                       <div className="text-right shrink-0">
-                        <p className="font-bold text-slate-800">{currencySymbol}{Number(q.total).toFixed(2)}</p>
+                        <p className="font-bold text-slate-800">{getCurrencySymbol(q.currency || activeOrg.currency || 'USD')}{Number(q.total).toFixed(2)}</p>
                         <span className={`text-[9px] font-extrabold px-2 py-0.5 rounded-full ${
                           q.status === 'Accepted' ? 'bg-emerald-50 text-emerald-600' :
                           q.status === 'Draft' ? 'bg-slate-100 text-slate-500' : 'bg-blue-50 text-blue-600'

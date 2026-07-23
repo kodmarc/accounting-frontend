@@ -70,4 +70,12 @@ export const organizationsApi = {
   async acceptInvitation(token: string): Promise<{ message: string; membership: Membership }> {
     return request(`/invitations/${token}/accept/`, { method: 'POST' })
   },
+
+  async changeCurrency(orgId: string, newCurrency: string, exchangeRate: number) {
+  return request(`/organizations/${orgId}/change-currency/`, {
+    method: 'POST',
+    body: JSON.stringify({ new_currency: newCurrency, exchange_rate: exchangeRate }),
+  })
 }
+}
+

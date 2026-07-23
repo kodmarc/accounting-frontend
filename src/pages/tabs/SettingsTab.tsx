@@ -19,6 +19,7 @@ import { apiService } from '../../services/api'
 import type { Organization, SalesSetting, TaxRate } from '../../services/api'
 import { TaxRatesTab } from './TaxRatesTab'
 import { OrgUsersTab } from './OrgUsersTab'
+import { ChangeCurrencyModal } from '../../components/ChangeCurrencyModal'
 import type { SettingsTabId } from '../../types/tabs'
 
 interface SettingsTabProps {
@@ -61,6 +62,11 @@ export function SettingsTab({
   const [orgCountry, setOrgCountry] = useState(activeOrg.country)
   const [orgCurrency, setOrgCurrency] = useState(activeOrg.currency)
   const [orgTaxId, setOrgTaxId] = useState(activeOrg.tax_id)
+  const [pendingCurrency, setPendingCurrency] = useState<string | null>(null)
+
+  useEffect(() => {
+    setOrgCurrency(activeOrg.currency)
+  }, [activeOrg.currency])
   
   // Expanded general profile details
   const [orgEmail, setOrgEmail] = useState('')
@@ -221,6 +227,31 @@ export function SettingsTab({
   // ----------------------------------------------------
 
   // Save General settings
+  // Save General settings
+  const executeSaveGeneral = async () => {
+    setIsSaving(true)
+    try {
+      // 1. PATCH org_extensions to DB
+      const extensions = { email: orgEmail, phone: orgPhone, website: orgWebsite, address: orgAddress }
+      await apiService.updateOrgSettings(activeOrg.id, { org_extensions: extensions })
+
+      // 2. PUT core org fields
+      const updated = await apiService.updateOrganization(
+        activeOrg.id,
+        orgName,
+        orgCountry,
+        activeOrg.currency,
+        orgTaxId
+      )
+      if (onOrgUpdate) onOrgUpdate(updated)
+      setSuccessMsg("Organization details saved successfully!")
+    } catch (err: any) {
+      setErrorMsg(err.message || "Failed to update organization profile.")
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
   const handleSaveGeneral = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsSaving(true)
@@ -233,26 +264,13 @@ export function SettingsTab({
       return
     }
 
-    try {
-      // 1. PATCH org_extensions to DB
-      const extensions = { email: orgEmail, phone: orgPhone, website: orgWebsite, address: orgAddress }
-      await apiService.updateOrgSettings(activeOrg.id, { org_extensions: extensions })
-
-      // 2. PUT core org fields
-      const updated = await apiService.updateOrganization(
-        activeOrg.id,
-        orgName,
-        orgCountry,
-        orgCurrency,
-        orgTaxId
-      )
-      if (onOrgUpdate) onOrgUpdate(updated)
-      setSuccessMsg("Organization details saved successfully!")
-    } catch (err: any) {
-      setErrorMsg(err.message || "Failed to update organization profile.")
-    } finally {
+    if (orgCurrency !== activeOrg.currency) {
+      setPendingCurrency(orgCurrency)
       setIsSaving(false)
+      return
     }
+
+    await executeSaveGeneral()
   }
 
   // Save Sales settings
@@ -646,7 +664,9 @@ export function SettingsTab({
                   <select
                     id="orgCurrencySelect"
                     value={orgCurrency}
-                    onChange={e => setOrgCurrency(e.target.value)}
+                    onChange={e => {
+                      setOrgCurrency(e.target.value)
+                    }}
                     className="w-full bg-slate-50/50 hover:bg-slate-50 focus:bg-white text-slate-800 border border-slate-205 rounded-[3px] px-4 py-2.5 text-xs font-semibold focus:outline-none focus:border-[#0F5B38] transition duration-200 cursor-pointer"
                   >
                     <option value="SGD">SGD (S$)</option>
@@ -1623,7 +1643,22 @@ export function SettingsTab({
         </div>
 
       </div>
-
+          {pendingCurrency && (
+        <ChangeCurrencyModal
+          orgId={activeOrg.id}
+          baseCurrency={activeOrg.currency}
+          newCurrency={pendingCurrency}
+          onClose={() => {
+            setPendingCurrency(null)
+            setOrgCurrency(activeOrg.currency)
+          }}
+          onSuccess={async () => {
+            setPendingCurrency(null)
+            await executeSaveGeneral()
+            window.location.reload()
+          }}
+        />
+      )}
     </div>
 
     {/* Template Designer modal (full-screen overlay) */}

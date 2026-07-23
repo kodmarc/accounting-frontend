@@ -8,6 +8,7 @@ import { ShareModal } from '../../components/ShareModal'
 import { usePopup } from '../../components/PopupProvider'
 import { XeroDatePicker } from '../../components/XeroDatePicker'
 import type { TabId } from '../../types/tabs'
+import { TransactionCurrencyModal } from '../../components/TransactionCurrencyModal'
 
 interface CreatePurchaseOrderTabProps {
   activeOrg: Organization
@@ -54,6 +55,21 @@ export function CreatePurchaseOrderTab({
   const [isApproveDropdownOpen, setIsApproveDropdownOpen] = useState(false)
   const isReadOnly = status === 'Billed'
   const [currency, setCurrency] = useState(activeOrg.currency || 'USD')
+  const [pendingCurrency, setPendingCurrency] = useState<string | null>(null)
+  const [pendingSaveParams, setPendingSaveParams] = useState<{
+    targetStatus?: 'Draft' | 'Awaiting Approval' | 'Approved' | 'Billed' | 'Declined'
+    isEmailing?: boolean
+    silent?: boolean
+  } | null>(null)
+
+  const handleCurrencyChangeConfirm = async (rate: number) => {
+    if (!pendingSaveParams || !pendingCurrency) return
+    const { targetStatus, isEmailing, silent } = pendingSaveParams
+    const saveCurrency = pendingCurrency
+    setPendingSaveParams(null)
+    setPendingCurrency(null)
+    await executeSavePO(targetStatus, isEmailing || false, silent || false, rate, saveCurrency)
+  }
   const [taxType, setTaxType] = useState<'Inclusive' | 'Exclusive' | 'No Tax'>('Exclusive')
   const [selectedProjectId, setSelectedProjectId] = useState('')
   const [notes, setNotes] = useState('')
@@ -614,12 +630,33 @@ export function CreatePurchaseOrderTab({
     if (!validateForm()) {
       return null
     }
+
+    const finalStatus = targetStatus || status
+
+    // If saving as Draft, or selected currency is the default currency, save immediately in default currency (no conversion)
+    if (finalStatus === 'Draft' || currency === activeOrg.currency) {
+      return executeSavePO(finalStatus, isEmailing, silent, 1, activeOrg.currency)
+    }
+
+    // Otherwise, we are posting a transaction in a different currency! Intercept and show the popup modal.
+    setPendingSaveParams({ targetStatus: finalStatus, isEmailing, silent })
+    setPendingCurrency(currency)
+    return null
+  }
+
+  const executeSavePO = async (
+    targetStatus: 'Draft' | 'Awaiting Approval' | 'Approved' | 'Billed' | 'Declined' | undefined,
+    isEmailing: boolean,
+    silent: boolean,
+    rate: number,
+    saveCurrency: string
+  ): Promise<string | null> => {
     setIsSubmitting(true)
 
     try {
       const postLines = lines.map(l => {
         const q = Number(l.quantity) || 0
-        const u = Number(l.unitPrice) || 0
+        const u = (Number(l.unitPrice) || 0) / rate
         const d = Number(l.discount) || 0
         const lineTotal = q * u * (1 - d / 100)
 
@@ -632,11 +669,11 @@ export function CreatePurchaseOrderTab({
           item: l.itemId || null,
           description: l.description,
           quantity: q,
-          unit_price: u,
+          unit_price: Number(u.toFixed(2)),
           discount: d,
           account: l.accountId || fallbackAcc,
           tax_rate: l.taxRateId || fallbackTax,
-          total: lineTotal
+          total: Number(lineTotal.toFixed(2))
         }
       })
 
@@ -649,12 +686,12 @@ export function CreatePurchaseOrderTab({
         date,
         expiry_date: expiryDate,
         status: finalStatus,
-        currency,
+        currency: activeOrg.currency || 'USD',
         tax_type: taxType,
         project: selectedProjectId || null,
-        subtotal: getSubtotal(),
-        tax_total: getTaxTotal(),
-        total: getGrandTotal(),
+        subtotal: Number((getSubtotal() / rate).toFixed(2)),
+        tax_total: Number((getTaxTotal() / rate).toFixed(2)),
+        total: Number((getGrandTotal() / rate).toFixed(2)),
         lines: postLines
       }
 
@@ -891,7 +928,7 @@ export function CreatePurchaseOrderTab({
     }
   }
 
-  const currencySymbol = getCurrencySymbol(currency)
+  const currencySymbol = getCurrencySymbol(activeOrg.currency || 'USD')
 
   const clientOptions = contacts.map(c => ({
     value: c.id,
@@ -1070,14 +1107,14 @@ export function CreatePurchaseOrderTab({
             <div className="space-y-1">
               <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider">Generating PDF</h4>
               <p className="text-[10px] text-slate-400 font-semibold leading-relaxed">
-                Applying PO branding layouts, supplier tax specifications, and catalog details...
+                Applying purchase order template and layout settings...
               </p>
             </div>
           </div>
         </div>
       )}
 
-      {/* Page Header */}
+      {/* Page Header Back */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-100 pb-4 gap-4">
         <div className="flex items-center space-x-3">
           <button
@@ -1086,165 +1123,53 @@ export function CreatePurchaseOrderTab({
               setActiveTab('PurchaseOrders')
             }}
             className="p-2 hover:bg-slate-100 text-slate-500 hover:text-slate-800 rounded-[3px] transition duration-200 cursor-pointer"
-            title="Return to purchase orders"
+            title="Return to purchase orders list"
           >
             <ArrowLeft className="h-4.5 w-4.5" />
           </button>
           <div>
-            <span className="text-[10px] text-slate-400 font-normal uppercase tracking-widest block">Acquisitions Pipeline</span>
+            <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-widest block">Acquisitions Pipeline</span>
             <h2 className="text-xl font-bold text-slate-800 tracking-tight">
               {editingPoId ? `Purchase Order: ${poNumber}` : 'Create new purchase order'}
             </h2>
             {editingPoId && (
-              <span className={`inline-block text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider mt-1 border ${status === 'Approved' ? 'bg-emerald-50 text-emerald-600 border-emerald-100/30' :
-                  status === 'Billed' ? 'bg-indigo-50 text-indigo-600 border-indigo-100/30' :
-                    status === 'Declined' ? 'bg-rose-50 text-rose-600 border-rose-100/30' :
-                      'bg-slate-100 text-slate-500 border-slate-200/50'
-                }`}>
+              <span className={`inline-block text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider mt-1 border ${
+                status === 'Billed' ? 'bg-[#0F5B38]/10 text-[#0F5B38] border-[#0F5B38]/20' :
+                status === 'Approved' ? 'bg-blue-50 text-blue-600 border-blue-100/30' :
+                status === 'Awaiting Approval' ? 'bg-amber-50 text-amber-600 border-amber-100/30' :
+                status === 'Declined' ? 'bg-rose-50 text-rose-600 border-rose-100/30' :
+                'bg-slate-100 text-slate-500 border-slate-200/50'
+              }`}>
                 {status}
               </span>
             )}
           </div>
         </div>
-        <div className="flex items-center space-x-2.5 flex-wrap sm:justify-end gap-2">
 
+        <div className="flex items-center space-x-2.5 flex-wrap sm:justify-end gap-2">
           {!editingPoId ? (
             /* NEW PO MODE */
             <>
               <button
                 onClick={() => handleSavePO('Draft')}
                 disabled={isSubmitting}
-                className="bg-white hover:bg-slate-50 text-slate-700 hover:text-[#0F5B38] border border-slate-200 hover:border-slate-300 font-medium text-xs px-4.5 py-2 rounded-[3px] shadow-sm transition duration-200 cursor-pointer h-[38px] flex items-center justify-center disabled:bg-slate-50 disabled:text-slate-400"
+                className="bg-white hover:bg-slate-50 text-slate-700 hover:text-[#0F5B38] border border-slate-200 hover:border-slate-300 font-medium text-xs px-4.5 py-2 rounded-[3px] shadow-sm transition duration-200 cursor-pointer h-[38px] flex items-center justify-center disabled:bg-slate-50 disabled:text-slate-400 animate-fadeIn"
               >
                 Save as Draft
               </button>
 
               {renderApproveAndEmailButton()}
-
-              <div className="relative">
-                <button
-                  onClick={() => setIsMoreDropdownOpen(!isMoreDropdownOpen)}
-                  className="flex items-center justify-center bg-white hover:bg-slate-50 text-slate-500 hover:text-[#0F5B38] border border-slate-200 hover:border-slate-300 w-[38px] h-[38px] rounded-[3px] transition duration-200 cursor-pointer shadow-sm"
-                  title="More actions"
-                >
-                  <MoreVertical className="h-4.5 w-4.5" />
-                </button>
-                {isMoreDropdownOpen && (
-                  <>
-                    <div className="fixed inset-0 z-40" onClick={() => setIsMoreDropdownOpen(false)}></div>
-                    <div className="absolute right-0 mt-2 w-48 bg-white border border-slate-200 rounded-[3px] shadow-xl z-50 p-1.5 divide-y divide-slate-50 font-normal text-xs text-slate-700">
-                      <div className="py-1 space-y-0.5">
-                        <button
-                          onClick={() => {
-                            handleSavePO('Awaiting Approval')
-                            setIsMoreDropdownOpen(false)
-                          }}
-                          disabled={isSubmitting}
-                          className="w-full text-left px-4 py-2 hover:bg-slate-50 transition cursor-pointer text-slate-700 font-normal rounded-[3px]"
-                        >
-                          Submit for Approval
-                        </button>
-                        <button
-                          onClick={() => {
-                            showAlert({
-                              title: 'Save PDF',
-                              message: 'Please save the purchase order as a Draft or Approve it first before downloading PDF.',
-                              type: 'warning'
-                            })
-                            setIsMoreDropdownOpen(false)
-                          }}
-                          className="w-full text-left px-4 py-2 hover:bg-slate-50 transition cursor-pointer text-slate-700 font-normal rounded-[3px]"
-                        >
-                          Save PDF
-                        </button>
-                      </div>
-                    </div>
-                  </>
-                )}
-              </div>
             </>
           ) : (
             /* EDITING PO MODE */
             <>
-              {/* Draft PO */}
-              {status === 'Draft' && (
+              {/* Draft / Awaiting Approval Category */}
+              {(status === 'Draft' || status === 'Awaiting Approval') && (
                 <>
                   <button
-                    onClick={() => handleSavePO('Draft')}
+                    onClick={() => handleSavePO(status)}
                     disabled={isSubmitting}
-                    className="bg-white hover:bg-slate-50 text-slate-700 hover:text-[#0F5B38] border border-slate-200 hover:border-slate-300 font-medium text-xs px-4.5 py-2 rounded-[3px] shadow-sm transition duration-200 cursor-pointer h-[38px] flex items-center justify-center disabled:bg-slate-50 disabled:text-slate-400"
-                  >
-                    Save as Draft
-                  </button>
-
-                  {renderApproveAndEmailButton()}
-
-                  <div className="relative">
-                    <button
-                      onClick={() => setIsMoreDropdownOpen(!isMoreDropdownOpen)}
-                      className="flex items-center justify-center bg-white hover:bg-slate-50 text-slate-500 hover:text-[#0F5B38] border border-slate-200 hover:border-slate-300 w-[38px] h-[38px] rounded-[3px] transition duration-200 cursor-pointer shadow-sm"
-                      title="More actions"
-                    >
-                      <MoreVertical className="h-4.5 w-4.5" />
-                    </button>
-                    {isMoreDropdownOpen && (
-                      <>
-                        <div className="fixed inset-0 z-40" onClick={() => setIsMoreDropdownOpen(false)}></div>
-                        <div className="absolute right-0 mt-2 w-48 bg-white border border-slate-200 rounded-[3px] shadow-xl z-50 p-1.5 divide-y divide-slate-50 font-normal text-xs text-slate-700">
-                          <div className="py-1 space-y-0.5">
-                            <button
-                              onClick={() => {
-                                handleSavePO('Awaiting Approval')
-                                setIsMoreDropdownOpen(false)
-                              }}
-                              disabled={isSubmitting}
-                              className="w-full text-left px-4 py-2 hover:bg-slate-50 transition cursor-pointer text-slate-700 font-normal rounded-[3px]"
-                            >
-                              Submit for Approval
-                            </button>
-                            <button
-                              onClick={() => {
-                                handlePrintPDF()
-                                setIsMoreDropdownOpen(false)
-                              }}
-                              className="w-full text-left px-4 py-2 hover:bg-slate-50 transition cursor-pointer text-slate-700 font-normal rounded-[3px]"
-                            >
-                              Save PDF
-                            </button>
-                            <button
-                              onClick={() => {
-                                setIsMoreDropdownOpen(false)
-                                setIsShareModalOpen(true)
-                              }}
-                              className="w-full text-left px-4 py-2 hover:bg-slate-50 transition cursor-pointer text-slate-700 font-normal rounded-[3px]"
-                            >
-                              Share
-                            </button>
-                            <button
-                              onClick={() => {
-                                handleDeletePO()
-                                setIsMoreDropdownOpen(false)
-                              }}
-                              disabled={isSubmitting}
-                              className="w-full text-left px-4 py-2 hover:bg-rose-50 hover:text-rose-600 transition cursor-pointer text-rose-500 font-normal rounded-[3px]"
-                            >
-                              Delete
-                            </button>
-                          </div>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                </>
-              )}
-
-              {/* Awaiting Approval PO */}
-              {status === 'Awaiting Approval' && (
-                <>
-                  <button
-                    onClick={() => handleSavePO('Awaiting Approval')}
-                    disabled={isSubmitting}
-                    className="bg-white hover:bg-slate-50 text-slate-700 hover:text-[#0F5B38] border border-slate-200 hover:border-slate-300 font-medium text-xs px-4.5 py-2 rounded-[3px] shadow-sm transition duration-200 cursor-pointer h-[38px] flex items-center justify-center disabled:bg-slate-50 disabled:text-slate-400"
+                    className="bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 hover:border-slate-300 font-medium text-xs px-4.5 py-2 rounded-[3px] shadow-sm transition duration-200 cursor-pointer h-[38px] flex items-center justify-center disabled:bg-slate-50 disabled:text-slate-400"
                   >
                     Save
                   </button>
@@ -1254,7 +1179,7 @@ export function CreatePurchaseOrderTab({
                   <div className="relative">
                     <button
                       onClick={() => setIsMoreDropdownOpen(!isMoreDropdownOpen)}
-                      className="flex items-center justify-center bg-white hover:bg-slate-50 text-slate-550 hover:text-[#0F5B38] border border-slate-200 hover:border-slate-300 w-[38px] h-[38px] rounded-[3px] transition duration-200 cursor-pointer shadow-sm"
+                      className="flex items-center justify-center bg-white hover:bg-slate-50 text-slate-500 hover:text-[#0F5B38] border border-slate-200 hover:border-slate-300 w-[38px] h-[38px] rounded-[3px] transition duration-200 cursor-pointer shadow-sm"
                       title="More actions"
                     >
                       <MoreVertical className="h-4.5 w-4.5" />
@@ -1262,8 +1187,19 @@ export function CreatePurchaseOrderTab({
                     {isMoreDropdownOpen && (
                       <>
                         <div className="fixed inset-0 z-40" onClick={() => setIsMoreDropdownOpen(false)}></div>
-                        <div className="absolute right-0 mt-2 w-48 bg-white border border-slate-200 rounded-[3px] shadow-xl z-50 p-1.5 divide-y divide-slate-50 font-normal text-xs text-slate-700">
+                        <div className="absolute right-0 mt-2 w-48 bg-white border border-slate-200 rounded-[3px] shadow-xl z-50 p-1.5 divide-y divide-slate-50 font-normal text-xs text-slate-750">
                           <div className="py-1 space-y-0.5">
+                            {status === 'Draft' && (
+                              <button
+                                onClick={() => {
+                                  handleUpdateStatusOnTheSpot('Awaiting Approval')
+                                  setIsMoreDropdownOpen(false)
+                                }}
+                                className="w-full text-left px-4 py-2 hover:bg-slate-50 transition cursor-pointer text-slate-700 font-normal rounded-[3px]"
+                              >
+                                Submit for Approval
+                              </button>
+                            )}
                             <button
                               onClick={() => {
                                 handlePrintPDF()
@@ -1287,7 +1223,6 @@ export function CreatePurchaseOrderTab({
                                 handleDeletePO()
                                 setIsMoreDropdownOpen(false)
                               }}
-                              disabled={isSubmitting}
                               className="w-full text-left px-4 py-2 hover:bg-rose-50 hover:text-rose-600 transition cursor-pointer text-rose-500 font-normal rounded-[3px]"
                             >
                               Delete
@@ -1300,31 +1235,22 @@ export function CreatePurchaseOrderTab({
                 </>
               )}
 
-              {/* Approved PO */}
+              {/* Approved Category */}
               {status === 'Approved' && (
                 <>
-                  <button
-                    onClick={handlePrintPDF}
-                    className="bg-white hover:bg-slate-50 text-slate-700 hover:text-[#0F5B38] border border-slate-200 hover:border-slate-300 font-medium text-xs px-4.5 py-2 rounded-[3px] shadow-sm transition duration-200 cursor-pointer h-[38px] flex items-center justify-center space-x-1.5"
-                  >
-                    Save PDF
-                  </button>
-
                   <button
                     onClick={handleConvertToBillOnTheSpot}
                     disabled={isSubmitting}
                     className="bg-[#0F5B38] hover:brightness-105 text-white font-medium text-xs px-4.5 py-2 rounded-[3px] shadow-md transition duration-200 cursor-pointer disabled:brightness-90 flex items-center justify-center space-x-1.5 h-[38px]"
                   >
-                    {isSubmitting ? (
-                      <>
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        <span>Billing...</span>
-                      </>
-                    ) : (
-                      <span>Create Invoice</span>
-                    )}
+                    Copy to Bill
                   </button>
-
+                  <button
+                    onClick={handlePrintPDF}
+                    className="bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 hover:border-slate-300 font-medium text-xs px-4.5 py-2 rounded-[3px] shadow-sm transition duration-200 cursor-pointer h-[38px] flex items-center justify-center"
+                  >
+                    Save PDF
+                  </button>
                   <div className="relative">
                     <button
                       onClick={() => setIsMoreDropdownOpen(!isMoreDropdownOpen)}
@@ -1336,7 +1262,7 @@ export function CreatePurchaseOrderTab({
                     {isMoreDropdownOpen && (
                       <>
                         <div className="fixed inset-0 z-40" onClick={() => setIsMoreDropdownOpen(false)}></div>
-                        <div className="absolute right-0 mt-2 w-48 bg-white border border-slate-200 rounded-[3px] shadow-xl z-50 p-1.5 divide-y divide-slate-50 font-normal text-xs text-slate-700">
+                        <div className="absolute right-0 mt-2 w-48 bg-white border border-slate-200 rounded-[3px] shadow-xl z-50 p-1.5 divide-y divide-slate-50 font-normal text-xs text-slate-700 animate-scaleIn">
                           <div className="py-1 space-y-0.5">
                             <button
                               onClick={() => {
@@ -1345,21 +1271,7 @@ export function CreatePurchaseOrderTab({
                               }}
                               className="w-full text-left px-4 py-2 hover:bg-slate-50 transition cursor-pointer text-slate-700 font-normal rounded-[3px]"
                             >
-                              Send
-                            </button>
-                            <button
-                              onClick={() => handleUpdateStatusOnTheSpot('Draft')}
-                              disabled={isSubmitting}
-                              className="w-full text-left px-4 py-2 hover:bg-slate-50 transition cursor-pointer text-slate-700 font-normal rounded-[3px]"
-                            >
-                              Unmark as Approve
-                            </button>
-                            <button
-                              onClick={() => handleUpdateStatusOnTheSpot('Billed')}
-                              disabled={isSubmitting}
-                              className="w-full text-left px-4 py-2 hover:bg-slate-50 transition cursor-pointer text-slate-700 font-normal rounded-[3px]"
-                            >
-                              Mark as Billed
+                              Email
                             </button>
                             <button
                               onClick={() => {
@@ -1372,13 +1284,12 @@ export function CreatePurchaseOrderTab({
                             </button>
                             <button
                               onClick={() => {
-                                handleDeletePO()
+                                handleUpdateStatusOnTheSpot('Declined')
                                 setIsMoreDropdownOpen(false)
                               }}
-                              disabled={isSubmitting}
-                              className="w-full text-left px-4 py-2 hover:bg-rose-50 hover:text-rose-600 transition cursor-pointer text-rose-500 font-normal rounded-[3px]"
+                              className="w-full text-left px-4 py-2 hover:bg-slate-50 transition cursor-pointer text-slate-700 font-normal rounded-[3px]"
                             >
-                              Delete
+                              Mark as Declined
                             </button>
                           </div>
                         </div>
@@ -1388,119 +1299,29 @@ export function CreatePurchaseOrderTab({
                 </>
               )}
 
-              {/* Billed PO */}
-              {status === 'Billed' && (
+              {/* Billed or Declined Category */}
+              {(status === 'Billed' || status === 'Declined') && (
                 <>
                   <button
                     onClick={handlePrintPDF}
-                    className="bg-white hover:bg-slate-50 text-slate-700 hover:text-[#0F5B38] border border-slate-200 hover:border-slate-300 font-medium text-xs px-4.5 py-2 rounded-[3px] shadow-sm transition duration-200 cursor-pointer h-[38px] flex items-center justify-center space-x-1.5"
+                    className="bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 hover:border-slate-300 font-medium text-xs px-4.5 py-2 rounded-[3px] shadow-sm transition duration-200 cursor-pointer h-[38px] flex items-center justify-center"
                   >
                     Save PDF
                   </button>
-
                   <button
-                    onClick={() => {
-                      setIsEmailModalOpen(true)
-                    }}
-                    className="bg-white hover:bg-slate-50 text-slate-700 hover:text-[#0F5B38] border border-slate-200 hover:border-[#0F5B38] font-medium text-xs px-4.5 py-2 rounded-[3px] shadow-sm transition duration-200 cursor-pointer h-[38px] flex items-center justify-center"
+                    onClick={() => setIsShareModalOpen(true)}
+                    className="bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 hover:border-slate-300 font-medium text-xs px-4.5 py-2 rounded-[3px] shadow-sm transition duration-200 cursor-pointer h-[38px] flex items-center justify-center"
                   >
-                    Email
+                    Share
                   </button>
-
-                  <div className="relative">
+                  {status === 'Declined' && (
                     <button
-                      onClick={() => setIsMoreDropdownOpen(!isMoreDropdownOpen)}
-                      className="flex items-center justify-center bg-white hover:bg-slate-50 text-slate-550 border border-slate-200 hover:border-slate-300 w-[38px] h-[38px] rounded-[3px] transition duration-200 cursor-pointer shadow-sm"
-                      title="More actions"
+                      onClick={() => handleUpdateStatusOnTheSpot('Draft')}
+                      className="bg-[#0F5B38] hover:brightness-105 text-white font-medium text-xs px-4.5 py-2 rounded-[3px] shadow-md transition duration-200 cursor-pointer h-[38px] flex items-center justify-center"
                     >
-                      <MoreVertical className="h-4.5 w-4.5" />
+                      Unmark as Declined
                     </button>
-                    {isMoreDropdownOpen && (
-                      <>
-                        <div className="fixed inset-0 z-40" onClick={() => setIsMoreDropdownOpen(false)}></div>
-                        <div className="absolute right-0 mt-2 w-48 bg-white border border-slate-200 rounded-[3px] shadow-xl z-50 p-1.5 divide-y divide-slate-50 font-normal text-xs text-slate-700">
-                          <div className="py-1 space-y-0.5">
-                            <button
-                              onClick={() => {
-                                setIsMoreDropdownOpen(false)
-                                setIsShareModalOpen(true)
-                              }}
-                              className="w-full text-left px-4 py-2 hover:bg-slate-50 transition cursor-pointer text-slate-700 font-normal rounded-[3px]"
-                            >
-                              Share
-                            </button>
-                            <button
-                              onClick={() => {
-                                handleDeletePO()
-                                setIsMoreDropdownOpen(false)
-                              }}
-                              disabled={isSubmitting}
-                              className="w-full text-left px-4 py-2 hover:bg-rose-50 hover:text-rose-600 transition cursor-pointer text-rose-500 font-normal rounded-[3px]"
-                            >
-                              Delete
-                            </button>
-                          </div>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                </>
-              )}
-
-              {/* Fallback for Declined status */}
-              {status === 'Declined' && (
-                <>
-                  <button
-                    onClick={handlePrintPDF}
-                    className="bg-white hover:bg-slate-50 text-slate-700 hover:text-[#0F5B38] border border-slate-200 hover:border-slate-300 font-medium text-xs px-4.5 py-2 rounded-[3px] shadow-sm transition duration-200 cursor-pointer h-[38px] flex items-center justify-center space-x-1.5"
-                  >
-                    Save PDF
-                  </button>
-
-                  <div className="relative">
-                    <button
-                      onClick={() => setIsMoreDropdownOpen(!isMoreDropdownOpen)}
-                      className="flex items-center justify-center bg-white hover:bg-slate-50 text-slate-500 hover:text-[#0F5B38] border border-slate-200 hover:border-slate-300 w-[38px] h-[38px] rounded-[3px] transition duration-200 cursor-pointer shadow-sm"
-                      title="More actions"
-                    >
-                      <MoreVertical className="h-4.5 w-4.5" />
-                    </button>
-                    {isMoreDropdownOpen && (
-                      <>
-                        <div className="fixed inset-0 z-40" onClick={() => setIsMoreDropdownOpen(false)}></div>
-                        <div className="absolute right-0 mt-2 w-48 bg-white border border-slate-200 rounded-[3px] shadow-xl z-50 p-1.5 divide-y divide-slate-50 font-normal text-xs text-slate-700">
-                          <div className="py-1 space-y-0.5">
-                            <button
-                              onClick={() => handleUpdateStatusOnTheSpot('Draft')}
-                              disabled={isSubmitting}
-                              className="w-full text-left px-4 py-2 hover:bg-slate-50 transition cursor-pointer text-slate-700 font-normal rounded-[3px]"
-                            >
-                              Revert to Draft
-                            </button>
-                            <button
-                              onClick={() => {
-                                setIsMoreDropdownOpen(false)
-                                setIsShareModalOpen(true)
-                              }}
-                              className="w-full text-left px-4 py-2 hover:bg-slate-50 transition cursor-pointer text-slate-700 font-normal rounded-[3px]"
-                            >
-                              Share
-                            </button>
-                            <button
-                              onClick={() => {
-                                handleDeletePO()
-                                setIsMoreDropdownOpen(false)
-                              }}
-                              disabled={isSubmitting}
-                              className="w-full text-left px-4 py-2 hover:bg-rose-50 hover:text-rose-600 transition cursor-pointer text-rose-500 font-normal rounded-[3px]"
-                            >
-                              Delete
-                            </button>
-                          </div>
-                        </div>
-                      </>
-                    )}
-                  </div>
+                  )}
                 </>
               )}
             </>
@@ -1524,14 +1345,14 @@ export function CreatePurchaseOrderTab({
         </div>
       )}
 
-      {/* Main PO Form Wrapper */}
+      {/* Main Core PO Form Container */}
       <div id="printable-area" className="bg-white rounded-[3px] border border-slate-200 shadow-sm p-6 md:p-8 space-y-8">
-
+        
         {/* Form Metadata Section */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
           {/* Supplier select */}
           <div className="space-y-1.5 md:col-span-2">
-            <label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block">Supplier / Vendor</label>
+            <label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block">Supplier</label>
             <SearchableInput
               options={clientOptions}
               value={selectedContactId}
@@ -1552,8 +1373,9 @@ export function CreatePurchaseOrderTab({
                 setShowQuickContactModal(true)
               }}
               createNewLabel="Add new supplier"
-              className={`w-full text-slate-800 border rounded-[3px] px-3.5 py-2 text-[15px] font-normal focus:outline-none transition ${isReadOnly ? 'bg-slate-50 text-slate-400 cursor-not-allowed border-slate-200' : 'bg-white cursor-pointer border-slate-200 focus:border-[#0F5B38]'
-                } ${errors.contact ? 'border-rose-500 focus:border-rose-500 bg-rose-50/10' : ''}`}
+              className={`w-full bg-white text-slate-800 border rounded-[3px] px-3.5 py-2 text-[15px] font-normal focus:outline-none transition cursor-pointer ${
+                errors.contact ? 'border-rose-500 focus:border-rose-500 bg-rose-50/10' : 'border-slate-200 focus:border-[#0F5B38]'
+              }`}
             />
             {errors.contact && (
               <span className="text-rose-500 text-[11px] font-semibold block mt-1">{errors.contact}</span>
@@ -1586,9 +1408,9 @@ export function CreatePurchaseOrderTab({
 
           {/* Delivery Date */}
           <div className="space-y-1.5">
-            <label htmlFor="poDeliveryInput" className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block">Delivery Date</label>
+            <label htmlFor="poExpiryDateInput" className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block">Delivery Date</label>
             <XeroDatePicker
-              id="poDeliveryInput"
+              id="poExpiryDateInput"
               value={expiryDate}
               disabled={isReadOnly}
               onChange={(val) => {
@@ -1610,29 +1432,31 @@ export function CreatePurchaseOrderTab({
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-          {/* Autogenerated PO Serial */}
+          {/* PO Number Input */}
           <div className="space-y-1.5">
-            <label htmlFor="poNumberDisplay" className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block">PO Serial Reference</label>
+            <label htmlFor="poNumberInput" className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block">PO Number</label>
             <input
-              id="poNumberDisplay"
+              id="poNumberInput"
               type="text"
-              readOnly
               value={poNumber}
-              className="w-full bg-slate-50 text-slate-500 border border-slate-200 rounded-[3px] px-3.5 py-2 text-[15px] font-normal focus:outline-none"
+              readOnly
+              className="w-full bg-slate-50 text-slate-400 cursor-not-allowed border border-slate-200 rounded-[3px] px-3.5 py-2 text-[15px] font-normal focus:outline-none"
             />
           </div>
 
           {/* Reference */}
           <div className="space-y-1.5">
-            <label htmlFor="referenceInput" className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block">Reference</label>
+            <label htmlFor="poRefInput" className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block">Reference</label>
             <input
-              id="referenceInput"
+              id="poRefInput"
               type="text"
-              placeholder=""
+              placeholder="e.g. Project-X"
               value={reference}
               readOnly={isReadOnly}
               onChange={e => setReference(e.target.value)}
-              className={`w-full text-slate-800 border border-slate-200 rounded-[3px] px-3.5 py-2 text-[15px] font-normal focus:outline-none transition ${isReadOnly ? 'bg-slate-50 text-slate-400 cursor-not-allowed border-slate-200' : 'bg-white focus:border-[#0F5B38]'}`}
+              className={`w-full bg-white text-slate-800 border border-slate-200 rounded-[3px] px-3.5 py-2 text-[15px] font-normal focus:outline-none focus:border-[#0F5B38] transition ${
+                isReadOnly ? 'bg-slate-50 text-slate-400 cursor-not-allowed border-slate-200' : ''
+              }`}
             />
           </div>
 
@@ -1642,10 +1466,10 @@ export function CreatePurchaseOrderTab({
             <SearchableInput
               options={currenciesList}
               value={currency}
-              onChange={setCurrency}
               disabled={isReadOnly}
+              onChange={setCurrency}
               placeholder=""
-              className={`w-full text-slate-800 border border-slate-200 rounded-[3px] px-3.5 py-2 text-[15px] font-normal focus:outline-none transition ${isReadOnly ? 'bg-slate-50 text-slate-400 cursor-not-allowed border-slate-200' : 'bg-white cursor-pointer focus:border-[#0F5B38]'}`}
+              className="w-full bg-white text-slate-800 border border-slate-200 rounded-[3px] px-3.5 py-2 text-[15px] font-normal focus:outline-none focus:border-[#0F5B38] transition cursor-pointer"
             />
           </div>
 
@@ -1654,9 +1478,11 @@ export function CreatePurchaseOrderTab({
             <label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block">Tax Type</label>
             <select
               value={taxType}
-              onChange={e => handleTaxTypeChange(e.target.value as 'Inclusive' | 'Exclusive' | 'No Tax')}
               disabled={isReadOnly}
-              className={`w-full text-slate-800 border border-slate-200 rounded-[3px] px-3.5 py-2 text-[15px] font-normal focus:outline-none transition h-[38px] ${isReadOnly ? 'bg-slate-50 text-slate-400 cursor-not-allowed border-slate-200' : 'bg-white cursor-pointer focus:border-[#0F5B38]'}`}
+              onChange={e => handleTaxTypeChange(e.target.value as 'Inclusive' | 'Exclusive' | 'No Tax')}
+              className={`w-full bg-white text-slate-800 border border-slate-200 rounded-[3px] px-3.5 py-2 text-[15px] font-normal focus:outline-none focus:border-[#0F5B38] transition cursor-pointer h-[38px] ${
+                isReadOnly ? 'bg-slate-50 text-slate-400 cursor-not-allowed border-slate-200' : ''
+              }`}
             >
               <option value="Exclusive">Tax Exclusive</option>
               <option value="Inclusive">Tax Inclusive</option>
@@ -1673,10 +1499,10 @@ export function CreatePurchaseOrderTab({
               <SearchableInput
                 options={projectOptions}
                 value={selectedProjectId}
-                onChange={setSelectedProjectId}
                 disabled={isReadOnly}
+                onChange={setSelectedProjectId}
                 placeholder="Search projects..."
-                className={`w-full text-slate-800 border border-slate-200 rounded-[3px] px-3.5 py-2 text-[15px] font-normal focus:outline-none transition ${isReadOnly ? 'bg-slate-50 text-slate-400 cursor-not-allowed border-slate-200' : 'bg-white cursor-pointer focus:border-[#0F5B38]'}`}
+                className="w-full bg-white text-slate-800 border border-slate-200 rounded-[3px] px-3.5 py-2 text-[15px] font-normal focus:outline-none focus:border-[#0F5B38] transition cursor-pointer"
               />
               {!isReadOnly && (
                 <button
@@ -1695,7 +1521,7 @@ export function CreatePurchaseOrderTab({
           </div>
         </div>
 
-        {/* Symmetrical Table Line Items Grid */}
+        {/* Horizontal Table Line Items Ledger */}
         <div className="space-y-3.5 pt-4">
           <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block border-b border-slate-100 pb-2">
             Line Items Catalog Ledger
@@ -1717,279 +1543,253 @@ export function CreatePurchaseOrderTab({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200 text-xs font-normal text-slate-700">
-                {lines.map((line, idx) => {
-                  const q = line.quantity === '' ? 0 : Number(line.quantity)
-                  const u = line.unitPrice === '' ? 0 : Number(line.unitPrice)
-                  const d = line.discount === '' ? 0 : Number(line.discount)
-                  const lineTotal = q * u * (1 - d / 100)
+                {lines.map((line, idx) => (
+                  <tr key={line.id} className="hover:bg-slate-50/30 transition-colors">
+                    {/* Item Catalog Searchable Select */}
+                    <td className="p-0 border border-slate-200 align-middle">
+                      <SearchableInput
+                        options={catalogOptions}
+                        value={line.itemId}
+                        disabled={isReadOnly}
+                        onChange={(val) => handleCatalogSelect(idx, val)}
+                        placeholder=""
+                        onCreateNew={(el) => {
+                          lastActiveElementRef.current = el
+                          setQuickItemLineIndex(idx)
+                          setShowQuickItemModal(true)
+                        }}
+                        createNewLabel="Add new item"
+                        className="w-full bg-transparent text-slate-800 border-none rounded-none px-2.5 py-2.5 text-xs font-normal focus:outline-none focus:ring-0 cursor-pointer"
+                      />
+                    </td>
 
-                  return (
-                    <tr key={line.id} className="hover:bg-slate-50/30 transition-colors">
-                      {/* Item Catalog Searchable Select */}
-                      <td className="p-0 border border-slate-200 align-middle">
-                        <SearchableInput
-                          options={catalogOptions}
-                          value={line.itemId}
-                          disabled={isReadOnly}
-                          onChange={(val) => handleCatalogSelect(idx, val)}
-                          placeholder=""
-                          onCreateNew={(el) => {
-                            lastActiveElementRef.current = el
-                            setQuickItemLineIndex(idx)
-                            setShowQuickItemModal(true)
-                          }}
-                          createNewLabel="Add new item"
-                          className={`w-full bg-transparent border-none rounded-none px-2.5 py-2.5 text-xs font-normal focus:outline-none focus:ring-0 ${isReadOnly ? 'cursor-not-allowed text-slate-400' : 'cursor-pointer text-slate-800'}`}
-                        />
-                      </td>
+                    {/* Description */}
+                    <td className="p-0 border border-slate-200 align-middle">
+                      <input
+                        type="text"
+                        placeholder=""
+                        value={line.description}
+                        readOnly={isReadOnly}
+                        onChange={e => updateLineField(idx, 'description', e.target.value)}
+                        className={`w-full bg-transparent text-slate-800 border rounded-[3px] px-2.5 py-2.5 text-xs font-normal focus:outline-none transition ${isReadOnly ? 'cursor-not-allowed text-slate-400 bg-slate-50/10 border-transparent' :
+                          lineErrors[idx]?.description 
+                            ? 'border-rose-500 bg-rose-50/10' 
+                            : 'border-transparent focus:border-[#0F5B38]'
+                        }`}
+                      />
+                    </td>
 
-                      {/* Description */}
-                      <td className="p-0 border border-slate-200 align-middle">
-                        <input
-                          type="text"
-                          placeholder=""
-                          value={line.description}
-                          readOnly={isReadOnly}
-                          onChange={e => updateLineField(idx, 'description', e.target.value)}
-                          className={`w-full bg-transparent text-slate-800 border rounded-[3px] px-2.5 py-2.5 text-xs font-normal focus:outline-none transition ${isReadOnly ? 'cursor-not-allowed text-slate-400 bg-slate-50/10 border-transparent' : lineErrors[idx]?.description
+                    {/* Qty */}
+                    <td className="p-0 border border-slate-200 align-middle">
+                      <input
+                        type="number"
+                        min="1"
+                        value={line.quantity}
+                        readOnly={isReadOnly}
+                        onChange={e => updateLineField(idx, 'quantity', e.target.value === '' ? '' : Number(e.target.value))}
+                        className={`w-full bg-transparent text-slate-800 border rounded-[3px] px-2.5 py-2.5 text-xs font-normal text-center focus:outline-none transition ${
+                          isReadOnly 
+                            ? 'cursor-not-allowed text-slate-400 bg-slate-50/10 border-transparent' 
+                            : lineErrors[idx]?.quantity
                               ? 'border-rose-500 bg-rose-50/10'
                               : 'border-transparent focus:border-[#0F5B38]'
-                            }`}
-                        />
-                      </td>
+                        }`}
+                      />
+                    </td>
 
-                      {/* Qty */}
-                      <td className="p-0 border border-slate-200 align-middle">
-                        <input
-                          type="number"
-                          step="any"
-                          value={line.quantity}
-                          readOnly={isReadOnly}
-                          onChange={e => updateLineField(idx, 'quantity', e.target.value === '' ? '' : Number(e.target.value))}
-                          className={`w-full bg-transparent text-slate-800 border rounded-[3px] px-2.5 py-2.5 text-xs font-normal text-center focus:outline-none transition ${
-                            isReadOnly 
-                              ? 'cursor-not-allowed text-slate-400 bg-slate-50/10 border-transparent' 
-                              : lineErrors[idx]?.quantity
-                                ? 'border-rose-500 bg-rose-50/10'
-                                : 'border-transparent focus:border-[#0F5B38]'
-                          }`}
-                        />
-                      </td>
+                    {/* Unit Price */}
+                    <td className="p-0 border border-slate-200 align-middle">
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={line.unitPrice}
+                        readOnly={isReadOnly}
+                        onChange={e => updateLineField(idx, 'unitPrice', e.target.value === '' ? '' : Number(e.target.value))}
+                        className={`w-full bg-transparent text-slate-800 border rounded-[3px] px-2.5 py-2.5 text-xs font-normal text-right focus:outline-none transition ${isReadOnly ? 'cursor-not-allowed text-slate-400 bg-slate-50/10 border-transparent' :
+                          lineErrors[idx]?.unitPrice 
+                            ? 'border-rose-500 bg-rose-50/10' 
+                            : 'border-transparent focus:border-[#0F5B38]'
+                        }`}
+                      />
+                    </td>
 
-                      {/* Unit Price */}
-                      <td className="p-0 border border-slate-200 align-middle">
-                        <input
-                          type="number"
-                          step="any"
-                          value={line.unitPrice}
-                          readOnly={isReadOnly}
-                          onChange={e => updateLineField(idx, 'unitPrice', e.target.value === '' ? '' : Number(e.target.value))}
-                          className={`w-full bg-transparent text-slate-800 border rounded-[3px] px-2.5 py-2.5 text-xs font-normal text-right focus:outline-none transition ${isReadOnly ? 'cursor-not-allowed text-slate-400 bg-slate-50/10 border-transparent' : lineErrors[idx]?.unitPrice
-                              ? 'border-rose-500 bg-rose-50/10'
-                              : 'border-transparent focus:border-[#0F5B38]'
-                            }`}
-                        />
-                      </td>
+                    {/* Discount % */}
+                    <td className="p-0 border border-slate-200 align-middle">
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        step="0.01"
+                        placeholder=""
+                        value={line.discount}
+                        readOnly={isReadOnly}
+                        onChange={e => updateLineField(idx, 'discount', e.target.value === '' ? '' : Number(e.target.value))}
+                        className={`w-full bg-transparent text-slate-800 border border-transparent rounded-[3px] px-2.5 py-2.5 text-xs font-normal text-center focus:outline-none transition ${isReadOnly ? 'cursor-not-allowed text-slate-400 bg-slate-50/10' : 'focus:border-[#0F5B38]'}`}
+                      />
+                    </td>
 
-                      {/* Discount % */}
-                      <td className="p-0 border border-slate-200 align-middle">
-                        <input
-                          type="number"
-                          min="0"
-                          max="100"
-                          step="any"
-                          placeholder=""
-                          value={line.discount}
-                          readOnly={isReadOnly}
-                          onChange={e => updateLineField(idx, 'discount', e.target.value === '' ? '' : Number(e.target.value))}
-                          className={`w-full bg-transparent text-slate-800 border rounded-[3px] px-2.5 py-2.5 text-xs font-normal text-center focus:outline-none transition ${isReadOnly ? 'cursor-not-allowed text-slate-400 bg-slate-50/10 border-transparent' : 'border-transparent focus:border-[#0F5B38]'}`}
-                        />
-                      </td>
+                    {/* Account Searchable Select */}
+                    <td className="p-0 border border-slate-200 align-middle">
+                      <SearchableInput
+                        options={accountOptions}
+                        value={line.accountId}
+                        disabled={isReadOnly}
+                        onChange={(val) => updateLineField(idx, 'accountId', val)}
+                        placeholder=""
+                        className="w-full bg-transparent text-slate-800 border border-transparent rounded-[3px] px-2.5 py-2.5 text-xs font-normal focus:outline-none focus:border-[#0F5B38] transition cursor-pointer"
+                      />
+                    </td>
 
-                      {/* Expense Account Searchable Select */}
-                      <td className="p-0 border border-slate-200 align-middle">
-                        <SearchableInput
-                          options={accountOptions}
-                          value={line.accountId}
-                          disabled={isReadOnly}
-                          onChange={(val) => updateLineField(idx, 'accountId', val)}
-                          placeholder=""
-                          className={`w-full bg-transparent border rounded-[3px] px-2.5 py-2.5 text-xs font-normal focus:outline-none transition ${isReadOnly ? 'cursor-not-allowed text-slate-400 bg-slate-50/10 border-transparent' : 'cursor-pointer text-slate-800 border-transparent focus:border-[#0F5B38]'}`}
-                        />
-                      </td>
+                    {/* Tax Rate Searchable Select */}
+                    <td className="p-0 border border-slate-200 align-middle">
+                      <SearchableInput
+                        options={taxOptions}
+                        value={line.taxRateId}
+                        disabled={isReadOnly || taxType === 'No Tax'}
+                        onChange={(val) => updateLineField(idx, 'taxRateId', val)}
+                        placeholder=""
+                        className="w-full bg-transparent text-slate-800 border border-transparent rounded-[3px] px-2.5 py-2.5 text-xs font-normal focus:outline-none focus:border-[#0F5B38] transition cursor-pointer"
+                      />
+                    </td>
 
-                      {/* Tax Rate Searchable Select */}
-                      <td className="p-0 border border-slate-200 align-middle">
-                        <SearchableInput
-                          options={taxOptions}
-                          value={line.taxRateId}
-                          onChange={(val) => updateLineField(idx, 'taxRateId', val)}
-                          placeholder=""
-                          disabled={isReadOnly || taxType === 'No Tax'}
-                          className={`w-full bg-transparent border rounded-[3px] px-2.5 py-2.5 text-xs font-normal focus:outline-none transition ${isReadOnly || taxType === 'No Tax' ? 'cursor-not-allowed text-slate-400 bg-slate-50/10 border-transparent' : 'cursor-pointer text-slate-800 border-transparent focus:border-[#0F5B38]'}`}
-                        />
-                      </td>
+                    {/* Amount */}
+                    <td className="p-2 border border-slate-200 text-right align-middle font-semibold text-slate-800">
+                      {currencySymbol}
+                      {((Number(line.quantity) || 0) * (Number(line.unitPrice) || 0) * (1 - (Number(line.discount) || 0) / 100)).toFixed(2)}
+                    </td>
 
-                      {/* Line Total */}
-                      <td className="px-2.5 py-2.5 border border-slate-200 align-middle text-right font-normal text-slate-800 text-[12px]">
-                        {currencySymbol}{lineTotal.toFixed(2)}
+                    {/* Delete Line Button */}
+                    {!isReadOnly && (
+                      <td className="p-0 border border-slate-200 align-middle text-center">
+                        <button
+                          type="button"
+                          onClick={() => removeLineItem(idx)}
+                          className="text-slate-400 hover:text-rose-600 transition p-2 cursor-pointer disabled:opacity-30"
+                          disabled={lines.length <= 1}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
                       </td>
-
-                      {/* Action Trash & Plus */}
-                      {!isReadOnly && (
-                        <td className="p-0 border border-slate-200 align-middle text-center">
-                          <div className="flex items-center justify-center space-x-1.5 px-2">
-                            <button
-                              type="button"
-                              onClick={() => removeLineItem(idx)}
-                              className={`p-2 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-[3px] transition cursor-pointer inline-flex items-center justify-center ${lines.length === 1 ? 'opacity-20 cursor-not-allowed pointer-events-none' : ''
-                                }`}
-                              title="Remove item line"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={addLineItem}
-                              className="p-2 hover:bg-emerald-50 text-[#0F5B38] rounded-[3px] transition cursor-pointer inline-flex items-center justify-center focus:ring-2 focus:ring-emerald-500/20"
-                              title="Add item line"
-                            >
-                              <Plus className="h-4 w-4" />
-                            </button>
-                          </div>
-                        </td>
-                      )}
-                    </tr>
-                  )
-                })}
+                    )}
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
 
-          {/* Add Line Control Button */}
+          {/* Add Line Button */}
           {!isReadOnly && (
-            <div className="pt-2">
-              <button
-                onClick={addLineItem}
-                className="flex items-center space-x-1.5 bg-slate-50 hover:bg-slate-100 text-slate-655 font-bold text-[10px] px-4 py-2 border border-slate-200 rounded-[3px] transition cursor-pointer"
-              >
-                <Plus className="h-3.5 w-3.5 text-[#0F5B38]" />
-                <span>Add row</span>
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={addLineItem}
+              className="bg-white hover:bg-slate-50 text-slate-700 hover:text-[#0F5B38] border border-slate-200 hover:border-slate-300 font-semibold text-xs px-4 py-2 rounded-[3px] shadow-sm transition duration-200 cursor-pointer flex items-center space-x-1.5 h-[34px]"
+            >
+              <Plus className="h-4 w-4" />
+              <span>Add a new line</span>
+            </button>
           )}
         </div>
 
-        {/* Bottom notes, attachments, and calculation summary */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 border-t border-slate-100 pt-6">
-          {/* Bottom Left: Additional Notes & Optional Attachment */}
-          <div className="space-y-5">
-            {/* Notes Section */}
-            <div className="space-y-1.5">
-              <label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block">Additional Notes</label>
+        {/* Totals & Notes Section */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-6 border-t border-slate-100">
+          {/* Notes & File Attachments */}
+          <div className="space-y-6">
+            <div className="space-y-2">
+              <label htmlFor="poNotesInput" className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block">Notes / Terms</label>
               <textarea
+                id="poNotesInput"
+                placeholder="Include custom terms or details for the supplier..."
                 value={notes}
-                onChange={e => setNotes(e.target.value)}
                 readOnly={isReadOnly}
-                placeholder="Add any additional notes, terms, or conditions..."
+                onChange={e => setNotes(e.target.value)}
                 rows={3}
-                className={`w-full text-slate-800 border border-slate-200 rounded-[3px] px-3.5 py-2 text-xs font-normal focus:outline-none transition resize-none placeholder:text-slate-400 ${isReadOnly ? 'bg-slate-50 text-slate-400 cursor-not-allowed border-slate-200' : 'bg-white focus:border-[#0F5B38]'}`}
+                className={`w-full bg-white text-slate-800 border border-slate-200 rounded-[3px] px-3.5 py-2 text-xs font-normal focus:outline-none focus:border-[#0F5B38] transition resize-none ${
+                  isReadOnly ? 'bg-slate-50 text-slate-400 cursor-not-allowed border-slate-200' : ''
+                }`}
               />
             </div>
 
-            {/* File Attachment Section */}
-            <div className="space-y-1.5">
-              <label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block">Attachments (Optional)</label>
+            <div className="space-y-2">
+              <label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block">File Attachment</label>
               <div className="flex items-center space-x-3">
-                {!isReadOnly ? (
-                  <label className="bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 font-bold text-xs px-4 py-2.5 rounded-[3px] transition cursor-pointer select-none">
-                    <span>Choose File</span>
-                    <input
-                      type="file"
-                      disabled={isReadOnly}
-                      onChange={handleFileChange}
-                      className="hidden"
-                    />
-                  </label>
-                ) : null}
+                <label className={`cursor-pointer bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 hover:border-slate-300 px-4 py-2 rounded-[3px] text-xs font-semibold shadow-sm transition flex items-center space-x-1.5 h-[34px] ${isReadOnly ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                  <span>Browse File</span>
+                  <input
+                    type="file"
+                    className="hidden"
+                    disabled={isReadOnly}
+                    onChange={handleFileChange}
+                  />
+                </label>
                 {attachmentName ? (
-                  <div className="flex items-center space-x-2 text-xs text-slate-650 bg-slate-50 px-3 py-1.5 rounded-[3px] border border-slate-200 font-semibold font-normal">
-                    <span className="truncate max-w-[200px] font-semibold">{attachmentName}</span>
-                    {!isReadOnly && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setAttachmentName('')
-                          setAttachmentFile(null)
-                        }}
-                        className="text-rose-500 hover:text-rose-700 font-bold cursor-pointer ml-1"
-                      >
-                        ✕
-                      </button>
-                    )}
-                  </div>
-                ) : isReadOnly ? (
-                  <span className="text-xs text-slate-400 italic">No attachments</span>
+                  <span className="text-xs text-slate-600 font-medium truncate max-w-[200px]">
+                    {attachmentName}
+                  </span>
                 ) : (
-                  <span className="text-xs text-slate-400 italic">No file attached</span>
+                  <span className="text-xs text-slate-400 font-medium">No file attached</span>
                 )}
               </div>
             </div>
           </div>
 
-          {/* Bottom Right: Live calculations summary */}
-          <div className="space-y-2.5 max-w-[280px] ml-auto text-xs w-full">
-            <div className="flex justify-between text-slate-450 font-semibold">
+          {/* Totals Table */}
+          <div className="bg-slate-50/50 border border-slate-100 rounded-[3px] p-6 space-y-4 max-w-md ml-auto w-full">
+            <div className="flex justify-between text-xs text-slate-500 font-semibold">
               <span>Subtotal</span>
-              <span className="font-bold text-slate-800">{currencySymbol}{getSubtotal().toFixed(2)}</span>
+              <span>{currencySymbol}{getSubtotal().toFixed(2)}</span>
             </div>
-            <div className="flex justify-between text-slate-450 font-semibold">
-              <span>Tax Aggregate Total</span>
-              <span className="font-bold text-slate-800">{currencySymbol}{getTaxTotal().toFixed(2)}</span>
+
+            <div className="flex justify-between text-xs text-slate-500 font-semibold border-b border-slate-200/60 pb-3">
+              <span>Tax Total</span>
+              <span>{currencySymbol}{getTaxTotal().toFixed(2)}</span>
             </div>
-            <div className="flex justify-between text-slate-800 font-bold text-[15px] border-t border-slate-100 pt-3">
-              <span>Grand Total</span>
-              <span className="text-[#0F5B38] font-extrabold">{currencySymbol}{getGrandTotal().toFixed(2)}</span>
+
+            <div className="flex justify-between text-sm text-slate-800 font-extrabold pt-1">
+              <span>Total ({currency})</span>
+              <span>{currencySymbol}{getGrandTotal().toFixed(2)}</span>
             </div>
           </div>
         </div>
-
       </div>
 
-      {/* Inline Modal for Creating a New Project */}
+      {/* Create Project Modal */}
       {isCreateProjectOpen && (
-        <div className="fixed inset-0 z-[10000] flex items-center justify-center font-sans">
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center font-sans animate-fadeIn">
           <div
             className="fixed inset-0 bg-[#071f13]/35 backdrop-blur-md transition-opacity"
             onClick={() => setIsCreateProjectOpen(false)}
           ></div>
-          <div className="relative transform overflow-hidden bg-white text-left shadow-2xl transition-all w-full max-w-md p-6 space-y-6 mx-4 rounded-[3px] border border-slate-100 animate-scaleIn">
-            <div className="space-y-1.5">
-              <h3 className="text-base font-bold text-slate-850">Create New Project</h3>
-              <p className="text-slate-500 text-xs font-semibold leading-relaxed">Add a new tracking project to assign to your transactions.</p>
+          <div className="relative transform overflow-hidden bg-white text-left shadow-2xl transition-all w-full max-w-sm p-6 space-y-6 mx-4 rounded-[3px] border border-slate-100 animate-scaleIn">
+            <div className="space-y-1">
+              <h3 className="text-sm font-black text-slate-800 uppercase tracking-wider">Create New Project</h3>
+              <p className="text-[10px] text-slate-400 font-semibold leading-relaxed">Add a new client project container to allocate these purchase costs.</p>
             </div>
 
             <div className="space-y-4">
               <div className="space-y-1.5">
-                <label className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider block">Project Name</label>
+                <label htmlFor="newProjectNameInput" className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block">Project Name <span className="text-rose-500">*</span></label>
                 <input
+                  id="newProjectNameInput"
                   type="text"
+                  required
                   autoFocus
+                  placeholder="e.g. Apollo Website Development"
                   value={newProjectName}
                   onChange={e => setNewProjectName(e.target.value)}
-                  placeholder="e.g. Q4 Website Development"
-                  className="w-full bg-slate-50 border border-slate-200/80 rounded-[3px] px-3.5 py-2 text-xs font-normal focus:outline-none focus:border-[#0F5B38]"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-[3px] px-3.5 py-2 text-xs font-normal focus:outline-none focus:border-[#0F5B38]"
                 />
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider block">Project Code (Optional)</label>
+                <label htmlFor="newProjectCodeInput" className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block">Project Code / ID</label>
                 <input
+                  id="newProjectCodeInput"
                   type="text"
+                  placeholder="e.g. PROJ-APOLLO"
                   value={newProjectCode}
                   onChange={e => setNewProjectCode(e.target.value)}
-                  placeholder="e.g. PRJ-001"
-                  className="w-full bg-slate-50 border border-slate-200/80 rounded-[3px] px-3.5 py-2 text-xs font-normal focus:outline-none focus:border-[#0F5B38]"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-[3px] px-3.5 py-2 text-xs font-normal focus:outline-none focus:border-[#0F5B38]"
                 />
               </div>
             </div>
@@ -1998,14 +1798,14 @@ export function CreatePurchaseOrderTab({
               <button
                 type="button"
                 onClick={() => setIsCreateProjectOpen(false)}
-                className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200/50 text-slate-655 rounded-[3px] transition cursor-pointer text-xs font-semibold"
+                className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200/50 text-slate-660 rounded-[3px] transition cursor-pointer text-xs font-semibold"
               >
                 Cancel
               </button>
               <button
                 type="button"
                 onClick={handleCreateProject}
-                disabled={!newProjectName.trim()}
+                disabled={isSubmitting || !newProjectName.trim()}
                 className="px-5 py-2.5 rounded-[3px] shadow-md bg-[#0F5B38] hover:brightness-105 text-white transition text-xs font-medium cursor-pointer disabled:opacity-50"
               >
                 Create Project
@@ -2015,7 +1815,7 @@ export function CreatePurchaseOrderTab({
         </div>
       )}
 
-      {/* Inline Modal for Creating a New Contact */}
+      {/* Quick Contact Modal */}
       {showQuickContactModal && (
         <div className="fixed inset-0 z-[10000] flex items-center justify-center font-sans">
           <div
@@ -2028,7 +1828,7 @@ export function CreatePurchaseOrderTab({
           >
             <div className="space-y-1.5">
               <h3 className="text-base font-bold text-slate-850">Add New Supplier</h3>
-              <p className="text-slate-500 text-xs font-semibold leading-relaxed">Quickly create a new supplier vendor contact to assign to this purchase order.</p>
+              <p className="text-slate-500 text-xs font-semibold leading-relaxed">Quickly create a new supplier to assign to this purchase order.</p>
             </div>
 
             <div className="space-y-4">
@@ -2040,7 +1840,7 @@ export function CreatePurchaseOrderTab({
                   autoFocus
                   value={quickContactName}
                   onChange={e => setQuickContactName(e.target.value)}
-                  placeholder="e.g. Alibaba Logistics"
+                  placeholder="e.g. Acme Supplier Corp"
                   className="w-full bg-slate-50 border border-slate-200/80 rounded-[3px] px-3.5 py-2 text-xs font-normal focus:outline-none focus:border-[#0F5B38]"
                 />
               </div>
@@ -2052,7 +1852,7 @@ export function CreatePurchaseOrderTab({
                     type="text"
                     value={quickContactTaxNumber}
                     onChange={e => setQuickContactTaxNumber(e.target.value)}
-                    placeholder="e.g. Vendor Agent"
+                    placeholder="e.g. John Doe / NTN-123"
                     className="w-full bg-slate-50 border border-slate-200/80 rounded-[3px] px-3.5 py-2 text-xs font-normal focus:outline-none focus:border-[#0F5B38]"
                   />
                 </div>
@@ -2074,7 +1874,7 @@ export function CreatePurchaseOrderTab({
                   type="email"
                   value={quickContactEmail}
                   onChange={e => setQuickContactEmail(e.target.value)}
-                  placeholder="e.g. supply@alibaba.com"
+                  placeholder="e.g. billing@acme.com"
                   className="w-full bg-slate-50 border border-slate-200/80 rounded-[3px] px-3.5 py-2 text-xs font-normal focus:outline-none focus:border-[#0F5B38]"
                 />
               </div>
@@ -2084,7 +1884,7 @@ export function CreatePurchaseOrderTab({
                 <textarea
                   value={quickContactAddress}
                   onChange={e => setQuickContactAddress(e.target.value)}
-                  placeholder="e.g. 8 Shenton Way, Singapore"
+                  placeholder="e.g. 123 Business Rd, Suite 100, New York, NY 10001"
                   rows={2}
                   className="w-full bg-slate-50 border border-slate-200/80 rounded-[3px] px-3.5 py-2 text-xs font-normal focus:outline-none focus:border-[#0F5B38] resize-none"
                 />
@@ -2101,17 +1901,17 @@ export function CreatePurchaseOrderTab({
               </button>
               <button
                 type="submit"
-                disabled={isSubmitting}
+                disabled={isSubmitting || !quickContactName.trim()}
                 className="px-5 py-2.5 rounded-[3px] shadow-md bg-[#0F5B38] hover:brightness-105 text-white transition text-xs font-medium cursor-pointer disabled:opacity-50"
               >
-                Create Supplier
+                {isSubmitting ? 'Saving...' : 'Add Supplier'}
               </button>
             </div>
           </form>
         </div>
       )}
 
-      {/* Inline Modal for Creating a New Catalog Item */}
+      {/* Quick Item Modal */}
       {showQuickItemModal && (
         <div className="fixed inset-0 z-[10000] flex items-center justify-center font-sans">
           <div
@@ -2123,81 +1923,91 @@ export function CreatePurchaseOrderTab({
             className="relative transform overflow-hidden bg-white text-left shadow-2xl transition-all w-full max-w-md p-6 space-y-6 mx-4 rounded-[3px] border border-slate-100 animate-scaleIn"
           >
             <div className="space-y-1.5">
-              <h3 className="text-base font-bold text-slate-850">Create Procurement Catalog Item</h3>
-              <p className="text-slate-500 text-xs font-semibold leading-relaxed">Add a new item to purchase from catalog inventory list.</p>
+              <h3 className="text-base font-bold text-slate-850">Add New Item</h3>
+              <p className="text-slate-500 text-xs font-semibold leading-relaxed">Quickly create a new product or service catalog item.</p>
             </div>
 
             <div className="space-y-4">
-              <div className="space-y-4 grid grid-cols-2 gap-4 space-y-0">
+              <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
-                  <label className="text-[10px] text-slate-455 font-extrabold uppercase tracking-wider block">Item Code <span className="text-rose-500">*</span></label>
+                  <label className="text-[10px] text-slate-450 font-extrabold uppercase tracking-wider block">Item Code / SKU <span className="text-rose-500">*</span></label>
                   <input
                     type="text"
                     required
                     autoFocus
                     value={quickItemCode}
                     onChange={e => setQuickItemCode(e.target.value)}
-                    placeholder="e.g. SERV-HOST"
+                    placeholder="e.g. SERVER-CPU"
                     className="w-full bg-slate-50 border border-slate-200/80 rounded-[3px] px-3.5 py-2 text-xs font-normal focus:outline-none focus:border-[#0F5B38]"
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-[10px] text-slate-455 font-extrabold uppercase tracking-wider block">Item Display Name <span className="text-rose-500">*</span></label>
+                  <label className="text-[10px] text-slate-455 font-extrabold uppercase tracking-wider block">Item Name <span className="text-rose-500">*</span></label>
                   <input
                     type="text"
                     required
                     value={quickItemName}
                     onChange={e => setQuickItemName(e.target.value)}
-                    placeholder="e.g. Server Allocation"
+                    placeholder="e.g. Hosting CPU Resource"
                     className="w-full bg-slate-50 border border-slate-200/80 rounded-[3px] px-3.5 py-2 text-xs font-normal focus:outline-none focus:border-[#0F5B38]"
                   />
                 </div>
               </div>
 
-              <div className="space-y-4 grid grid-cols-2 gap-4 space-y-0">
+              <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
-                  <label className="text-[10px] text-slate-455 font-extrabold uppercase tracking-wider block">Procurement Cost ({activeOrg.currency || 'USD'})</label>
+                  <label className="text-[10px] text-slate-455 font-extrabold uppercase tracking-wider block">Purchase Unit Cost <span className="text-rose-500">*</span></label>
                   <input
                     type="number"
                     step="0.01"
+                    min="0"
+                    required
                     value={quickItemPrice}
                     onChange={e => setQuickItemPrice(e.target.value)}
+                    placeholder="0.00"
                     className="w-full bg-slate-50 border border-slate-200/80 rounded-[3px] px-3.5 py-2 text-xs font-normal focus:outline-none focus:border-[#0F5B38]"
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-[10px] text-slate-455 font-extrabold uppercase tracking-wider block">Default Purchase Tax</label>
+                  <label className="text-[10px] text-slate-455 font-extrabold uppercase tracking-wider block">Purchase Account <span className="text-rose-500">*</span></label>
                   <select
-                    value={quickItemTaxRateId}
-                    onChange={e => setQuickItemTaxRateId(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200/80 rounded-[3px] px-3.5 py-2 text-xs font-normal focus:outline-none focus:border-[#0F5B38] cursor-pointer"
+                    required
+                    value={quickItemAccountId}
+                    onChange={e => setQuickItemAccountId(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200/80 rounded-[3px] px-3.5 py-2 text-xs font-normal focus:outline-none focus:border-[#0F5B38] h-[36px]"
                   >
-                    {taxOptions.map(t => (
-                      <option key={t.value} value={t.value}>{t.label}</option>
+                    <option value="" disabled>Select Account</option>
+                    {accounts.filter(a => a.class_type === 'Expense' || a.type === 'Direct Costs').map(acc => (
+                      <option key={acc.id} value={acc.id}>
+                        {acc.code} - {acc.name}
+                      </option>
                     ))}
                   </select>
                 </div>
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-[10px] text-slate-450 font-extrabold uppercase tracking-wider block">Expense Ledger Account</label>
+                <label className="text-[10px] text-slate-455 font-extrabold uppercase tracking-wider block">Purchase Tax Rate</label>
                 <select
-                  value={quickItemAccountId}
-                  onChange={e => setQuickItemAccountId(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200/80 rounded-[3px] px-3.5 py-2 text-xs font-normal focus:outline-none focus:border-[#0F5B38] cursor-pointer"
+                  value={quickItemTaxRateId}
+                  onChange={e => setQuickItemTaxRateId(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200/80 rounded-[3px] px-3.5 py-2 text-xs font-normal focus:outline-none focus:border-[#0F5B38] h-[36px]"
                 >
-                  {accountOptions.map(a => (
-                    <option key={a.value} value={a.value}>{a.label}</option>
+                  <option value="">No Tax / Exempt</option>
+                  {taxRates.map(tr => (
+                    <option key={tr.id} value={tr.id}>
+                      {tr.name} ({tr.rate}%)
+                    </option>
                   ))}
                 </select>
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-[10px] text-slate-450 font-extrabold uppercase tracking-wider block">Description for Purchase Orders</label>
+                <label className="text-[10px] text-slate-455 font-extrabold uppercase tracking-wider block">Purchase Description</label>
                 <textarea
                   value={quickItemDescription}
                   onChange={e => setQuickItemDescription(e.target.value)}
-                  placeholder="Details showing on purchase bills..."
+                  placeholder="Describe this item for purchase orders and vendor bills..."
                   rows={2}
                   className="w-full bg-slate-50 border border-slate-200/80 rounded-[3px] px-3.5 py-2 text-xs font-normal focus:outline-none focus:border-[#0F5B38] resize-none"
                 />
@@ -2214,15 +2024,16 @@ export function CreatePurchaseOrderTab({
               </button>
               <button
                 type="submit"
-                disabled={isSubmitting}
+                disabled={isSubmitting || !quickItemCode.trim() || !quickItemName.trim()}
                 className="px-5 py-2.5 rounded-[3px] shadow-md bg-[#0F5B38] hover:brightness-105 text-white transition text-xs font-medium cursor-pointer disabled:opacity-50"
               >
-                Add Inventory Item
+                {isSubmitting ? 'Saving...' : 'Add Item'}
               </button>
             </div>
           </form>
         </div>
       )}
+
       {isShareModalOpen && editingPoId && (
         <ShareModal
           docType="purchase-order"
@@ -2331,6 +2142,14 @@ export function CreatePurchaseOrderTab({
           setActiveTab('PurchaseOrders')
         }}
       />
+      {pendingCurrency && (
+        <TransactionCurrencyModal
+          baseCurrency={activeOrg.currency || 'USD'}
+          newCurrency={pendingCurrency}
+          onClose={() => setPendingCurrency(null)}
+          onConfirm={handleCurrencyChangeConfirm}
+        />
+      )}
     </div>
   )
 }
